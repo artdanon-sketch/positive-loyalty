@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Positive — бэк-офис заведения</title>
+<style>
+:root{
+  --ink:#080A0E; --bg:#0C1016; --surf:#131922; --surf2:#1A222E; --surf3:#212B39;
+  --line:#232D3C; --line2:#2E3A4B;
+  --tx:#EDF2F8; --tx2:#93A0B2; --tx3:#5F6B7C;
+  --mint:#34E1B4; --amber:#FFB84D; --coral:#FF7A6B; --violet:#A78BFA;
+  --grad:linear-gradient(135deg,#34E1B4,#22D3EE);
+  /* chart marks — validated for this dark surface (see note in Настройки) */
+  --s1:#199E70; --s2:#9085E9; --s3:#C98500;
+  --good:#199E70; --warn:#C98500; --bad:#D9564A;
+  --spring:cubic-bezier(.34,1.5,.64,1); --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--tx);overflow:hidden;
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Inter,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.app{display:flex;height:100vh}
+
+/* ============ SIDEBAR ============ */
+.side{width:246px;flex:0 0 auto;background:var(--ink);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:18px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 10px 18px}
+.blogo{width:31px;height:31px;border-radius:10px;background:var(--grad);display:grid;place-items:center;
+  font-weight:800;color:#04120E;font-size:16px;box-shadow:0 5px 18px rgba(52,225,180,.32)}
+.brand b{font-size:16px;letter-spacing:-.02em}
+.venue{background:var(--surf);border:1px solid var(--line);border-radius:13px;padding:11px 12px;
+  display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:16px;
+  transition:border-color .25s var(--ease)}
+.venue:hover{border-color:var(--line2)}
+.vic{width:32px;height:32px;border-radius:10px;background:linear-gradient(140deg,#FF7A6B,#FFB84D);
+  display:grid;place-items:center;font-size:16px;flex:0 0 auto}
+.venue .n{font-weight:650;font-size:13.5px;line-height:1.25}
+.venue .m{color:var(--tx3);font-size:11.5px}
+nav{display:flex;flex-direction:column;gap:2px;flex:1}
+.navi{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:11px;
+  color:var(--tx2);cursor:pointer;font-weight:600;font-size:13.5px;position:relative;
+  transition:color .25s var(--ease),background .25s var(--ease)}
+.navi svg{opacity:.85;transition:transform .45s var(--spring)}
+.navi:hover{background:var(--surf);color:var(--tx)}
+.navi.on{background:var(--surf2);color:var(--tx)}
+.navi.on svg{color:var(--mint);transform:scale(1.12)}
+.navi.on::before{content:"";position:absolute;left:0;top:11px;bottom:11px;width:3px;
+  border-radius:0 3px 3px 0;background:var(--mint)}
+.navi .cnt{margin-left:auto;background:var(--coral);color:#2A0A05;font-size:10.5px;font-weight:800;
+  padding:2px 6px;border-radius:99px}
+.plan{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:13px;margin-top:12px}
+.plan .p1{font-size:12px;color:var(--tx3);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.plan .p2{font-weight:700;margin:5px 0 2px;font-size:15px}
+.plan .p3{color:var(--tx3);font-size:11.5px}
+.plan .season{margin-top:10px;background:rgba(255,184,77,.12);color:var(--amber);
+  border-radius:9px;padding:8px 10px;font-size:11.5px;font-weight:650;line-height:1.4}
+
+/* ============ MAIN ============ */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.top{height:66px;flex:0 0 auto;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  gap:14px;padding:0 26px;background:rgba(12,16,22,.82);backdrop-filter:blur(14px)}
+.top .ttl{font-size:17px;font-weight:700;letter-spacing:-.02em}
+.top .sub{color:var(--tx3);font-size:12.5px;margin-top:1px}
+.seg{margin-left:auto;display:flex;background:var(--surf);border:1px solid var(--line);
+  border-radius:11px;padding:3px;position:relative}
+.seg button{border:0;background:transparent;color:var(--tx2);font:650 12.5px/1 inherit;
+  padding:8px 13px;border-radius:8px;cursor:pointer;position:relative;z-index:2;
+  transition:color .25s var(--ease)}
+.seg button.on{color:var(--ink)}
+.segpill{position:absolute;top:3px;left:3px;height:calc(100% - 6px);background:var(--tx);
+  border-radius:8px;z-index:1;transition:transform .42s var(--spring),width .42s var(--spring)}
+.btn{border:0;border-radius:11px;padding:10px 16px;font:700 13px/1 inherit;cursor:pointer;
+  background:var(--grad);color:#04120E;transition:transform .28s var(--spring),filter .25s}
+.btn:hover{filter:brightness(1.07)} .btn:active{transform:scale(.96)}
+.btn.ghost{background:var(--surf);color:var(--tx);border:1px solid var(--line)}
+.btn.ghost:hover{border-color:var(--line2);filter:none;background:var(--surf2)}
+.btn.sm{padding:8px 12px;font-size:12px;border-radius:9px}
+
+.body{flex:1;overflow-y:auto;padding:24px 26px 60px}
+.page{display:none} .page.on{display:block}
+.page.on .st{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0)*50ms)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+.grid{display:grid;gap:14px}
+.g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:1fr 1fr}
+.g21{grid-template-columns:1.55fr 1fr}
+@media(max-width:1180px){.g3{grid-template-columns:1fr 1fr}.g21,.g2{grid-template-columns:1fr}}
+
+.card{background:var(--surf);border:1px solid var(--line);border-radius:17px;padding:19px}
+.card h3{margin:0 0 3px;font-size:15px;font-weight:700;letter-spacing:-.015em}
+.card .cap{color:var(--tx3);font-size:12.5px;margin-bottom:14px}
+
+/* stat tiles */
+.tile{background:var(--surf);border:1px solid var(--line);border-radius:17px;padding:19px;position:relative;overflow:hidden}
+.tile .k{color:var(--tx3);font-size:11.5px;font-weight:750;letter-spacing:.09em;text-transform:uppercase}
+.tile .v{font-size:36px;font-weight:800;letter-spacing:-.04em;margin:9px 0 5px;
+  font-variant-numeric:tabular-nums;line-height:1}
+.tile .d{color:var(--tx2);font-size:12.5px}
+.tile .badge{position:absolute;top:17px;right:17px;font-size:11px;font-weight:750;padding:4px 9px;border-radius:99px}
+.up{background:rgba(25,158,112,.16);color:#3FD69C}
+.flat{background:rgba(95,107,124,.18);color:var(--tx2)}
+
+/* todo cards */
+.todo{display:flex;gap:13px;align-items:flex-start;background:var(--surf);border:1px solid var(--line);
+  border-radius:15px;padding:15px;transition:border-color .25s var(--ease),transform .3s var(--spring)}
+.todo:hover{border-color:var(--line2);transform:translateY(-2px)}
+.tico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:18px;flex:0 0 auto}
+.i-m{background:rgba(52,225,180,.13)} .i-a{background:rgba(255,184,77,.13)}
+.i-c{background:rgba(255,122,107,.13)} .i-v{background:rgba(167,139,250,.13)}
+.todo .tt{font-weight:650;font-size:13.5px;margin-bottom:3px}
+.todo .td{color:var(--tx2);font-size:12.5px;line-height:1.45}
+
+/* ============ CHART ============ */
+.chartwrap{position:relative}
+.legend{display:flex;gap:16px;align-items:center;margin-bottom:14px;font-size:12.5px;color:var(--tx2)}
+.lg{display:flex;align-items:center;gap:7px}
+.sw{width:11px;height:11px;border-radius:3px}
+.plot{display:flex;align-items:flex-end;gap:6px;height:190px;position:relative;padding-top:8px}
+.gridl{position:absolute;left:0;right:0;border-top:1px solid var(--line);pointer-events:none}
+.gridl span{position:absolute;left:0;top:-8px;font-size:10.5px;color:var(--tx3);background:var(--surf);padding-right:6px}
+.col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:2px;
+  height:100%;position:relative;cursor:pointer;min-width:0}
+.col .seg1,.col .seg2{width:100%;transition:height .8s var(--ease),filter .2s}
+.col .seg2{background:var(--s2);border-radius:4px 4px 0 0}
+.col .seg1{background:var(--s1);border-radius:0 0 2px 2px}
+.col:only-child .seg1{border-radius:4px}
+.col:hover .seg1,.col:hover .seg2{filter:brightness(1.28)}
+.xax{display:flex;gap:6px;margin-top:9px}
+.xax div{flex:1;text-align:center;font-size:10.5px;color:var(--tx3);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tip{position:absolute;pointer-events:none;background:var(--surf3);border:1px solid var(--line2);
+  border-radius:11px;padding:10px 12px;font-size:12px;opacity:0;transform:translate(-50%,-8px);
+  transition:opacity .18s;white-space:nowrap;z-index:20;box-shadow:0 14px 34px -8px rgba(0,0,0,.75)}
+.tip.on{opacity:1}
+.tip b{display:block;font-size:12.5px;margin-bottom:5px}
+.tip .r{display:flex;align-items:center;gap:7px;margin-top:3px;color:var(--tx2)}
+.tip .r b{display:inline;margin:0;color:var(--tx);font-variant-numeric:tabular-nums}
+
+/* hours chart */
+.hours{display:flex;align-items:flex-end;gap:4px;height:120px;position:relative}
+.hr{flex:1;background:var(--s1);border-radius:4px 4px 2px 2px;position:relative;
+  transition:height .7s var(--ease),filter .2s;cursor:pointer;min-width:0}
+.hr.dead{background:var(--s3)}
+.hr:hover{filter:brightness(1.3)}
+.deadband{position:absolute;border:1px dashed rgba(201,133,0,.55);border-radius:8px;
+  pointer-events:none;top:-6px;bottom:-4px}
+.deadlbl{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--s3);
+  font-weight:750;white-space:nowrap;background:var(--surf);padding:3px 8px;border-radius:99px;
+  border:1px solid rgba(201,133,0,.3)}
+
+/* table view */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.tbl th{text-align:left;color:var(--tx3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:750;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:9px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:var(--surf2)}
+
+/* live feed */
+.feed{display:flex;flex-direction:column;gap:9px;max-height:290px;overflow-y:auto;scrollbar-width:none}
+.feed::-webkit-scrollbar{display:none}
+.fi{display:flex;gap:11px;align-items:center;padding:11px 12px;background:var(--surf2);
+  border-radius:12px;animation:slidein .5s var(--spring) both}
+@keyframes slidein{from{opacity:0;transform:translateX(-14px) scale(.97)}to{opacity:1;transform:none}}
+.fav{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;
+  font-weight:750;font-size:12.5px;flex:0 0 auto}
+.fi .fn{font-weight:650;font-size:13px}
+.fi .fm{color:var(--tx3);font-size:11.5px;margin-top:1px}
+.fi .fv{margin-left:auto;font-weight:750;font-size:13px;color:#3FD69C;font-variant-numeric:tabular-nums}
+
+/* offers */
+.ocard{background:var(--surf);border:1px solid var(--line);border-radius:17px;padding:17px;
+  position:relative;overflow:hidden;transition:transform .3s var(--spring),border-color .25s}
+.ocard:hover{transform:translateY(-3px);border-color:var(--line2)}
+.ocard .glow{position:absolute;width:150px;height:150px;border-radius:99px;filter:blur(52px);top:-64px;right:-44px;opacity:.34}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:750;
+  padding:4px 9px;border-radius:99px}
+.s-live{background:rgba(25,158,112,.16);color:#3FD69C}
+.s-plan{background:rgba(167,139,250,.14);color:var(--violet)}
+.s-end{background:rgba(95,107,124,.16);color:var(--tx2)}
+.ocard h4{margin:11px 0 4px;font-size:17px;font-weight:720;letter-spacing:-.025em;position:relative}
+.ocard .oc{color:var(--tx2);font-size:12.5px;position:relative}
+.ometrics{display:flex;gap:18px;margin-top:14px;padding-top:13px;border-top:1px solid var(--line);position:relative}
+.om .k{color:var(--tx3);font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase}
+.om .v{font-weight:750;font-size:16px;margin-top:3px;font-variant-numeric:tabular-nums}
+
+/* guests table */
+.chips{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.chip{padding:8px 14px;border-radius:99px;background:var(--surf);border:1px solid var(--line);
+  font-size:12.5px;font-weight:650;color:var(--tx2);cursor:pointer;transition:all .28s var(--spring)}
+.chip.on{background:var(--tx);color:var(--ink);border-color:var(--tx)}
+.chip:active{transform:scale(.95)}
+.gtbl{width:100%;border-collapse:collapse;font-size:13px}
+.gtbl th{text-align:left;color:var(--tx3);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
+  font-weight:750;padding:0 12px 10px;border-bottom:1px solid var(--line)}
+.gtbl td{padding:12px;border-bottom:1px solid var(--line)}
+.gtbl tr{cursor:pointer;transition:background .2s}
+.gtbl tbody tr:hover td{background:var(--surf2)}
+.gav{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:750;font-size:12px}
+.tagx{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px}
+.t-new{background:rgba(52,225,180,.14);color:var(--mint)}
+.t-reg{background:rgba(167,139,250,.14);color:var(--violet)}
+.t-sleep{background:rgba(255,184,77,.14);color:var(--amber)}
+.t-tour{background:rgba(34,211,238,.13);color:#5CD9F0}
+
+/* staff */
+.bar{height:9px;border-radius:99px;background:var(--surf3);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--s1);border-radius:99px;
+  transition:width 1s var(--ease)}
+.alert{display:flex;gap:11px;align-items:flex-start;background:rgba(201,133,0,.09);
+  border:1px solid rgba(201,133,0,.3);border-radius:13px;padding:14px}
+
+/* modal */
+.back{position:fixed;inset:0;background:rgba(4,6,10,.74);backdrop-filter:blur(7px);
+  opacity:0;pointer-events:none;transition:opacity .32s var(--ease);z-index:90}
+.back.on{opacity:1;pointer-events:auto}
+.modal{position:fixed;top:50%;left:50%;width:min(880px,92vw);max-height:86vh;overflow-y:auto;
+  background:var(--bg);border:1px solid var(--line2);border-radius:22px;z-index:95;
+  transform:translate(-50%,-46%) scale(.94);opacity:0;pointer-events:none;
+  transition:transform .5s var(--spring),opacity .3s var(--ease);scrollbar-width:none;
+  box-shadow:0 50px 110px -25px rgba(0,0,0,.85)}
+.modal::-webkit-scrollbar{display:none}
+.modal.on{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+.mhd{display:flex;align-items:center;gap:12px;padding:20px 22px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;background:var(--bg);z-index:5}
+.mhd .mt{font-size:17px;font-weight:720;letter-spacing:-.02em}
+.mhd .ms{color:var(--tx3);font-size:12.5px;margin-top:2px}
+.x{margin-left:auto;width:34px;height:34px;border-radius:10px;background:var(--surf);border:1px solid var(--line);
+  display:grid;place-items:center;cursor:pointer;color:var(--tx2);font-size:17px;
+  transition:all .25s var(--spring)}
+.x:hover{background:var(--surf2);color:var(--tx);transform:rotate(90deg)}
+.mbd{padding:22px}
+
+/* steps */
+.steps{display:flex;gap:8px;margin-bottom:20px}
+.step{flex:1;padding:11px 13px;border-radius:12px;background:var(--surf);border:1px solid var(--line);
+  transition:all .35s var(--ease)}
+.step.on{border-color:var(--mint);background:rgba(52,225,180,.07)}
+.step.done{opacity:.55}
+.step .sn{width:20px;height:20px;border-radius:99px;background:var(--surf3);display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:var(--tx2);margin-bottom:7px;transition:all .35s}
+.step.on .sn{background:var(--mint);color:#04120E}
+.step .sl{font-size:12.5px;font-weight:650}
+
+/* templates */
+.tpl{display:flex;gap:12px;align-items:center;background:var(--surf);border:1px solid var(--line);
+  border-radius:14px;padding:14px;cursor:pointer;transition:all .3s var(--spring);margin-bottom:9px}
+.tpl:hover{border-color:var(--line2);transform:translateX(3px)}
+.tpl.on{border-color:var(--mint);background:rgba(52,225,180,.07)}
+.tpl .tn{font-weight:650;font-size:13.5px}
+.tpl .tdd{color:var(--tx2);font-size:12px;margin-top:3px}
+.tpl .rec{margin-left:auto;font-size:10.5px;font-weight:750;color:var(--mint);
+  background:rgba(52,225,180,.13);padding:4px 9px;border-radius:99px;white-space:nowrap}
+
+/* form */
+.field{margin-bottom:15px}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--tx2);margin-bottom:7px}
+.field input,.field select,.field textarea{width:100%;background:var(--surf);border:1px solid var(--line);
+  border-radius:11px;padding:12px 13px;color:var(--tx);font:inherit;font-size:13.5px;
+  transition:border-color .25s}
+.field input:focus,.field select:focus,.field textarea:focus{outline:0;border-color:var(--mint)}
+.field .hint{color:var(--tx3);font-size:11.5px;margin-top:6px;line-height:1.45}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* phone preview */
+.prev{background:var(--ink);border:1px solid var(--line);border-radius:22px;padding:16px;position:sticky;top:0}
+.prevlbl{font-size:10.5px;font-weight:750;letter-spacing:.09em;text-transform:uppercase;color:var(--tx3);margin-bottom:11px}
+.pcard{border-radius:17px;padding:15px;background:var(--surf);border:1px solid var(--line);position:relative;overflow:hidden}
+.pcard .pg{position:absolute;width:120px;height:120px;border-radius:99px;filter:blur(44px);top:-52px;right:-38px;opacity:.42;background:var(--coral)}
+.pcard .pb{font-size:11px;font-weight:750;background:rgba(255,184,77,.14);color:var(--amber);
+  padding:4px 9px;border-radius:99px;display:inline-block;position:relative}
+.pcard .ph{font-size:19px;font-weight:760;letter-spacing:-.03em;margin:10px 0 5px;position:relative}
+.pcard .pp{color:var(--tx2);font-size:12.5px;position:relative}
+
+/* toggle */
+.tgl{width:44px;height:26px;border-radius:99px;background:var(--line2);position:relative;cursor:pointer;
+  transition:background .3s;flex:0 0 auto}
+.tgl.on{background:var(--mint)}
+.tgl::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;
+  background:#fff;transition:transform .38s var(--spring)}
+.tgl.on::after{transform:translateX(18px)}
+.setrow{display:flex;align-items:center;gap:14px;padding:15px 0;border-bottom:1px solid var(--line)}
+.setrow:last-child{border-bottom:none}
+.setrow .sl{flex:1}
+.setrow .sn2{font-weight:650;font-size:13.5px}
+.setrow .sd{color:var(--tx3);font-size:12px;margin-top:3px;line-height:1.45}
+
+/* toast */
+.toast{position:fixed;bottom:26px;left:50%;transform:translate(-50%,140%);z-index:99;
+  background:var(--surf3);border:1px solid rgba(52,225,180,.4);border-radius:15px;padding:13px 19px;
+  display:flex;align-items:center;gap:11px;transition:transform .55s var(--spring);
+  box-shadow:0 20px 50px -12px rgba(0,0,0,.8);font-weight:650;font-size:13.5px}
+.toast.on{transform:translate(-50%,0)}
+.note{background:var(--surf2);border-left:2px solid var(--mint);border-radius:0 11px 11px 0;
+  padding:12px 14px;color:var(--tx2);font-size:12.5px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="side">
+    <div class="brand"><div class="blogo">P</div><b>Positive</b></div>
+
+    <div class="venue" onclick="toast('Переключение между точками сети')">
+      <div class="vic">🍜</div>
+      <div style="min-width:0"><div class="n">Kata Beach Kitchen</div><div class="m">Ката · 1 точка</div></div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" stroke-width="2.4" style="margin-left:auto;flex:0 0 auto"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+
+    <nav id="nav">
+      <div class="navi on" data-p="home">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>
+        Обзор</div>
+      <div class="navi" data-p="offers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg>
+        Акции<span class="cnt">3</span></div>
+      <div class="navi" data-p="guests">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17.5 14.4A6.5 6.5 0 0 1 21.5 20"/></svg>
+        Гости</div>
+      <div class="navi" data-p="send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m21 3-9.5 9.5M21 3l-6.5 18-3.9-8.6L2 8.6 21 3z"/></svg>
+        Рассылки</div>
+      <div class="navi" data-p="staff">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg>
+        Сотрудники<span class="cnt">1</span></div>
+      <div class="navi" data-p="pos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v3M17 20h4"/></svg>
+        Касса и QR</div>
+      <div class="navi" data-p="set">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1v.3a2 2 0 1 1-4 0v-.2a1.6 1.6 0 0 0-2.8-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3.5 15H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.3 6.2l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V2a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 2.8 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7h.3a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.2 1z"/></svg>
+        Настройки</div>
+    </nav>
+
+    <div class="plan">
+      <div class="p1">Тариф</div>
+      <div class="p2">Pro · 990 ฿/мес</div>
+      <div class="p3">Списание 1 сентября</div>
+      <div class="season">🌧 Скоро низкий сезон. С мая переключим на 290 ฿/мес — программа продолжит работать</div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+    <div class="top">
+      <div><div class="ttl" id="ptitle">Обзор</div><div class="sub" id="psub">Как программа работает на вас</div></div>
+      <div class="seg" id="seg">
+        <div class="segpill" id="segpill"></div>
+        <button class="on">7 дней</button><button>30 дней</button><button>Сезон</button>
+      </div>
+      <button class="btn" onclick="openC()">＋ Создать акцию</button>
+    </div>
+
+    <div class="body">
+
+    <!-- ---------- ОБЗОР ---------- -->
+    <section class="page on" id="p-home">
+      <div class="grid g3 st" style="--i:0;margin-bottom:14px">
+        <div class="tile">
+          <div class="badge up">+18%</div>
+          <div class="k">Пришло по программе</div>
+          <div class="v" id="k1">0</div>
+          <div class="d">из них <b style="color:#3FD69C">38 впервые</b> · это 26%</div>
+        </div>
+        <div class="tile">
+          <div class="badge flat">стабильно</div>
+          <div class="k">Я должен баллами</div>
+          <div class="v" style="color:var(--amber)" id="k2">0</div>
+          <div class="d">обязательство перед гостями, не расход</div>
+        </div>
+        <div class="tile">
+          <div class="badge up">лучшая</div>
+          <div class="k">Акция недели</div>
+          <div class="v" style="font-size:21px;letter-spacing:-.02em;margin-top:13px">200 ฿ на завтра</div>
+          <div class="d">64 использования · вернулся 41 гость</div>
+        </div>
+      </div>
+
+      <div class="grid g21 st" style="--i:1;margin-bottom:14px">
+        <div class="card chartwrap">
+          <div style="display:flex;align-items:flex-start">
+            <div><h3>Гости по дням</h3><div class="cap">Кто пришёл с картой Positive</div></div>
+            <button class="btn ghost sm" style="margin-left:auto" onclick="tblToggle()" id="tblbtn">Таблицей</button>
+          </div>
+          <div id="chartview">
+            <div class="legend">
+              <div class="lg"><span class="sw" style="background:var(--s2)"></span>Впервые</div>
+              <div class="lg"><span class="sw" style="background:var(--s1)"></span>Повторно</div>
+            </div>
+            <div class="plot" id="plot"></div>
+            <div class="xax" id="xax"></div>
+          </div>
+          <div id="tblview" style="display:none">
+            <table class="tbl"><thead><tr><th>День</th><th>Впервые</th><th>Повторно</th><th>Всего</th></tr></thead>
+            <tbody id="tbody"></tbody></table>
+          </div>
+          <div class="tip" id="tip"></div>
+        </div>
+
+        <div class="card">
+          <h3>Живая лента</h3><div class="cap">Начисления в реальном времени</div>
+          <div class="feed" id="feed"></div>
+        </div>
+      </div>
+
+      <div style="font-size:11.5px;font-weight:750;letter-spacing:.09em;text-transform:uppercase;
+                  color:var(--tx3);margin:22px 0 12px" class="st">Что стоит сделать сегодня</div>
+      <div class="grid g3 st" style="--i:2">
+        <div class="todo" onclick="openC('winback')">
+          <div class="tico i-a">😴</div>
+          <div><div class="tt">31 гость не заходил больше месяца</div>
+            <div class="td">Отправить им повод вернуться. Обычно возвращается каждый пятый</div></div>
+        </div>
+        <div class="todo" onclick="nav('pos')">
+          <div class="tico i-c">🖨</div>
+          <div><div class="tt">На террасе нет таблички с QR</div>
+            <div class="td">Там, где рядом есть объяснение, код сканируют вдвое чаще</div></div>
+        </div>
+        <div class="todo" onclick="openC('deadhours')">
+          <div class="tico i-m">🕑</div>
+          <div><div class="tt">С 14 до 17 зал пустой</div>
+            <div class="td">Запустить акцию на тихие часы — 3 тапа</div></div>
+        </div>
+      </div>
+
+      <div class="card st" style="--i:3;margin-top:14px">
+        <h3>Загрузка по часам</h3>
+        <div class="cap">Средний будний день. Жёлтым — часы, которые можно догрузить акцией</div>
+        <div class="hours" id="hours"></div>
+        <div class="xax" id="hax" style="margin-top:7px"></div>
+      </div>
+    </section>
+
+    <!-- ---------- АКЦИИ ---------- -->
+    <section class="page" id="p-offers">
+      <div class="chips st" style="--i:0">
+        <div class="chip on">Все · 6</div><div class="chip">Идут сейчас · 3</div>
+        <div class="chip">Запланированы · 1</div><div class="chip">Завершены · 2</div>
+      </div>
+      <div class="grid g2 st" style="--i:1">
+        <div class="ocard"><div class="glow" style="background:var(--coral)"></div>
+          <span class="stat s-live">● Идёт</span>
+          <h4>200 ฿ на следующий визит</h4>
+          <div class="oc">Чек от 800 ฿ · промокод действует только завтра</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Выдано</div><div class="v">96</div></div>
+            <div class="om"><div class="k">Использовано</div><div class="v">64</div></div>
+            <div class="om"><div class="k">Вернулось гостей</div><div class="v" style="color:#3FD69C">41</div></div>
+          </div></div>
+
+        <div class="ocard"><div class="glow" style="background:var(--mint)"></div>
+          <span class="stat s-live">● Идёт</span>
+          <h4>Кэшбэк 10% баллами</h4>
+          <div class="oc">Базовая механика · всем гостям</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Начислено</div><div class="v">18 900 ฿</div></div>
+            <div class="om"><div class="k">Потрачено</div><div class="v">6 500 ฿</div></div>
+            <div class="om"><div class="k">Возврат</div><div class="v" style="color:#3FD69C">34%</div></div>
+          </div></div>
+
+        <div class="ocard"><div class="glow" style="background:var(--violet)"></div>
+          <span class="stat s-live">● Идёт</span>
+          <h4>Десерт новым гостям Positive</h4>
+          <div class="oc">Ваучер сети · виден всем гостям на острове</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Показов</div><div class="v">1 240</div></div>
+            <div class="om"><div class="k">Забрали</div><div class="v">57</div></div>
+            <div class="om"><div class="k">Дошли</div><div class="v" style="color:#3FD69C">38</div></div>
+          </div></div>
+
+        <div class="ocard"><div class="glow" style="background:var(--amber)"></div>
+          <span class="stat s-plan">◷ С 1 сентября</span>
+          <h4>−20% с 14:00 до 17:00</h4>
+          <div class="oc">Тихие часы · будни</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Аудитория</div><div class="v">все</div></div>
+            <div class="om"><div class="k">Прогноз</div><div class="v">~25/нед</div></div>
+            <div class="om"><div class="k">Статус</div><div class="v" style="color:var(--violet)">готова</div></div>
+          </div></div>
+
+        <div class="ocard" style="opacity:.62"><span class="stat s-end">✓ Завершена</span>
+          <h4>Сонгкран: −15% на всё меню</h4>
+          <div class="oc">13–15 апреля</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Использовано</div><div class="v">212</div></div>
+            <div class="om"><div class="k">Выручка</div><div class="v">148 000 ฿</div></div>
+            <div class="om"><div class="k">Новых</div><div class="v">73</div></div>
+          </div></div>
+
+        <div class="ocard" style="opacity:.62"><span class="stat s-end">✓ Завершена</span>
+          <h4>Завтрак до 11:00 — 120 ฿</h4>
+          <div class="oc">Июнь–июль</div>
+          <div class="ometrics">
+            <div class="om"><div class="k">Использовано</div><div class="v">340</div></div>
+            <div class="om"><div class="k">Утренний трафик</div><div class="v" style="color:#3FD69C">+41%</div></div>
+            <div class="om"><div class="k">Новых</div><div class="v">88</div></div>
+          </div></div>
+      </div>
+    </section>
+
+    <!-- ---------- ГОСТИ ---------- -->
+    <section class="page" id="p-guests">
+      <div class="chips st" style="--i:0">
+        <div class="chip on">Все · 1 284</div><div class="chip">Новые · 38</div>
+        <div class="chip">Постоянные · 216</div><div class="chip">Спящие · 31</div>
+        <div class="chip">Туристы · 742</div><div class="chip">Живут здесь · 542</div>
+      </div>
+      <div class="card st" style="--i:1;padding:19px 8px 8px">
+        <table class="gtbl">
+          <thead><tr><th style="padding-left:12px">Гость</th><th>Сегмент</th><th>Визитов</th>
+            <th>Баллов</th><th>Средний чек</th><th>Был</th></tr></thead>
+          <tbody id="gbody"></tbody>
+        </table>
+      </div>
+      <div class="note st" style="--i:2;margin-top:14px">
+        Сегменты считаются автоматически. Вам не нужно строить отчёты — достаточно нажать на сегмент
+        и отправить ему сообщение.
+      </div>
+    </section>
+
+    <!-- ---------- РАССЫЛКИ ---------- -->
+    <section class="page" id="p-send">
+      <div class="grid g21">
+        <div>
+          <div class="card st" style="--i:0;margin-bottom:14px">
+            <h3>Кому отправляем</h3><div class="cap">Выберите сегмент — количество посчитается само</div>
+            <div class="chips" id="segchips">
+              <div class="chip on">Спящие · 31</div><div class="chip">Постоянные · 216</div>
+              <div class="chip">Новые · 38</div><div class="chip">Все · 1 284</div>
+            </div>
+            <div class="two">
+              <div class="field"><label>Язык гостей</label>
+                <select><option>Все языки (авто-перевод)</option><option>Только русский</option>
+                  <option>Только английский</option><option>Только тайский</option></select></div>
+              <div class="field"><label>Канал</label>
+                <select><option>Telegram + LINE (авто)</option><option>Только Telegram</option>
+                  <option>Только LINE</option></select></div>
+            </div>
+          </div>
+
+          <div class="card st" style="--i:1">
+            <h3>Сообщение</h3><div class="cap">Коротко. Одна мысль, одна выгода, один срок</div>
+            <div class="field">
+              <textarea id="msg" rows="4" oninput="prev()">Соскучились! Заходите до воскресенья — вернём 200 ฿ на следующий визит 🍜</textarea>
+              <div class="hint">Осталось <b id="chars">96</b> символов до обрезки в превью</div>
+            </div>
+            <div class="setrow" style="border:none;padding-top:0">
+              <div class="sl"><div class="sn2">Приложить акцию</div>
+                <div class="sd">«200 ฿ на следующий визит» — активна</div></div>
+              <div class="tgl on" onclick="this.classList.toggle('on')"></div>
+            </div>
+            <button class="btn" style="width:100%;margin-top:8px" onclick="toast('Отправлено 31 гостю')">
+              Отправить 31 гостю · бесплатно</button>
+          </div>
+        </div>
+
+        <div class="prev st" style="--i:2">
+          <div class="prevlbl">Так увидит гость</div>
+          <div class="pcard">
+            <div class="pg"></div>
+            <div class="pb">Только до воскресенья</div>
+            <div class="ph" id="pvh">Kata Beach Kitchen</div>
+            <div class="pp" id="pvp">Соскучились! Заходите до воскресенья — вернём 200 ฿ на следующий визит 🍜</div>
+          </div>
+          <div class="note" style="margin-top:14px">
+            Telegram и LINE — бесплатны. Платить нужно только за SMS,
+            поэтому по умолчанию они выключены.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- СОТРУДНИКИ ---------- -->
+    <section class="page" id="p-staff">
+      <div class="alert st" style="--i:0;margin-bottom:16px">
+        <div style="font-size:19px;line-height:1">⚠️</div>
+        <div><div style="font-weight:700;font-size:13.5px;margin-bottom:4px">Стоит посмотреть: Som, касса</div>
+          <div style="color:var(--tx2);font-size:12.5px;line-height:1.5">
+            Вчера 9 начислений подряд на один и тот же номер телефона. Может быть постоянный гость,
+            а может — начисление себе. Мы ничего не блокировали, просто показываем.</div>
+          <div style="margin-top:11px;display:flex;gap:8px">
+            <button class="btn sm" onclick="toast('Открыт список из 9 начислений')">Посмотреть чеки</button>
+            <button class="btn ghost sm" onclick="toast('Отмечено как нормальное')">Всё в порядке</button>
+          </div></div>
+      </div>
+
+      <div class="card st" style="--i:1;margin-bottom:14px">
+        <h3>Кто оформляет гостей</h3>
+        <div class="cap">За 7 дней. Это и мотивация смены, и заодно контроль</div>
+        <div id="staffl"></div>
+      </div>
+
+      <div class="grid g2 st" style="--i:2">
+        <div class="card"><h3>Лимиты</h3><div class="cap">Защита от случайных и намеренных ошибок</div>
+          <div class="setrow"><div class="sl"><div class="sn2">Не больше 40 начислений в час на кассира</div>
+            <div class="sd">Обычный максимум за смену — 22</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Ручная правка баланса только у владельца</div>
+            <div class="sd">Кассир и менеджер править не могут</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Отчёт по понедельникам</div>
+            <div class="sd">Кто сколько оформил, что выглядит странно</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+        <div class="card"><h3>Доступы</h3><div class="cap">Кто что может</div>
+          <table class="tbl"><thead><tr><th>Роль</th><th>Начислять</th><th>Акции</th><th>Финансы</th></tr></thead>
+          <tbody>
+            <tr><td>Кассир</td><td>✓</td><td>—</td><td>—</td></tr>
+            <tr><td>Менеджер</td><td>✓</td><td>—</td><td>—</td></tr>
+            <tr><td>Владелец</td><td>✓</td><td>✓</td><td>✓</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- КАССА ---------- -->
+    <section class="page" id="p-pos">
+      <div class="grid g2 st" style="--i:0;margin-bottom:14px">
+        <div class="card">
+          <h3>Как у вас начисляются баллы</h3>
+          <div class="cap">Чем выше уровень, тем меньше зависит от человека</div>
+
+          <div class="tpl on"><div class="tico i-m">💳</div>
+            <div><div class="tn">Через оплату PromptPay</div>
+              <div class="tdd">Сумму подтверждает банк. Ошибиться невозможно</div></div>
+            <span class="rec">включено</span></div>
+
+          <div class="tpl"><div class="tico i-v">🧾</div>
+            <div><div class="tn">QR на чеке</div>
+              <div class="tdd">Требует настройки печати чека у вашей кассы</div></div>
+            <span class="rec" style="color:var(--tx3);background:var(--surf3)">не настроено</span></div>
+
+          <div class="tpl on"><div class="tico i-a">📱</div>
+            <div><div class="tn">Гость показывает код, кассир вводит сумму</div>
+              <div class="tdd">Работает всегда, но сумму вводит человек</div></div>
+            <span class="rec">включено</span></div>
+
+          <div class="note" style="margin-top:14px">
+            У вас сейчас <b style="color:var(--mint)">72%</b> начислений идут через оплату —
+            это хорошо. Остальные 28% вводит персонал вручную.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Печатный комплект</h3>
+          <div class="cap">Рядом с кодом всегда должно быть написано, что с ним делать</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:6px 0 14px">
+            <div style="background:#fff;border-radius:13px;padding:14px;text-align:center;color:#0B0F14">
+              <div style="width:74px;height:74px;margin:0 auto 9px;background:
+                repeating-linear-gradient(0deg,#0B0F14 0 4px,#fff 4px 8px),
+                repeating-linear-gradient(90deg,#0B0F14 0 4px,transparent 4px 8px);border-radius:6px"></div>
+              <div style="font-weight:800;font-size:12px">Сканируй — вернём 200 ฿</div>
+              <div style="font-size:9.5px;color:#7A8493;margin-top:4px">RU · EN · TH · 中文</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;justify-content:center">
+              <button class="btn ghost sm" onclick="toast('PDF для печати скачан')">Табличка на стол</button>
+              <button class="btn ghost sm" onclick="toast('PDF для печати скачан')">Наклейка на кассу</button>
+              <button class="btn ghost sm" onclick="toast('PDF для печати скачан')">Вкладыш в чек</button>
+              <button class="btn ghost sm" onclick="toast('Заказ передан в типографию')">Заказать печать</button>
+            </div>
+          </div>
+          <div class="note">Наклейку обязательно заламинируйте. Подмена QR-стикеров — растущий
+            вид мошенничества, а ламинат и фирменная рамка делают подмену заметной.</div>
+        </div>
+      </div>
+
+      <div class="card st" style="--i:1">
+        <h3>Что говорит персонал</h3>
+        <div class="cap">Одна фраза. Больше не нужно — гость всё увидит сам</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:6px">
+          <div style="background:var(--surf2);border-radius:13px;padding:15px">
+            <div style="font-size:10.5px;font-weight:750;color:var(--tx3);letter-spacing:.08em;margin-bottom:7px">РУССКИЙ</div>
+            <div style="font-size:13.5px">«Отсканируйте код — вернём часть суммы на следующий визит»</div></div>
+          <div style="background:var(--surf2);border-radius:13px;padding:15px">
+            <div style="font-size:10.5px;font-weight:750;color:var(--tx3);letter-spacing:.08em;margin-bottom:7px">ENGLISH</div>
+            <div style="font-size:13.5px">"Scan the code — get cash back on your next visit"</div></div>
+          <div style="background:var(--surf2);border-radius:13px;padding:15px">
+            <div style="font-size:10.5px;font-weight:750;color:var(--tx3);letter-spacing:.08em;margin-bottom:7px">ไทย</div>
+            <div style="font-size:13.5px">«สแกนคิวอาร์ รับเงินคืนสำหรับครั้งถัดไป»</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- НАСТРОЙКИ ---------- -->
+    <section class="page" id="p-set">
+      <div class="grid g2">
+        <div class="card st" style="--i:0">
+          <h3>Программа</h3><div class="cap">Меняется в любой момент, гости увидят сразу</div>
+          <div class="two" style="margin-top:6px">
+            <div class="field"><label>Кэшбэк с чека</label><input value="10%"></div>
+            <div class="field"><label>Баллы сгорают через</label>
+              <select><option>6 месяцев</option><option>3 месяца</option><option>не сгорают</option></select></div>
+          </div>
+          <div class="setrow"><div class="sl"><div class="sn2">Участвовать в сети Positive</div>
+            <div class="sd">Ваши ваучеры видят все гости платформы на острове</div></div>
+            <div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Платить за приведённых гостей</div>
+            <div class="sd">50 ฿ за человека, который впервые пришёл из каталога. За постоянных — ничего</div></div>
+            <div class="tgl" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Льготный тариф в низкий сезон</div>
+            <div class="sd">С мая по октябрь 290 ฿/мес вместо 990 ฿</div></div>
+            <div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+
+        <div class="card st" style="--i:1">
+          <h3>Заведение</h3><div class="cap">Это видят гости в карточке</div>
+          <div class="field"><label>Название</label><input value="Kata Beach Kitchen"></div>
+          <div class="two">
+            <div class="field"><label>Телефон</label><input value="+66 76 330 118"></div>
+            <div class="field"><label>Часы</label><input value="10:00 – 23:00"></div>
+          </div>
+          <div class="field"><label>Категория</label>
+            <select><option>Ресторан · тайская кухня</option><option>Кафе</option><option>Бар</option></select></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Данные гостей</div>
+            <div class="sd">Ваша база принадлежит вам. Выгрузить можно в любой момент</div></div>
+            <button class="btn ghost sm" onclick="toast('Файл выгружен')">Выгрузить</button></div>
+          <div class="note" style="margin-top:14px">
+            Согласие гостя на обработку данных по тайскому PDPA уже встроено в экран регистрации.
+            Отдельно оформлять ничего не нужно.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </div><!-- /body -->
+  </div>
+</div>
+
+<!-- ============ MODAL: конструктор акции ============ -->
+<div class="back" id="back" onclick="closeC()"></div>
+<div class="modal" id="modal">
+  <div class="mhd">
+    <div><div class="mt">Новая акция</div><div class="ms" id="mstep">Шаг 1 из 3 · выберите готовый шаблон</div></div>
+    <div class="x" onclick="closeC()">✕</div>
+  </div>
+  <div class="mbd">
+    <div class="steps">
+      <div class="step on" id="st1"><div class="sn">1</div><div class="sl">Что за акция</div></div>
+      <div class="step" id="st2"><div class="sn">2</div><div class="sl">Условия</div></div>
+      <div class="step" id="st3"><div class="sn">3</div><div class="sl">Проверить и запустить</div></div>
+    </div>
+
+    <!-- step 1 -->
+    <div id="c1">
+      <div class="tpl on" onclick="pick(this,'Вернуть гостя завтра','Промокод на 200 ฿ действует только завтра')">
+        <div class="tico i-c">🔁</div>
+        <div><div class="tn">Вернуть гостя завтра</div>
+          <div class="tdd">Промокод на следующий визит, сгорает через сутки</div></div>
+        <span class="rec">чаще всего работает</span></div>
+
+      <div class="tpl" onclick="pick(this,'Догрузить тихие часы','Скидка 20% с 14:00 до 17:00')">
+        <div class="tico i-a">🕑</div>
+        <div><div class="tn">Догрузить тихие часы</div>
+          <div class="tdd">Скидка только в те часы, когда зал пустой</div></div>
+        <span class="rec">у вас 14–17 пусто</span></div>
+
+      <div class="tpl" onclick="pick(this,'Разбудить спящих','Персональный повод вернуться для 31 гостя')">
+        <div class="tico i-v">😴</div>
+        <div><div class="tn">Разбудить спящих</div>
+          <div class="tdd">Тем, кто не заходил больше месяца — их 31</div></div></div>
+
+      <div class="tpl" onclick="pick(this,'Каждый 11-й в подарок','Карта на 12 визитов, 2 штампа сразу в подарок')">
+        <div class="tico i-m">🎫</div>
+        <div><div class="tn">Каждый 11-й в подарок</div>
+          <div class="tdd">Карта визитов. Два штампа дарим сразу — так доходят почти вдвое чаще</div></div></div>
+
+      <div class="tpl" onclick="pick(this,'Ваучер новым гостям сети','Виден всем гостям Positive на острове')">
+        <div class="tico i-v">🎁</div>
+        <div><div class="tn">Ваучер новым гостям сети</div>
+          <div class="tdd">Появится у всех гостей Positive на острове. Платите только за пришедших</div></div></div>
+
+      <div class="tpl" onclick="pick(this,'Своя акция','Настроить всё вручную')">
+        <div class="tico i-m">⚙️</div>
+        <div><div class="tn">Своя акция</div><div class="tdd">Настроить всё вручную</div></div></div>
+    </div>
+
+    <!-- step 2 -->
+    <div id="c2" style="display:none">
+      <div class="grid g21">
+        <div>
+          <div class="two">
+            <div class="field"><label>Сколько вернуть гостю</label><input value="200 ฿" oninput="prev2()" id="f1"></div>
+            <div class="field"><label>При чеке от</label><input value="800 ฿"></div>
+          </div>
+          <div class="two">
+            <div class="field"><label>Действует</label>
+              <select id="f2" onchange="prev2()"><option>только завтра</option><option>3 дня</option><option>неделю</option></select></div>
+            <div class="field"><label>Кому</label>
+              <select><option>всем гостям</option><option>только туристам</option><option>только тем, кто живёт здесь</option></select></div>
+          </div>
+          <div class="field"><label>Ограничить количеством</label><input value="без ограничений">
+            <div class="hint">Если боитесь перерасхода — поставьте лимит, например 100 промокодов</div></div>
+          <div class="note">Мы посчитали: при вашем среднем чеке 650 ฿ и возврате 34% эта акция
+            должна принести примерно <b style="color:var(--mint)">+28 000 ฿</b> выручки в неделю
+            при затратах около 12 800 ฿ баллами.</div>
+        </div>
+        <div class="prev">
+          <div class="prevlbl">Так увидит гость</div>
+          <div class="pcard"><div class="pg"></div>
+            <div class="pb" id="p2b">Только завтра</div>
+            <div class="ph" id="p2h">200 ฿ на следующий визит</div>
+            <div class="pp">Kata Beach Kitchen · при чеке от 800 ฿</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- step 3 -->
+    <div id="c3" style="display:none">
+      <div class="grid g2">
+        <div class="card"><h3>Проверьте</h3>
+          <div class="setrow"><div class="sl"><div class="sn2">Название</div></div><div style="font-weight:650" id="r1">Вернуть гостя завтра</div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Награда</div></div><div style="font-weight:650">200 ฿ промокодом</div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Условие</div></div><div style="font-weight:650">чек от 800 ฿</div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Срок</div></div><div style="font-weight:650">только завтра</div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Аудитория</div></div><div style="font-weight:650">все гости · 1 284</div></div>
+        </div>
+        <div class="card"><h3>Сообщить гостям</h3>
+          <div class="cap">Бесплатно через Telegram и LINE</div>
+          <div class="setrow"><div class="sl"><div class="sn2">Отправить сразу после запуска</div>
+            <div class="sd">1 284 гостя, бесплатно</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Показать в каталоге сети</div>
+            <div class="sd">Увидят гости Positive, которые ещё у вас не были</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+          <div class="setrow"><div class="sl"><div class="sn2">Напомнить утром тем, кто не использовал</div>
+            <div class="sd">За 6 часов до сгорания</div></div><div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn ghost" id="cback" onclick="stepGo(-1)" style="display:none">Назад</button>
+      <button class="btn" style="margin-left:auto" id="cnext" onclick="stepGo(1)">Дальше</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span>✓</span><span id="toastt">Готово</span></div>
+
+<script>
+/* ---------- nav ---------- */
+const TITLES={home:['Обзор','Как программа работает на вас'],offers:['Акции','Что запущено и что это дало'],
+ guests:['Гости','Ваша база. Она принадлежит вам'],send:['Рассылки','Написать своим гостям бесплатно'],
+ staff:['Сотрудники','Кто оформляет гостей и всё ли чисто'],pos:['Касса и QR','Как начисляются баллы'],
+ set:['Настройки','Программа, заведение, тариф']};
+let page='home';
+function nav(p){
+  if(page===p)return;
+  document.getElementById('p-'+page).classList.remove('on');
+  const n=document.getElementById('p-'+p);n.classList.remove('on');void n.offsetWidth;n.classList.add('on');
+  page=p;
+  document.querySelectorAll('.navi').forEach(x=>x.classList.toggle('on',x.dataset.p===p));
+  document.getElementById('ptitle').textContent=TITLES[p][0];
+  document.getElementById('psub').textContent=TITLES[p][1];
+  document.querySelector('.body').scrollTop=0;
+  if(p==='staff')setTimeout(staffBars,120);
+}
+document.querySelectorAll('.navi').forEach(n=>n.onclick=()=>nav(n.dataset.p));
+
+/* ---------- segmented ---------- */
+const seg=document.getElementById('seg'),sp=document.getElementById('segpill');
+function mv(b){sp.style.width=b.offsetWidth+'px';sp.style.transform='translateX('+(b.offsetLeft-3)+'px)';}
+seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');mv(b);
+  buildChart();});
+setTimeout(()=>mv(seg.querySelector('.on')),50);
+
+/* ---------- counters ---------- */
+function count(el,to,suf){const t0=performance.now();
+  (function f(t){const k=Math.min(1,(t-t0)/1000),e=1-Math.pow(1-k,3);
+    el.textContent=Math.round(to*e).toLocaleString('ru-RU')+(suf||'');
+    if(k<1)requestAnimationFrame(f);})(t0);}
+count(document.getElementById('k1'),147);
+count(document.getElementById('k2'),12400,' ฿');
+
+/* ---------- main chart ---------- */
+const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const DATA=[[3,14],[5,17],[4,13],[7,21],[6,24],[8,29],[5,20]]; // [новые, повторные]
+function buildChart(){
+  const plot=document.getElementById('plot'),xax=document.getElementById('xax'),tb=document.getElementById('tbody');
+  plot.innerHTML='';xax.innerHTML='';tb.innerHTML='';
+  const max=Math.max(...DATA.map(d=>d[0]+d[1]))*1.15;
+  [.5,1].forEach(f=>{const g=document.createElement('div');g.className='gridl';
+    g.style.bottom=(f*100)+'%';g.innerHTML='<span>'+Math.round(max*f)+'</span>';plot.appendChild(g);});
+  DATA.forEach((d,i)=>{
+    const c=document.createElement('div');c.className='col';
+    const tot=d[0]+d[1];
+    c.innerHTML='<div class="seg2" style="height:0"></div><div class="seg1" style="height:0"></div>';
+    plot.appendChild(c);
+    requestAnimationFrame(()=>{setTimeout(()=>{
+      c.children[0].style.height=(d[0]/max*100)+'%';
+      c.children[1].style.height=(d[1]/max*100)+'%';},i*55);});
+    c.onmouseenter=e=>{const t=document.getElementById('tip');
+      t.innerHTML='<b>'+DAYS[i]+' · всего '+tot+'</b>'+
+        '<div class="r"><span class="sw" style="background:var(--s2)"></span>Впервые <b>'+d[0]+'</b></div>'+
+        '<div class="r"><span class="sw" style="background:var(--s1)"></span>Повторно <b>'+d[1]+'</b></div>';
+      const r=c.getBoundingClientRect(),p=plot.parentElement.getBoundingClientRect();
+      t.style.left=(r.left-p.left+r.width/2)+'px';t.style.top=(r.top-p.top-6)+'px';
+      t.style.transform='translate(-50%,-100%)';t.classList.add('on');};
+    c.onmouseleave=()=>document.getElementById('tip').classList.remove('on');
+    const x=document.createElement('div');x.textContent=DAYS[i];xax.appendChild(x);
+    tb.innerHTML+='<tr><td>'+DAYS[i]+'</td><td>'+d[0]+'</td><td>'+d[1]+'</td><td><b>'+tot+'</b></td></tr>';
+  });
+}
+buildChart();
+function tblToggle(){const c=document.getElementById('chartview'),t=document.getElementById('tblview'),
+  b=document.getElementById('tblbtn');
+  const show=t.style.display==='none';
+  t.style.display=show?'block':'none';c.style.display=show?'none':'block';
+  b.textContent=show?'Графиком':'Таблицей';}
+
+/* ---------- hours ---------- */
+(function(){
+  const H=[[10,12],[11,20],[12,58],[13,44],[14,16],[15,11],[16,14],[17,30],[18,62],[19,88],[20,79],[21,52],[22,24]];
+  const h=document.getElementById('hours'),ax=document.getElementById('hax');
+  const max=Math.max(...H.map(x=>x[1]));
+  H.forEach((d,i)=>{const b=document.createElement('div');
+    b.className='hr'+(d[0]>=14&&d[0]<=16?' dead':'');b.style.height='0';
+    b.title=d[0]+':00 — '+d[1]+' гостей';
+    h.appendChild(b);
+    setTimeout(()=>b.style.height=(d[1]/max*100)+'%',i*45+150);
+    const x=document.createElement('div');x.textContent=d[0];ax.appendChild(x);});
+  const band=document.createElement('div');band.className='deadband';
+  const w=100/H.length;band.style.left=(w*4)+'%';band.style.width=(w*3)+'%';
+  band.innerHTML='<div class="deadlbl">тихие часы</div>';h.appendChild(band);
+})();
+
+/* ---------- live feed ---------- */
+const NAMES=[['Анна','#199E70'],['Somchai','#9085E9'],['Mark','#C98500'],['Ирина','#199E70'],
+  ['Priya','#9085E9'],['Wei','#C98500'],['Дмитрий','#199E70'],['Nok','#9085E9']];
+const PLACES=['чек 1 240 ฿','чек 680 ฿','промокод 200 ฿','чек 2 100 ฿','чек 540 ฿','ваучер сети'];
+function feedItem(){
+  const f=document.getElementById('feed');
+  const n=NAMES[Math.floor(Math.random()*NAMES.length)];
+  const p=PLACES[Math.floor(Math.random()*PLACES.length)];
+  const v=[68,124,210,54,96,180][Math.floor(Math.random()*6)];
+  const d=document.createElement('div');d.className='fi';
+  d.innerHTML='<div class="fav" style="background:'+n[1]+'33;color:'+n[1]+'">'+n[0][0]+'</div>'+
+    '<div><div class="fn">'+n[0]+'</div><div class="fm">'+p+' · только что</div></div>'+
+    '<div class="fv">+'+v+' ฿</div>';
+  f.prepend(d); while(f.children.length>7)f.lastChild.remove();
+}
+for(let i=0;i<5;i++)feedItem();
+setInterval(feedItem,4200);
+
+/* ---------- guests ---------- */
+const G=[['Анна К.','#199E70','t-reg','Постоянный',14,420,780,'вчера','t-tour'],
+ ['Somchai P.','#9085E9','t-reg','Постоянный',22,180,510,'сегодня',''],
+ ['Mark T.','#C98500','t-new','Новый',1,65,650,'сегодня','t-tour'],
+ ['Ирина В.','#199E70','t-sleep','Спящий',6,340,890,'42 дня назад','t-tour'],
+ ['Priya S.','#9085E9','t-new','Новый',2,90,720,'2 дня назад','t-tour'],
+ ['Wei L.','#C98500','t-reg','Постоянный',9,255,610,'3 дня назад','t-tour'],
+ ['Дмитрий О.','#199E70','t-sleep','Спящий',11,510,940,'38 дней назад',''],
+ ['Nok S.','#9085E9','t-reg','Постоянный',31,120,380,'вчера','']];
+(function(){const b=document.getElementById('gbody');
+ G.forEach(g=>{b.innerHTML+='<tr onclick="toast(\'Карточка гостя: '+g[0]+'\')">'+
+   '<td><div style="display:flex;align-items:center;gap:11px"><div class="gav" style="background:'+g[1]+'33;color:'+g[1]+'">'+g[0][0]+'</div>'+
+   '<div><div style="font-weight:650">'+g[0]+'</div>'+(g[8]?'<div style="font-size:11px;color:var(--tx3);margin-top:2px">турист</div>':'<div style="font-size:11px;color:var(--tx3);margin-top:2px">живёт здесь</div>')+'</div></div></td>'+
+   '<td><span class="tagx '+g[2]+'">'+g[3]+'</span></td><td>'+g[4]+'</td><td>'+g[5]+' ฿</td><td>'+g[6]+' ฿</td>'+
+   '<td style="color:var(--tx2)">'+g[7]+'</td></tr>';});})();
+
+/* ---------- staff ---------- */
+const STAFF=[['Nok','зал',62],['Som','касса',48],['May','зал',31],['Ploy','зал',19]];
+function staffBars(){const c=document.getElementById('staffl');c.innerHTML='';
+  const max=Math.max(...STAFF.map(s=>s[2]));
+  STAFF.forEach((s,i)=>{const d=document.createElement('div');d.style.marginBottom='15px';
+    d.innerHTML='<div style="display:flex;align-items:baseline"><b style="font-size:13.5px">'+s[0]+'</b>'+
+      '<span style="color:var(--tx3);font-size:12px;margin-left:7px">'+s[1]+'</span>'+
+      '<span style="margin-left:auto;font-weight:750;font-variant-numeric:tabular-nums">'+s[2]+'</span></div>'+
+      '<div class="bar"><i style="width:0"></i></div>';
+    c.appendChild(d);
+    setTimeout(()=>d.querySelector('i').style.width=(s[2]/max*100)+'%',i*90+120);});}
+staffBars();
+
+/* ---------- chips ---------- */
+document.querySelectorAll('.chips').forEach(g=>g.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  g.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');}));
+
+/* ---------- broadcast preview ---------- */
+function prev(){const v=document.getElementById('msg').value;
+  document.getElementById('pvp').textContent=v;
+  document.getElementById('chars').textContent=Math.max(0,140-v.length);}
+
+/* ---------- constructor ---------- */
+let step=1;
+function openC(kind){
+  step=1;render();
+  if(kind==='winback')pick(document.querySelectorAll('#c1 .tpl')[2],'Разбудить спящих','Персональный повод вернуться для 31 гостя');
+  if(kind==='deadhours')pick(document.querySelectorAll('#c1 .tpl')[1],'Догрузить тихие часы','Скидка 20% с 14:00 до 17:00');
+  document.getElementById('back').classList.add('on');
+  document.getElementById('modal').classList.add('on');
+}
+function closeC(){document.getElementById('back').classList.remove('on');
+  document.getElementById('modal').classList.remove('on');}
+function pick(el,title,desc){
+  document.querySelectorAll('#c1 .tpl').forEach(t=>t.classList.remove('on'));el.classList.add('on');
+  document.getElementById('r1').textContent=title;
+  document.getElementById('p2h').textContent=desc.includes('200')?'200 ฿ на следующий визит':title;
+}
+function stepGo(d){
+  if(step===3&&d>0){closeC();toast('Акция запущена. 1 284 гостя получат уведомление');return;}
+  step=Math.min(3,Math.max(1,step+d));render();
+}
+function render(){
+  [1,2,3].forEach(i=>{
+    document.getElementById('c'+i).style.display=step===i?'block':'none';
+    const s=document.getElementById('st'+i);
+    s.classList.toggle('on',step===i);s.classList.toggle('done',step>i);});
+  document.getElementById('mstep').textContent='Шаг '+step+' из 3 · '+
+    ['выберите готовый шаблон','настройте условия','проверьте и запустите'][step-1];
+  document.getElementById('cback').style.display=step>1?'block':'none';
+  document.getElementById('cnext').textContent=step===3?'Запустить акцию':'Дальше';
+}
+function prev2(){document.getElementById('p2h').textContent=
+  document.getElementById('f1').value+' на следующий визит';
+  document.getElementById('p2b').textContent=
+    {'только завтра':'Только завтра','3 дня':'3 дня','неделю':'Неделя'}[document.getElementById('f2').value];}
+
+/* ---------- toast ---------- */
+let tt;
+function toast(m){document.getElementById('toastt').textContent=m;
+  const t=document.getElementById('toast');t.classList.add('on');
+  clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600);}
+</script>
+</body>
+</html>

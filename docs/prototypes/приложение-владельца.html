@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Positive — приложение владельца</title>
+<style>
+:root{
+  --ink:#07090D; --ink2:#0C1016; --surf:#141A24; --surf2:#1B2430; --surf3:#232D3B; --line:#232D3C;
+  --tx:#EEF3F9; --tx2:#95A2B4; --tx3:#606C7E;
+  --mint:#34E1B4; --cyan:#22D3EE; --amber:#FFB84D; --coral:#FF7A6B; --violet:#A78BFA;
+  --grad:linear-gradient(135deg,#34E1B4,#22D3EE);
+  --good:#3FD69C; --bad:#E8837A;
+  --navbg:rgba(12,16,22,.97); --navbg0:rgba(12,16,22,0);
+  --overlay:rgba(4,6,10,.74); --sheetbg:#0C1016;
+  --swbg:rgba(255,255,255,.045); --track:rgba(255,255,255,.08);
+  --glow1:rgba(52,225,180,.12); --glow2:rgba(167,139,250,.11);
+  --shadow:0 60px 120px -32px rgba(0,0,0,.85),0 0 0 11px #05070A,0 0 0 12px rgba(255,255,255,.06);
+  --pillTx:#04120E;
+  --spring:cubic-bezier(.34,1.5,.64,1); --ease:cubic-bezier(.22,.61,.36,1);
+}
+body[data-theme="light"]{
+  --ink:#EEF1F6; --ink2:#FFFFFF; --surf:#F5F8FB; --surf2:#E9EEF5; --surf3:#DDE4EE; --line:#DFE5EE;
+  --tx:#0D131C; --tx2:#4E5A6C; --tx3:#8592A4;
+  --navbg:rgba(255,255,255,.97); --navbg0:rgba(255,255,255,0);
+  --overlay:rgba(20,28,40,.42); --sheetbg:#FFFFFF;
+  --swbg:rgba(13,19,28,.045); --track:rgba(13,19,28,.09);
+  --glow1:rgba(52,225,180,.16); --glow2:rgba(167,139,250,.14);
+  --shadow:0 40px 90px -30px rgba(23,38,56,.34),0 0 0 11px #DDE3EC,0 0 0 12px rgba(13,19,28,.07);
+  --good:#199E70; --bad:#D9564A;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:radial-gradient(900px 620px at 12% -8%,var(--glow1),transparent 60%),
+   radial-gradient(900px 620px at 88% 106%,var(--glow2),transparent 60%),var(--ink);
+  color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Inter,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:22px 16px 30px;-webkit-font-smoothing:antialiased;
+  transition:background .45s var(--ease),color .45s var(--ease)}
+
+.brandbar{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.logo{width:32px;height:32px;border-radius:10px;background:var(--grad);display:grid;place-items:center;
+  font-weight:800;color:#04120E;font-size:16px;box-shadow:0 6px 20px rgba(52,225,180,.34)}
+.brandbar b{font-size:18px;letter-spacing:-.02em}
+.brandbar span{color:var(--tx3);font-size:12.5px;display:block;margin-top:-2px}
+.rolesw{display:flex;gap:5px;background:var(--swbg);border:1px solid var(--line);padding:4px;
+  border-radius:13px;margin-bottom:14px;position:relative}
+.rolesw button{border:0;background:transparent;color:var(--tx2);font:650 12.5px/1 inherit;
+  padding:9px 15px;border-radius:9px;cursor:pointer;position:relative;z-index:2;transition:color .25s}
+.rolesw button.on{color:var(--pillTx)}
+.rpill{position:absolute;top:4px;left:4px;height:calc(100% - 8px);border-radius:9px;background:var(--grad);
+  z-index:1;transition:transform .45s var(--spring),width .45s var(--spring)}
+
+.phone{width:392px;height:826px;max-width:94vw;max-height:calc(100vh - 210px);border-radius:52px;
+  background:var(--ink2);position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.09);
+  box-shadow:var(--shadow);transition:box-shadow .45s var(--ease),background .45s var(--ease)}
+.notch{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:110px;height:30px;
+  background:#05070A;border-radius:20px;z-index:60}
+.sbar{position:absolute;top:0;left:0;right:0;height:50px;z-index:55;display:flex;align-items:center;
+  justify-content:space-between;padding:15px 27px 0;font-size:12.5px;font-weight:650;pointer-events:none}
+.sbar .r{display:flex;gap:4px;align-items:center;opacity:.9}
+.b{width:3px;border-radius:2px;background:var(--tx)}
+
+.vp{position:absolute;inset:0;overflow:hidden;border-radius:52px}
+.scr{position:absolute;inset:0;padding:58px 18px 100px;overflow-y:auto;overflow-x:hidden;opacity:0;
+  pointer-events:none;transform:translateY(12px) scale(.99);
+  transition:opacity .32s var(--ease),transform .42s var(--ease);scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+.scr.on{opacity:1;pointer-events:auto;transform:none}
+.scr.on .st{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0)*52ms + 30ms)}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:2px 0 16px}
+.hd .t{font-size:23px;font-weight:750;letter-spacing:-.035em;line-height:1.14}
+.hd .s{color:var(--tx3);font-size:12.5px;margin-top:4px}
+.ib{width:30px;height:30px;border-radius:10px;background:var(--surf);border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--tx2);font-size:13px;cursor:pointer;flex:0 0 auto;
+  transition:all .28s var(--spring)}
+.ib:active{transform:scale(.9)}
+
+/* hero */
+.hero{border-radius:24px;padding:20px;background:var(--grad);color:#03120F;position:relative;overflow:hidden;
+  margin-bottom:12px;box-shadow:0 20px 46px -20px rgba(52,225,180,.48)}
+.hero::after{content:"";position:absolute;inset:-60% -20%;
+  background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.5) 50%,transparent 62%);
+  animation:sheen 5s ease-in-out infinite}
+@keyframes sheen{0%,70%{transform:translateX(-125%)}100%{transform:translateX(125%)}}
+.hero .l{font-size:12px;font-weight:700;opacity:.68;position:relative}
+.hero .v{font-size:42px;font-weight:800;letter-spacing:-.045em;line-height:1;margin:7px 0 5px;
+  font-variant-numeric:tabular-nums;position:relative}
+.hero .s{font-size:12.5px;font-weight:650;opacity:.74;position:relative}
+.hero .split{display:flex;gap:16px;margin-top:15px;padding-top:14px;border-top:1px solid rgba(3,18,15,.16);position:relative}
+.hero .split div{flex:1}
+.hero .split .k{font-size:10.5px;font-weight:750;opacity:.62;letter-spacing:.06em;text-transform:uppercase}
+.hero .split .n{font-size:19px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+
+.owe{background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:15px;margin-bottom:14px;
+  display:flex;align-items:center;gap:13px}
+.owe .n{font-size:22px;font-weight:800;color:var(--amber);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.owe .d{color:var(--tx3);font-size:11.5px;margin-top:2px}
+
+/* quick actions */
+.qa{display:flex;gap:9px;margin-bottom:16px}
+.qb{flex:1;background:var(--surf);border:1px solid var(--line);border-radius:16px;padding:14px 9px;
+  text-align:center;cursor:pointer;transition:all .3s var(--spring)}
+.qb:active{transform:scale(.95);border-color:rgba(52,225,180,.45)}
+.qb .e{font-size:20px}
+.qb .x{font-size:11px;color:var(--tx2);margin-top:7px;line-height:1.3;font-weight:600}
+
+.sec{font-size:11px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);
+  margin:18px 0 10px;display:flex;align-items:center;gap:8px}
+.sec .c{background:var(--surf2);color:var(--tx2);padding:2px 8px;border-radius:99px;font-size:10.5px;letter-spacing:0}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:19px;padding:15px;margin-bottom:10px;
+  position:relative;overflow:hidden;transition:transform .3s var(--spring),border-color .25s}
+.card.tap{cursor:pointer} .card.tap:active{transform:scale(.978);border-color:rgba(52,225,180,.4)}
+.card h4{margin:0 0 3px;font-size:15px;font-weight:680;letter-spacing:-.015em}
+.card p{margin:0;color:var(--tx2);font-size:12.5px;line-height:1.45}
+.ico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:17px;flex:0 0 auto}
+.i-m{background:rgba(52,225,180,.13)} .i-a{background:rgba(255,184,77,.13)}
+.i-c{background:rgba(255,122,107,.13)} .i-v{background:rgba(167,139,250,.13)}
+.row{display:flex;gap:12px;align-items:center}
+
+/* alert */
+.alert{background:rgba(255,184,77,.09);border:1px solid rgba(255,184,77,.32);border-radius:18px;
+  padding:15px;margin-bottom:12px;display:flex;gap:12px;align-items:flex-start}
+.alert .t{font-weight:700;font-size:13.5px;margin-bottom:3px}
+.alert .d{color:var(--tx2);font-size:12.5px;line-height:1.45}
+.mini{display:flex;gap:7px;margin-top:11px}
+.mb{flex:1;border:0;border-radius:11px;padding:10px;font:650 12px/1 inherit;cursor:pointer;
+  background:var(--surf2);color:var(--tx);border:1px solid var(--line);transition:all .25s var(--spring)}
+.mb:active{transform:scale(.95)}
+.mb.p{background:var(--grad);color:#04120E;border:0}
+
+/* feed */
+.fi{display:flex;gap:11px;align-items:center;padding:11px 12px;background:var(--surf);
+  border:1px solid var(--line);border-radius:14px;margin-bottom:8px;animation:slide .5s var(--spring) both}
+@keyframes slide{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+.fav{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:750;font-size:12.5px;flex:0 0 auto}
+.fi .n{font-weight:650;font-size:13px}
+.fi .m{color:var(--tx3);font-size:11px;margin-top:1px}
+.fi .v{margin-left:auto;font-weight:750;font-size:13px;color:var(--good);font-variant-numeric:tabular-nums}
+
+/* ---------- SCANNER ---------- */
+.scan{display:flex;flex-direction:column;align-items:center;min-height:100%;justify-content:center;padding-bottom:8px}
+.viewf{width:236px;height:236px;border-radius:32px;position:relative;background:var(--surf);
+  border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;margin-bottom:22px}
+.viewf .cor{position:absolute;width:36px;height:36px;border:3px solid var(--mint);border-radius:10px}
+.c1{top:16px;left:16px;border-right:0;border-bottom:0}
+.c2{top:16px;right:16px;border-left:0;border-bottom:0}
+.c3{bottom:16px;left:16px;border-right:0;border-top:0}
+.c4{bottom:16px;right:16px;border-left:0;border-top:0}
+.beam{position:absolute;left:22px;right:22px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--mint),transparent);animation:beam 2.2s ease-in-out infinite}
+@keyframes beam{0%,100%{top:26px}50%{top:206px}}
+.viewf .ph{font-size:52px;opacity:.22}
+.scanttl{font-size:20px;font-weight:750;letter-spacing:-.03em;text-align:center}
+.scansub{color:var(--tx2);font-size:13px;text-align:center;margin-top:7px;max-width:250px;line-height:1.5}
+.bigbtn{width:100%;padding:17px;border-radius:18px;border:0;background:var(--grad);color:#04120E;
+  font:750 16px/1 inherit;cursor:pointer;transition:transform .3s var(--spring);margin-top:22px}
+.bigbtn:active{transform:scale(.97)}
+.linkbtn{background:none;border:0;color:var(--tx2);font:650 13px/1 inherit;cursor:pointer;margin-top:16px;
+  padding:10px;text-decoration:underline;text-underline-offset:3px}
+
+/* guest found */
+.gcard{width:100%;background:var(--surf);border:1px solid var(--line);border-radius:22px;padding:18px;
+  margin-bottom:14px;animation:pop .5s var(--spring) both}
+@keyframes pop{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:none}}
+.gcard .top{display:flex;gap:13px;align-items:center;margin-bottom:14px}
+.gav{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;font-weight:800;font-size:18px;flex:0 0 auto}
+.gcard .gn{font-size:17px;font-weight:720;letter-spacing:-.02em}
+.gcard .gm{color:var(--tx3);font-size:12px;margin-top:3px}
+.gstats{display:flex;gap:10px}
+.gs{flex:1;background:var(--surf2);border-radius:13px;padding:11px;text-align:center}
+.gs .k{font-size:10px;color:var(--tx3);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.gs .v{font-size:17px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.amt{width:100%;text-align:center;font-size:40px;font-weight:800;letter-spacing:-.04em;
+  font-variant-numeric:tabular-nums;margin:6px 0 4px;min-height:48px}
+.amtl{text-align:center;color:var(--tx3);font-size:12px;margin-bottom:14px}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
+.pad button{background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:15px 0;
+  font:700 20px/1 inherit;color:var(--tx);cursor:pointer;transition:all .18s var(--spring);
+  font-variant-numeric:tabular-nums}
+.pad button:active{transform:scale(.93);background:var(--surf2);border-color:var(--mint)}
+.quick{display:flex;gap:7px;width:100%;margin-bottom:10px}
+.quick button{flex:1;background:var(--surf2);border:1px solid var(--line);border-radius:12px;padding:10px 0;
+  font:650 12.5px/1 inherit;color:var(--tx2);cursor:pointer;transition:all .2s var(--spring)}
+.quick button:active{transform:scale(.94);color:var(--mint)}
+
+/* success */
+.done{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;text-align:center}
+.check{width:96px;height:96px;border-radius:99px;background:rgba(52,225,180,.14);display:grid;place-items:center;
+  margin-bottom:22px;animation:pop .55s var(--spring) both}
+.check svg{stroke-dasharray:60;stroke-dashoffset:60;animation:draw .5s var(--ease) .3s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.done .big{font-size:34px;font-weight:800;letter-spacing:-.04em;color:var(--mint);font-variant-numeric:tabular-nums}
+.done .sub{color:var(--tx2);font-size:14px;margin-top:9px;max-width:250px;line-height:1.5}
+
+/* offers */
+.of{border-radius:19px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden;
+  border:1px solid var(--line);background:var(--surf);cursor:pointer;transition:transform .3s var(--spring)}
+.of:active{transform:scale(.978)}
+.of .gl{position:absolute;width:150px;height:150px;border-radius:99px;filter:blur(52px);top:-62px;right:-42px;opacity:.34}
+.tag{font-size:10.5px;font-weight:750;padding:4px 9px;border-radius:99px}
+.t-live{background:rgba(63,214,156,.15);color:var(--good)} .t-plan{background:rgba(167,139,250,.14);color:var(--violet)}
+.t-end{background:rgba(96,108,126,.16);color:var(--tx2)}
+.of h4{margin:10px 0 4px;font-size:16.5px;font-weight:720;letter-spacing:-.025em;position:relative}
+.of .cn{color:var(--tx2);font-size:12px;position:relative}
+.om{display:flex;gap:16px;margin-top:12px;padding-top:11px;border-top:1px solid var(--line);position:relative}
+.om div .k{color:var(--tx3);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.om div .v{font-weight:750;font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* guests */
+.search{width:100%;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:12px 14px;
+  color:var(--tx);font:inherit;font-size:14px;margin-bottom:12px}
+.search:focus{outline:0;border-color:var(--mint)}
+.chips{display:flex;gap:7px;overflow-x:auto;padding:0 18px 12px;margin:0 -18px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:8px 13px;border-radius:99px;background:var(--surf);border:1px solid var(--line);
+  font-size:12px;font-weight:650;color:var(--tx2);cursor:pointer;transition:all .3s var(--spring);white-space:nowrap}
+.chip.on{background:var(--tx);color:var(--ink);border-color:var(--tx)}
+.gr{display:flex;gap:11px;align-items:center;padding:12px;background:var(--surf);border:1px solid var(--line);
+  border-radius:15px;margin-bottom:8px;cursor:pointer;transition:transform .25s var(--spring)}
+.gr:active{transform:scale(.98)}
+.gr .nm{font-weight:650;font-size:13.5px}
+.gr .mt{color:var(--tx3);font-size:11.5px;margin-top:2px}
+.gr .rt{margin-left:auto;text-align:right}
+.gr .rt .p{font-weight:750;font-size:13px;font-variant-numeric:tabular-nums}
+.gr .rt .s{color:var(--tx3);font-size:11px;margin-top:2px}
+.tg2{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;margin-left:6px}
+.g-new{background:rgba(52,225,180,.14);color:var(--mint)}
+.g-sleep{background:rgba(255,184,77,.14);color:var(--amber)}
+
+/* more list */
+.pl{background:var(--surf);border:1px solid var(--line);border-radius:19px;overflow:hidden;margin-bottom:10px}
+.pi{display:flex;align-items:center;gap:12px;padding:14px 15px;border-bottom:1px solid var(--line);
+  cursor:pointer;transition:background .22s}
+.pi:last-child{border-bottom:none} .pi:active{background:var(--surf2)}
+.pi .lb{flex:1;font-size:14px;font-weight:620}
+.pi .sd{color:var(--tx3);font-size:11.5px;margin-top:2px;font-weight:400}
+.pi .vl{color:var(--tx3);font-size:12.5px}
+.tgl{width:44px;height:26px;border-radius:99px;background:var(--track);position:relative;cursor:pointer;
+  transition:background .32s;flex:0 0 auto}
+.tgl.on{background:var(--mint)}
+.tgl::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;
+  background:#fff;transition:transform .38s var(--spring);box-shadow:0 2px 5px rgba(0,0,0,.25)}
+.tgl.on::after{transform:translateX(18px)}
+.bar{height:8px;border-radius:99px;background:var(--track);overflow:hidden;margin-top:7px}
+.bar i{display:block;height:100%;background:var(--grad);border-radius:99px;transition:width .9s var(--ease)}
+
+/* мотивация */
+.segs{display:flex;gap:6px;background:var(--swbg);border:1px solid var(--line);padding:4px;
+  border-radius:13px;margin-bottom:14px}
+.segs button{flex:1;border:0;background:transparent;color:var(--tx2);font:650 12px/1.25 inherit;
+  padding:11px 6px;border-radius:9px;cursor:pointer;transition:all .3s var(--spring)}
+.segs button.on{background:var(--grad);color:#04120E}
+.bigv{font-size:38px;font-weight:800;letter-spacing:-.04em;text-align:center;margin:6px 0 3px;
+  font-variant-numeric:tabular-nums}
+.bigl{text-align:center;color:var(--tx2);font-size:12.5px;margin-bottom:14px;line-height:1.45;min-height:36px}
+input[type=range]{width:100%;-webkit-appearance:none;background:transparent;height:22px;cursor:pointer;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:99px;background:var(--track)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:99px;
+  background:var(--mint);margin-top:-8px;box-shadow:0 3px 10px rgba(52,225,180,.5);transition:transform .2s var(--spring)}
+input[type=range]::-webkit-slider-thumb:active{transform:scale(1.2)}
+.opt{display:flex;gap:11px;align-items:flex-start;background:var(--surf);border:1px solid var(--line);
+  border-radius:15px;padding:13px;margin-bottom:8px;cursor:pointer;transition:all .3s var(--spring)}
+.opt.on{border-color:var(--mint);background:rgba(52,225,180,.06)}
+.opt .rd{width:19px;height:19px;border-radius:99px;border:2px solid var(--tx3);flex:0 0 auto;margin-top:1px;
+  transition:all .3s var(--spring);position:relative}
+.opt.on .rd{border-color:var(--mint)}
+.opt.on .rd::after{content:"";position:absolute;inset:3px;border-radius:99px;background:var(--mint)}
+.opt .on1{font-weight:650;font-size:13.5px}
+.opt .od{color:var(--tx2);font-size:11.5px;margin-top:3px;line-height:1.4}
+.calcbox{background:var(--surf);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.calcrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.calcrow:last-child{border-bottom:none}
+.calcrow span:first-child{color:var(--tx3)}
+.calcrow b{font-variant-numeric:tabular-nums}
+.warnbox{background:rgba(255,184,77,.08);border:1px solid rgba(255,184,77,.3);border-radius:16px;padding:15px}
+.warnbox li{font-size:12.5px;color:var(--tx2);line-height:1.5;margin-bottom:7px;list-style:none;
+  padding-left:17px;position:relative}
+.warnbox li::before{content:"✕";position:absolute;left:0;color:var(--amber);font-size:10px;font-weight:800;top:2px}
+.earn{background:var(--grad);color:#03120F;border-radius:20px;padding:18px;margin-bottom:12px;position:relative;overflow:hidden}
+.earn .l{font-size:12px;font-weight:700;opacity:.68}
+.earn .v{font-size:36px;font-weight:800;letter-spacing:-.04em;margin:6px 0 4px;font-variant-numeric:tabular-nums}
+.earn .s{font-size:12px;font-weight:650;opacity:.72}
+.earn .pg{height:7px;border-radius:99px;background:rgba(3,18,15,.18);margin-top:13px;overflow:hidden}
+.earn .pg i{display:block;height:100%;background:#03120F;border-radius:99px;opacity:.55;transition:width .9s var(--ease)}
+.lbrow{display:flex;align-items:center;gap:11px;padding:11px 12px;background:var(--surf);border:1px solid var(--line);
+  border-radius:14px;margin-bottom:7px}
+.lbrow .pos{width:24px;height:24px;border-radius:99px;background:var(--surf2);display:grid;place-items:center;
+  font-size:11px;font-weight:800;color:var(--tx2);flex:0 0 auto}
+.lbrow.me{border-color:rgba(52,225,180,.45);background:rgba(52,225,180,.06)}
+.lbrow .nm2{font-weight:650;font-size:13px;flex:1}
+.lbrow .er{font-weight:750;font-size:13px;font-variant-numeric:tabular-nums;color:var(--good)}
+
+/* nav */
+.nav{position:absolute;bottom:0;left:0;right:0;height:86px;z-index:50;
+  background:linear-gradient(to top,var(--navbg) 55%,var(--navbg0));backdrop-filter:blur(18px);
+  display:flex;align-items:flex-start;padding:12px 12px 0}
+.nav button[data-s]{flex:1;background:none;border:0;cursor:pointer;padding:9px 0 0;display:flex;
+  flex-direction:column;align-items:center;gap:5px;color:var(--tx3);font:650 10px/1 inherit;
+  transition:color .28s;position:relative}
+.nav button[data-s].on{color:var(--mint)}
+.nav button[data-s] svg{transition:transform .5s var(--spring)}
+.nav button[data-s].on svg{transform:translateY(-3px) scale(1.14)}
+.nav button[data-s]::before{content:"";position:absolute;top:0;width:24px;height:3px;border-radius:99px;
+  background:var(--mint);transform:scaleX(0);transition:transform .45s var(--spring)}
+.nav button[data-s].on::before{transform:scaleX(1)}
+.fab{flex:0 0 auto!important;width:60px;margin-top:-22px}
+.fb{width:58px;height:58px;border-radius:21px;background:var(--grad);border:0;cursor:pointer;
+  display:grid;place-items:center;box-shadow:0 12px 30px -6px rgba(52,225,180,.6);
+  transition:transform .4s var(--spring)}
+.fb:active{transform:scale(.9)} .fb.on{transform:scale(1.05)}
+
+/* sheet */
+.bd{position:absolute;inset:0;background:var(--overlay);backdrop-filter:blur(7px);opacity:0;
+  pointer-events:none;transition:opacity .36s var(--ease);z-index:70}
+.bd.on{opacity:1;pointer-events:auto}
+.sh{position:absolute;left:0;right:0;bottom:0;z-index:80;background:var(--sheetbg);
+  border-radius:30px 30px 52px 52px;padding:11px 18px 26px;border-top:1px solid var(--line);
+  transform:translateY(101%);transition:transform .55s var(--spring);max-height:82%;overflow-y:auto;scrollbar-width:none}
+.sh::-webkit-scrollbar{display:none}
+.sh.on{transform:none}
+.gb{width:36px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 15px}
+.tpl{display:flex;gap:11px;align-items:center;background:var(--surf);border:1px solid var(--line);
+  border-radius:15px;padding:13px;cursor:pointer;transition:all .3s var(--spring);margin-bottom:8px}
+.tpl:active{transform:scale(.98);border-color:var(--mint)}
+.tpl .tn{font-weight:650;font-size:13.5px}
+.tpl .td{color:var(--tx2);font-size:11.5px;margin-top:2px;line-height:1.35}
+.tpl .rc{margin-left:auto;font-size:10px;font-weight:750;color:var(--mint);background:rgba(52,225,180,.13);
+  padding:4px 8px;border-radius:99px;white-space:nowrap}
+.btn{width:100%;padding:15px;border-radius:17px;border:0;background:var(--grad);color:#04120E;
+  font:750 15px/1 inherit;cursor:pointer;transition:transform .3s var(--spring);margin-top:6px}
+.btn:active{transform:scale(.97)}
+.btn.g{background:var(--surf);color:var(--tx);border:1px solid var(--line)}
+
+/* push */
+.push{position:absolute;top:60px;left:14px;right:14px;z-index:96;background:var(--sheetbg);
+  border:1px solid var(--line);border-radius:20px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;
+  box-shadow:0 20px 46px -12px rgba(0,0,0,.6);transform:translateY(-320%);
+  transition:transform .6s var(--spring);cursor:pointer}
+.push.on{transform:none}
+.push .pt{font-weight:700;font-size:13px}
+.push .pd{color:var(--tx2);font-size:12px;margin-top:3px;line-height:1.4}
+
+.demo{margin-top:16px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center;align-items:center}
+.demo .lb{color:var(--tx3);font-size:12px}
+.demo button{background:var(--surf);border:1px solid var(--line);color:var(--tx);padding:10px 15px;
+  border-radius:12px;font:650 12.5px/1 inherit;cursor:pointer;transition:all .28s var(--spring)}
+.demo button:hover{border-color:var(--mint);color:var(--mint)}
+.demo button:active{transform:scale(.95)}
+.cap{margin-top:13px;max-width:620px;text-align:center;color:var(--tx3);font-size:12.5px;line-height:1.6}
+@media(max-width:460px){.phone{border-radius:38px;box-shadow:none;border:0;height:calc(100vh - 200px)}.vp{border-radius:38px}}
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="logo">P</div>
+  <div><b>Positive для бизнеса</b><span>Kata Beach Kitchen</span></div>
+</div>
+
+<div class="rolesw" id="rsw">
+  <div class="rpill" id="rpill"></div>
+  <button class="on" data-r="owner">Владелец</button>
+  <button data-r="staff">Сотрудник</button>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="sbar"><span id="clk">9:41</span>
+    <span class="r"><span class="b" style="height:5px"></span><span class="b" style="height:8px"></span>
+      <span class="b" style="height:11px"></span><span class="b" style="height:11px;opacity:.35"></span>
+      <svg width="21" height="10" viewBox="0 0 22 11" fill="none"><rect x=".5" y=".5" width="18" height="10" rx="3" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="13" height="7" rx="1.6" fill="currentColor"/></svg>
+    </span></div>
+
+  <div class="vp">
+
+  <!-- ======== СЕГОДНЯ ======== -->
+  <section class="scr on" id="s-today">
+    <div class="hd st" style="--i:0">
+      <div><div class="t">Сегодня</div><div class="s" id="dt">вторник, 18 августа</div></div>
+      <div style="display:flex;gap:7px">
+        <div class="ib" id="thb" onclick="theme()">🌙</div>
+        <div class="ib" onclick="sheet('notif')">🔔</div>
+      </div>
+    </div>
+
+    <div class="hero st" style="--i:1">
+      <div class="l">Гостей по программе сегодня</div>
+      <div class="v" id="today">34</div>
+      <div class="s">Это 41% всех чеков за день</div>
+      <div class="split">
+        <div><div class="k">Впервые</div><div class="n" id="tnew">9</div></div>
+        <div><div class="k">Средний чек</div><div class="n">720 ฿</div></div>
+        <div><div class="k">Выручка</div><div class="n">24 480 ฿</div></div>
+      </div>
+    </div>
+
+    <div class="owe st" style="--i:2">
+      <div class="ico i-a">💰</div>
+      <div><div class="n">12 400 ฿</div><div class="d">я должен гостям баллами — это обязательство, не расход</div></div>
+    </div>
+
+    <div class="qa st" style="--i:3">
+      <div class="qb" onclick="sheet('new')"><div class="e">✨</div><div class="x">Создать<br>акцию</div></div>
+      <div class="qb" onclick="sheet('wake')"><div class="e">😴</div><div class="x">Разбудить<br>спящих</div></div>
+      <div class="qb" onclick="sheet('print')"><div class="e">🖨</div><div class="x">Напечатать<br>QR</div></div>
+    </div>
+
+    <div class="alert st" style="--i:4">
+      <div style="font-size:18px;line-height:1">⏳</div>
+      <div style="flex:1">
+        <div class="t">Акция «200 ฿ на завтра» кончается через 6 часов</div>
+        <div class="d">96 гостей получили промокод, 32 ещё не использовали. Напомнить им?</div>
+        <div class="mini"><button class="mb p" onclick="toast('Напоминание ушло 32 гостям')">Напомнить</button>
+          <button class="mb" onclick="toast('Акция продлена на сутки')">Продлить</button></div>
+      </div>
+    </div>
+
+    <div class="sec st">Начисления в реальном времени</div>
+    <div id="feed"></div>
+  </section>
+
+  <!-- ======== СКАНЕР ======== -->
+  <section class="scr" id="s-scan" style="padding-top:52px">
+    <!-- шаг 1: сканирование -->
+    <div class="scan" id="sc1">
+      <div class="viewf">
+        <div class="cor c1"></div><div class="cor c2"></div><div class="cor c3"></div><div class="cor c4"></div>
+        <div class="beam"></div><div class="ph">📱</div>
+      </div>
+      <div class="scanttl">Наведите на код гостя</div>
+      <div class="scansub">Гость открывает карту в браузере, Telegram, LINE или Wallet — код везде один</div>
+      <button class="bigbtn" onclick="scanGo()">Сканировать</button>
+      <button class="linkbtn" onclick="scanGo()">Нет телефона? Ввести номер</button>
+    </div>
+
+    <!-- шаг 2: гость найден, ввод суммы -->
+    <div style="display:none" id="sc2">
+      <div class="gcard">
+        <div class="top">
+          <div class="gav" style="background:rgba(52,225,180,.16);color:var(--mint)">А</div>
+          <div style="flex:1"><div class="gn">Анна К.</div><div class="gm">турист · 3-й день на острове</div></div>
+        </div>
+        <div class="gstats">
+          <div class="gs"><div class="k">Визитов</div><div class="v">4</div></div>
+          <div class="gs"><div class="k">Баллов</div><div class="v">420</div></div>
+          <div class="gs"><div class="k">Ср. чек</div><div class="v">780</div></div>
+        </div>
+      </div>
+      <div class="amt" id="amt">0 ฿</div>
+      <div class="amtl" id="amtl">Введите сумму чека</div>
+      <div class="quick">
+        <button onclick="setAmt(500)">500</button><button onclick="setAmt(800)">800</button>
+        <button onclick="setAmt(1200)">1 200</button><button onclick="setAmt(2000)">2 000</button>
+      </div>
+      <div class="pad">
+        <button onclick="dig('1')">1</button><button onclick="dig('2')">2</button><button onclick="dig('3')">3</button>
+        <button onclick="dig('4')">4</button><button onclick="dig('5')">5</button><button onclick="dig('6')">6</button>
+        <button onclick="dig('7')">7</button><button onclick="dig('8')">8</button><button onclick="dig('9')">9</button>
+        <button onclick="dig('00')">00</button><button onclick="dig('0')">0</button><button onclick="del()">⌫</button>
+      </div>
+      <button class="bigbtn" onclick="accrue()">Начислить</button>
+      <button class="linkbtn" onclick="reset()">Отмена</button>
+    </div>
+
+    <!-- шаг 3: успех -->
+    <div class="done" style="display:none" id="sc3">
+      <div class="check">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="var(--mint)" stroke-width="2.6"
+             stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>
+      </div>
+      <div class="big" id="dv">+240 ฿</div>
+      <div class="sub" id="ds">Анна получила баллы. У неё теперь 660 ฿ и промокод на 200 ฿ до завтра</div>
+      <button class="bigbtn" style="max-width:250px" onclick="reset()">Следующий гость</button>
+    </div>
+  </section>
+
+  <!-- ======== АКЦИИ ======== -->
+  <section class="scr" id="s-offers">
+    <div class="hd st" style="--i:0"><div><div class="t">Акции</div><div class="s">3 идут, 1 запланирована</div></div>
+      <div class="ib" onclick="sheet('new')">＋</div></div>
+
+    <div class="of st" style="--i:1" onclick="sheet('o1')"><div class="gl" style="background:var(--coral)"></div>
+      <span class="tag t-live">● Идёт</span><h4>200 ฿ на следующий визит</h4>
+      <div class="cn">Чек от 800 ฿ · промокод действует сутки</div>
+      <div class="om"><div><div class="k">Выдано</div><div class="v">96</div></div>
+        <div><div class="k">Использовано</div><div class="v">64</div></div>
+        <div><div class="k">Вернулось</div><div class="v" style="color:var(--good)">41</div></div></div></div>
+
+    <div class="of st" style="--i:2" onclick="sheet('o2')"><div class="gl" style="background:var(--mint)"></div>
+      <span class="tag t-live">● Идёт</span><h4>Кэшбэк 10% баллами</h4>
+      <div class="cn">Базовая механика для всех гостей</div>
+      <div class="om"><div><div class="k">Начислено</div><div class="v">18 900</div></div>
+        <div><div class="k">Потрачено</div><div class="v">6 500</div></div>
+        <div><div class="k">Возврат</div><div class="v" style="color:var(--good)">34%</div></div></div></div>
+
+    <div class="of st" style="--i:3" onclick="sheet('o3')"><div class="gl" style="background:var(--violet)"></div>
+      <span class="tag t-live">● Идёт</span><h4>Десерт новым гостям сети</h4>
+      <div class="cn">Ваучер виден всем гостям Positive на острове</div>
+      <div class="om"><div><div class="k">Показов</div><div class="v">1 240</div></div>
+        <div><div class="k">Забрали</div><div class="v">57</div></div>
+        <div><div class="k">Дошли</div><div class="v" style="color:var(--good)">38</div></div></div></div>
+
+    <div class="of st" style="--i:4" onclick="sheet('o4')"><div class="gl" style="background:var(--amber)"></div>
+      <span class="tag t-plan">◷ С 1 сентября</span><h4>−20% с 14:00 до 17:00</h4>
+      <div class="cn">Тихие часы, будни</div>
+      <div class="om"><div><div class="k">Аудитория</div><div class="v">все</div></div>
+        <div><div class="k">Прогноз</div><div class="v">~25/нед</div></div>
+        <div><div class="k">Статус</div><div class="v" style="color:var(--violet)">готова</div></div></div></div>
+  </section>
+
+  <!-- ======== ГОСТИ ======== -->
+  <section class="scr" id="s-guests">
+    <div class="hd st" style="--i:0"><div><div class="t">Гости</div><div class="s">1 284 человека · база ваша</div></div></div>
+    <input class="search st" style="--i:1" placeholder="Поиск по имени или телефону">
+    <div class="chips st" style="--i:2">
+      <div class="chip on">Все</div><div class="chip">Новые · 38</div><div class="chip">Постоянные · 216</div>
+      <div class="chip">Спящие · 31</div><div class="chip">Туристы</div><div class="chip">Местные</div>
+    </div>
+    <div id="glist"></div>
+  </section>
+
+  <!-- ======== МОТИВАЦИЯ ======== -->
+  <section class="scr" id="s-motiv">
+    <div class="hd st" style="--i:0">
+      <div><div class="t">Мотивация персонала</div><div class="s">Доплата за оформленных гостей</div></div>
+      <div class="ib" onclick="go('more')">✕</div>
+    </div>
+
+    <div class="card st" style="--i:1" style="margin-bottom:14px">
+      <div class="row"><div class="ico i-m">💸</div>
+        <div style="flex:1"><h4>Доплата включена</h4>
+          <p>Постоянный гость сканирует код сам — за это платить не нужно. Платим за то, что сотрудник оформил нового.</p></div>
+        <div class="tgl on" onclick="this.classList.toggle('on')"></div></div>
+    </div>
+
+    <div class="sec st">За что платим</div>
+    <div class="segs st" style="--i:2" id="msegs">
+      <button class="on" data-m="fix">Фиксированно<br>за нового гостя</button>
+      <button data-m="pts">Процент<br>от баллов</button>
+      <button data-m="rev">Процент<br>от выручки</button>
+    </div>
+
+    <div class="card st" style="--i:3">
+      <div class="bigv" id="mval">20 ฿</div>
+      <div class="bigl" id="mlbl">Сотрудник получит 20 ฿ за каждого гостя, который оформился у него впервые</div>
+      <input type="range" id="mslider" min="0" max="100" value="20" oninput="calcM()">
+      <div style="display:flex;justify-content:space-between;color:var(--tx3);font-size:11px;margin-top:4px">
+        <span id="mmin">0 ฿</span><span id="mmax">100 ฿</span></div>
+    </div>
+
+    <div class="sec st">Когда засчитываем</div>
+    <div class="opt st" style="--i:4" onclick="pickVest(this,0)"><div class="rd"></div>
+      <div><div class="on1">Сразу при оформлении</div>
+        <div class="od">Проще объяснить персоналу, но легче накрутить</div></div></div>
+    <div class="opt on st" style="--i:5" onclick="pickVest(this,1)"><div class="rd"></div>
+      <div><div class="on1">Когда гость пришёл второй раз</div>
+        <div class="od">Рекомендуем. За фиктивного гостя никто не заплатит, потому что он не вернётся</div></div></div>
+
+    <div class="sec st">Лимит на смену</div>
+    <div class="card st" style="--i:6">
+      <div class="bigv" id="lval" style="font-size:30px">15 гостей</div>
+      <div class="bigl">Всё сверх лимита гостю начислится, а сотруднику — нет. Больше 15 новых за смену бывает редко</div>
+      <input type="range" id="lslider" min="3" max="40" value="15" oninput="calcM()">
+    </div>
+
+    <div class="sec st">Во сколько это обойдётся</div>
+    <div class="calcbox st" style="--i:7">
+      <div class="calcrow"><span>Новых гостей в день</span><b>9</b></div>
+      <div class="calcrow"><span>Доплата в день</span><b id="cday">180 ฿</b></div>
+      <div class="calcrow"><span>В месяц на всю смену</span><b id="cmon" style="color:var(--amber)">5 400 ฿</b></div>
+      <div class="calcrow"><span>Это от выручки по программе</span><b id="cpct">2,4%</b></div>
+    </div>
+
+    <div class="sec st">Что не оплачивается автоматически</div>
+    <div class="warnbox st" style="--i:8">
+      <ul style="margin:0;padding:0">
+        <li>Начисление на номер или устройство, связанные с самим сотрудником</li>
+        <li>Несколько оформлений на один номер за смену</li>
+        <li>Гость, который не вернулся — при отложенной выплате</li>
+        <li>Начисление, введённое вручную без подтверждения оплаты</li>
+        <li>Всё, что сверх лимита смены</li>
+      </ul>
+      <div style="color:var(--tx3);font-size:11.5px;margin-top:10px;line-height:1.45">
+        Эти правила работают всегда и отключить их нельзя. Иначе доплата превращается в премию за накрутку.</div>
+    </div>
+
+    <button class="btn st" style="--i:9" onclick="toast('Правила сохранены. Сотрудники увидят их в приложении')">Сохранить</button>
+  </section>
+
+  <!-- ======== ЕЩЁ ======== -->
+  <section class="scr" id="s-more">
+    <div class="hd st" style="--i:0"><div><div class="t">Ещё</div><div class="s">Kata Beach Kitchen · Ката</div></div></div>
+
+    <div class="alert st" style="--i:1">
+      <div style="font-size:18px;line-height:1">⚠️</div>
+      <div style="flex:1"><div class="t">Стоит посмотреть: Som, касса</div>
+        <div class="d">Вчера 9 начислений подряд на один номер. Может быть постоянный гость, а может — начисление себе.</div>
+        <div class="mini"><button class="mb p" onclick="toast('Открыт список из 9 чеков')">Посмотреть чеки</button>
+          <button class="mb" onclick="toast('Отмечено как нормальное')">Всё в порядке</button></div></div>
+    </div>
+
+    <div class="card st" style="--i:2">
+      <h4 style="margin-bottom:12px">Кто оформляет гостей за неделю</h4>
+      <div id="staff"></div>
+    </div>
+
+    <div class="pl st" style="--i:3">
+      <div class="pi" onclick="sheet('print')"><div class="ico i-m">🖨</div>
+        <div class="lb">Касса и QR<div class="sd">72% начислений идут через оплату</div></div><div class="vl">→</div></div>
+      <div class="pi" onclick="sheet('staffs')"><div class="ico i-v">👥</div>
+        <div class="lb">Сотрудники<div class="sd">4 человека, лимиты включены</div></div><div class="vl">→</div></div>
+      <div class="pi" onclick="go('motiv')"><div class="ico i-c">💸</div>
+        <div class="lb">Мотивация персонала<div class="sd" id="motivSd">20 ฿ за нового гостя · ~5 400 ฿ в месяц</div></div><div class="vl">→</div></div>
+      <div class="pi" onclick="sheet('order')"><div class="ico i-a">🛎</div>
+        <div class="lb">Приём заказов<div class="sd">Кнопка «Заказать» в вашей карточке у гостя</div></div><div class="vl">→</div></div>
+      <div class="pi" onclick="sheet('plan')"><div class="ico i-a">💳</div>
+        <div class="lb">Тариф<div class="sd">Pro · 690 ฿/мес</div></div><div class="vl">→</div></div>
+    </div>
+
+    <div class="pl st" style="--i:4">
+      <div class="pi" onclick="theme()"><div class="ico i-m" id="thIco">🌙</div>
+        <div class="lb">Тема<div class="sd" id="thSd">Тёмная</div></div><div class="tgl" id="thTgl"></div></div>
+      <div class="pi" onclick="tg(this)"><div class="ico i-v">🔔</div>
+        <div class="lb">Уведомления<div class="sd">Фрод, конец акции, новые отзывы</div></div><div class="tgl on"></div></div>
+      <div class="pi"><div class="ico i-a">🌐</div><div class="lb">Язык</div><div class="vl">Русский →</div></div>
+    </div>
+
+    <div style="text-align:center;color:var(--tx3);font-size:11.5px;margin-top:14px" class="st">
+      Positive для бизнеса · версия 1.0</div>
+  </section>
+
+  </div>
+
+  <!-- push -->
+  <div class="push" id="push" onclick="pushGo()">
+    <div class="ico i-a" style="width:34px;height:34px;border-radius:11px;font-size:15px">⚠️</div>
+    <div style="flex:1"><div class="pt">Странные начисления у Som</div>
+      <div class="pd">9 подряд на один номер за вчера. Открыть?</div></div>
+  </div>
+
+  <div class="bd" id="bd" onclick="closeSheet()"></div>
+  <div class="sh" id="sh"><div class="gb"></div><div id="shc"></div></div>
+
+  <nav class="nav" id="nav">
+    <button class="on" data-s="today">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>Сегодня</button>
+    <button data-s="offers">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg>Акции</button>
+    <div class="fab"><button class="fb" id="fab" onclick="go('scan')">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#04120E" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18"/></svg></button></div>
+    <button data-s="guests">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17.5 14.4A6.5 6.5 0 0 1 21.5 20"/></svg>Гости</button>
+    <button data-s="more">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>Ещё</button>
+  </nav>
+</div>
+
+<div class="demo">
+  <span class="lb">Демо:</span>
+  <button onclick="go('scan');setTimeout(()=>scanGo(false),400)">📷 Постоянный гость</button>
+  <button onclick="go('scan');setTimeout(()=>scanGo(true),400)">✨ Новый гость → бонус кассиру</button>
+  <button onclick="showPush()">🔔 Уведомление о фроде</button>
+  <button onclick="theme()" id="thDemo">☀️ Светлая тема</button>
+</div>
+<div class="cap">Это то же приложение, что и у сотрудника — просто владелец видит больше.
+Переключите роль сверху: у кассира остаётся сканер и своя смена, финансы и настройки скрыты.</div>
+
+<script>
+const I=id=>document.getElementById(id);
+setInterval(()=>{const d=new Date();I('clk').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');},1000);
+
+/* nav */
+let cur='today';
+function go(id){
+  if(cur===id)return;
+  const o=I('s-'+cur),n=I('s-'+id);
+  if(o)o.classList.remove('on');
+  if(n){n.classList.remove('on');void n.offsetWidth;n.classList.add('on');n.scrollTop=0;}
+  cur=id;
+  document.querySelectorAll('#nav button[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===id));
+  I('fab').classList.toggle('on',id==='scan');
+  if(id==='scan')reset();
+}
+document.querySelectorAll('#nav button[data-s]').forEach(b=>b.onclick=()=>go(b.dataset.s));
+
+/* role */
+const rsw=I('rsw'),rp=I('rpill');
+function mv(b){rp.style.width=b.offsetWidth+'px';rp.style.transform='translateX('+(b.offsetLeft-4)+'px)';}
+let role='owner';
+rsw.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  rsw.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');mv(b);
+  role=b.dataset.r;applyRole();});
+setTimeout(()=>mv(rsw.querySelector('.on')),50);
+function applyRole(){
+  const staff=role==='staff';
+  document.querySelectorAll('#nav button[data-s]').forEach(b=>{
+    const hide=staff&&(b.dataset.s==='offers'||b.dataset.s==='guests');
+    b.style.opacity=hide?'.28':'1'; b.style.pointerEvents=hide?'none':'auto';});
+  I('s-today').querySelectorAll('.hero,.owe,.qa,.alert').forEach(e=>e.style.display=staff?'none':'');
+  if(staff){
+    if(cur!=='scan'&&cur!=='today'&&cur!=='more')go('scan');
+    I('shiftbox')&&(I('shiftbox').style.display='');
+  }
+  I('shiftbox').style.display=staff?'':'none';
+}
+
+/* theme */
+let light=false;
+function theme(){
+  light=!light;document.body.dataset.theme=light?'light':'';
+  I('thb').textContent=light?'☀️':'🌙';I('thIco').textContent=light?'☀️':'🌙';
+  I('thSd').textContent=light?'Светлая':'Тёмная';
+  I('thTgl').classList.toggle('on',light);
+  I('thDemo').textContent=light?'🌙 Тёмная тема':'☀️ Светлая тема';
+}
+
+/* scanner */
+let amount=0;
+let isNew=false;
+function scanGo(n){isNew=!!n;
+  const g=isNew?['М','Mark T.','турист · первый раз здесь','#FFB84D',['1','0','—']]
+               :['А','Анна К.','турист · 3-й день на острове','#34E1B4',['4','420','780']];
+  const c=I('sc2');
+  c.querySelector('.gav').textContent=g[0];
+  c.querySelector('.gav').style.background=g[3]+'2e';c.querySelector('.gav').style.color=g[3];
+  c.querySelector('.gn').textContent=g[1];c.querySelector('.gm').textContent=g[2];
+  c.querySelectorAll('.gs .v').forEach((e,i)=>e.textContent=g[4][i]);
+  I('sc1').style.display='none';c.style.display='block';amount=0;paintAmt();}
+function paintAmt(){I('amt').textContent=amount?amount.toLocaleString('ru-RU')+' ฿':'0 ฿';
+  I('amt').style.color=amount?'var(--tx)':'var(--tx3)';
+  I('amtl').textContent=amount>=800?'Гость получит 200 ฿ промокодом на завтра':'Введите сумму чека';}
+function dig(d){if(String(amount).length>6)return;amount=+(String(amount)+d);paintAmt();}
+function del(){amount=Math.floor(amount/10);paintAmt();}
+function setAmt(v){amount=v;paintAmt();}
+function accrue(){
+  if(!amount){toast('Введите сумму');return;}
+  const pts=Math.round(amount*0.1), nm=isNew?'Mark':'Анна', base=isNew?0:420;
+  I('sc2').style.display='none';I('sc3').style.display='flex';
+  I('dv').textContent='+'+pts+' ฿';
+  I('ds').innerHTML=nm+' получил'+(isNew?'':'а')+' баллы. Теперь у не'+(isNew?'го':'ё')+' '+(base+pts)+' ฿'+
+    (amount>=800?' и промокод на 200 ฿ до завтра':'')+
+    (isNew?'<div style="margin-top:16px;background:rgba(52,225,180,.12);border:1px solid rgba(52,225,180,.3);'+
+      'border-radius:15px;padding:13px 16px;font-size:13.5px;color:var(--mint);font-weight:650">'+
+      '💸 Вам +'+bonus+' ฿ за нового гостя'+
+      '<div style="color:var(--tx3);font-weight:400;font-size:11.5px;margin-top:5px;line-height:1.4">'+
+      'Засчитаем, когда Mark придёт второй раз</div></div>':'');
+}
+function reset(){I('sc1').style.display='flex';I('sc2').style.display='none';I('sc3').style.display='none';amount=0;}
+
+/* feed */
+const NM=[['Анна','#34E1B4'],['Somchai','#A78BFA'],['Mark','#FFB84D'],['Ирина','#34E1B4'],
+ ['Priya','#A78BFA'],['Wei','#FFB84D'],['Дмитрий','#34E1B4']];
+const AC=['чек 1 240 ฿','чек 680 ฿','промокод 200 ฿','чек 2 100 ฿','ваучер сети','чек 540 ฿'];
+function feedItem(){
+  const f=I('feed'),n=NM[Math.floor(Math.random()*NM.length)],a=AC[Math.floor(Math.random()*AC.length)];
+  const v=[68,124,210,54,96,180][Math.floor(Math.random()*6)];
+  const d=document.createElement('div');d.className='fi';
+  d.innerHTML='<div class="fav" style="background:'+n[1]+'2e;color:'+n[1]+'">'+n[0][0]+'</div>'+
+    '<div><div class="n">'+n[0]+'</div><div class="m">'+a+' · только что</div></div><div class="v">+'+v+' ฿</div>';
+  f.prepend(d);while(f.children.length>6)f.lastChild.remove();
+}
+for(let i=0;i<4;i++)feedItem();
+setInterval(feedItem,4500);
+
+/* guests */
+const G=[['Анна К.','#34E1B4','турист · была вчера',420,'4 визита',''],
+ ['Somchai P.','#A78BFA','местный · сегодня',180,'22 визита',''],
+ ['Mark T.','#FFB84D','турист · сегодня',65,'1 визит','g-new'],
+ ['Ирина В.','#34E1B4','турист · 42 дня назад',340,'6 визитов','g-sleep'],
+ ['Priya S.','#A78BFA','турист · 2 дня назад',90,'2 визита','g-new'],
+ ['Wei L.','#FFB84D','турист · 3 дня назад',255,'9 визитов',''],
+ ['Дмитрий О.','#34E1B4','местный · 38 дней назад',510,'11 визитов','g-sleep']];
+I('glist').innerHTML=G.map(g=>'<div class="gr" onclick="toast(\'Карточка: '+g[0]+'\')">'+
+ '<div class="fav" style="background:'+g[1]+'2e;color:'+g[1]+'">'+g[0][0]+'</div>'+
+ '<div><div class="nm">'+g[0]+(g[5]?'<span class="tg2 '+g[5]+'">'+(g[5]==='g-new'?'новый':'спит')+'</span>':'')+'</div>'+
+ '<div class="mt">'+g[2]+'</div></div>'+
+ '<div class="rt"><div class="p">'+g[3]+' ฿</div><div class="s">'+g[4]+'</div></div></div>').join('');
+
+/* staff bars */
+const ST=[['Nok','зал',62],['Som','касса',48],['May','зал',31],['Ploy','зал',19]];
+(function(){const c=I('staff'),mx=62;
+ c.innerHTML=ST.map((s,i)=>'<div style="margin-bottom:12px"><div style="display:flex;align-items:baseline">'+
+  '<b style="font-size:13px">'+s[0]+'</b><span style="color:var(--tx3);font-size:11.5px;margin-left:7px">'+s[1]+'</span>'+
+  '<span style="margin-left:auto;font-weight:750;font-variant-numeric:tabular-nums">'+s[2]+'</span></div>'+
+  '<div class="bar"><i style="width:0" data-w="'+(s[2]/mx*100)+'"></i></div></div>').join('');
+ setTimeout(()=>c.querySelectorAll('.bar i').forEach((b,i)=>setTimeout(()=>b.style.width=b.dataset.w+'%',i*90)),300);})();
+
+/* смена сотрудника */
+(function(){
+  const box=document.createElement('div');box.id='shiftbox';box.style.display='none';
+  box.innerHTML=
+   '<div class="earn"><div class="l">Заработано за смену</div>'+
+   '<div class="v" id="myEarn">120 ฿</div>'+
+   '<div class="s">6 новых гостей из 15 по лимиту смены</div>'+
+   '<div class="pg"><i style="width:40%"></i></div></div>'+
+   '<div class="card"><h4>Ваша смена</h4><p style="margin-bottom:12px">Сегодня с 10:00</p>'+
+   '<div class="gstats"><div class="gs"><div class="k">Оформлено</div><div class="v">14</div></div>'+
+   '<div class="gs"><div class="k">Из них новых</div><div class="v">6</div></div>'+
+   '<div class="gs"><div class="k">Начислено гостям</div><div class="v">1 820</div></div></div></div>'+
+   '<div class="sec">Смена сегодня</div>'+
+   '<div class="lbrow"><div class="pos">1</div><div class="nm2">Nok</div><div class="er">160 ฿</div></div>'+
+   '<div class="lbrow me"><div class="pos">2</div><div class="nm2">Вы</div><div class="er">120 ฿</div></div>'+
+   '<div class="lbrow"><div class="pos">3</div><div class="nm2">May</div><div class="er">80 ฿</div></div>'+
+   '<div class="card" style="margin-top:12px"><div class="row"><div class="ico i-a">ℹ️</div>'+
+   '<div><h4>Как считается</h4><p>20 ฿ за гостя, который оформился у вас впервые. '+
+   'Деньги засчитываются, когда гость приходит второй раз.</p></div></div></div>';
+  const t=I('s-today');t.insertBefore(box,t.children[1]);
+})();
+
+/* мотивация персонала */
+const MM={
+ fix:{min:0,max:100,step:5,val:20,u:' ฿',
+   lbl:v=>'Сотрудник получит '+v+' ฿ за каждого гостя, который оформился у него впервые',
+   day:(v,lim)=>Math.min(9,lim)*v, short:v=>v+' ฿ за нового гостя'},
+ pts:{min:0,max:20,step:1,val:5,u:'%',
+   lbl:v=>'Сотрудник получит '+v+'% от баллов, которые начислил гостям. При сегодняшнем потоке это '+Math.round(2448*v/100)+' ฿ за день',
+   day:v=>2448*v/100, short:v=>v+'% от начисленных баллов'},
+ rev:{min:0,max:5,step:.5,val:2,u:'%',
+   lbl:v=>'Сотрудник получит '+String(v).replace('.',',')+'% от выручки по программе за свою смену',
+   day:v=>24480*v/100, short:v=>String(v).replace('.',',')+'% от выручки'}};
+let mMode='fix', vest=1;
+function calcM(){
+  const c=MM[mMode], v=+I('mslider').value, lim=+I('lslider').value;
+  I('mval').textContent=(mMode==='rev'?String(v).replace('.',','):v)+c.u;
+  I('mlbl').textContent=c.lbl(v);
+  I('lval').textContent=lim+' гостей';
+  const day=c.day(v,lim), mon=day*30, prog=24480*30;
+  I('cday').textContent=Math.round(day).toLocaleString('ru-RU')+' ฿';
+  I('cmon').textContent=Math.round(mon).toLocaleString('ru-RU')+' ฿';
+  I('cpct').textContent=(mon/prog*100).toFixed(1).replace('.',',')+'%';
+  I('motivSd').textContent=c.short(v)+' · ~'+Math.round(mon).toLocaleString('ru-RU')+' ฿ в месяц';
+  bonus = mMode==='fix' ? v : Math.round(c.day(v,lim)/9);
+}
+let bonus=20;
+document.querySelectorAll('#msegs button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#msegs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  mMode=b.dataset.m; const c=MM[mMode];
+  const sl=I('mslider'); sl.min=c.min; sl.max=c.max; sl.step=c.step; sl.value=c.val;
+  I('mmin').textContent=c.min+c.u; I('mmax').textContent=c.max+c.u;
+  calcM();});
+function pickVest(el,i){document.querySelectorAll('#s-motiv .opt').forEach(o=>o.classList.remove('on'));
+  el.classList.add('on');vest=i;}
+
+/* push */
+function showPush(){I('push').classList.add('on');setTimeout(()=>I('push').classList.remove('on'),5200);}
+function pushGo(){I('push').classList.remove('on');go('more');}
+
+/* chips / toggles */
+document.querySelectorAll('.chips').forEach(g=>g.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  g.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');}));
+function tg(r){const t=r.querySelector('.tgl');if(t)t.classList.toggle('on');}
+
+/* sheets */
+const S={
+ new:{t:'Новая акция',s:'Шаблоны под ресторан · 3 тапа до запуска',tpl:[
+   ['🔁','Вернуть гостя завтра','Промокод на следующий визит, сгорает через сутки','чаще всего работает'],
+   ['🕑','Догрузить тихие часы','Скидка в часы, когда зал пустой','у вас 14–17 пусто'],
+   ['😴','Разбудить спящих','Тем, кто не заходил больше месяца — их 31',''],
+   ['🎫','Каждый 11-й в подарок','Карта визитов, 2 штампа дарим сразу',''],
+   ['🎁','Ваучер новым гостям сети','Появится у всех гостей Positive на острове',''],
+   ['⚙️','Своя акция','Настроить вручную','']],b:'Выбрать шаблон'},
+ wake:{t:'Разбудить спящих',s:'31 гость не заходил больше месяца',
+   kv:[['Кому','31 человек'],['Канал','Telegram и LINE'],['Стоимость','бесплатно'],['Обычный возврат','каждый пятый']],
+   msg:'Соскучились! Заходите до воскресенья — вернём 200 ฿ на следующий визит 🍜',b:'Отправить 31 гостю'},
+ print:{t:'Касса и QR',s:'Чем понятнее подпись рядом с кодом, тем чаще его сканируют',
+   kv:[['Через оплату PromptPay','72% начислений'],['Вручную кассиром','28%'],['QR на чеке','не настроено']],
+   note:'Наклейку обязательно заламинируйте — подмена QR-стикеров растущий вид мошенничества.',
+   b:'Скачать PDF для печати',b2:'Заказать печать'},
+ staffs:{t:'Сотрудники',s:'4 человека · лимиты и права',
+   kv:[['Nok, зал','62 оформления'],['Som, касса','48 оформлений'],['May, зал','31'],['Ploy, зал','19'],
+       ['Лимит на кассира','40 начислений в час'],['Правка баланса','только владелец']],
+   b:'Добавить сотрудника'},
+ plan:{t:'Тариф Pro',s:'690 ฿ в месяц · списание 1 сентября',
+   kv:[['Гостей в базе','1 284 — без лимита'],['Рассылки','бесплатно, Telegram и LINE'],
+       ['Комиссия с оборота','0%'],['Низкий сезон','290 ฿ с мая, включится сам']],
+   note:'Ваша база гостей принадлежит вам. Выгрузить можно в любой момент.',b:'Управление подпиской'},
+ notif:{t:'Уведомления',s:'За последние дни',
+   kv:[['Странные начисления у Som','вчера'],['Акция кончается через 6 ч','сегодня'],
+       ['3 новых отзыва','сегодня'],['31 гость уснул','2 дня назад']],b:'Отметить прочитанным'},
+ order:{t:'Приём заказов',s:'Гость видит кнопку «Заказать» в вашей карточке',
+   opts:[['Выключено','Кнопки заказа не будет',0],
+     ['Ссылка на ваш сайт или меню','Открывается прямо в приложении гостя. Заказ идёт вам напрямую, без комиссии',1],
+     ['Меню внутри Positive','Соберём меню из вашего PDF. Пока в разработке',0],
+     ['Через агрегатор','Кнопка ведёт в Grab или LINE MAN. Комиссия остаётся их',0]],
+   link:'https://katabeachkitchen.com/menu',
+   note:'Гость уже в вашей карточке и уже с баллами — ему проще заказать у вас, чем идти в агрегатор. Заказ через свою ссылку не стоит вам ничего.',
+   b:'Сохранить',b2:'Проверить ссылку'},
+ o1:{t:'200 ฿ на следующий визит',s:'Идёт · чек от 800 ฿',
+   kv:[['Выдано промокодов','96'],['Использовано','64'],['Вернулось гостей','41'],
+       ['Выручка от вернувшихся','29 500 ฿'],['Затраты баллами','12 800 ฿']],
+   b:'Продлить акцию',b2:'Остановить'},
+ o2:{t:'Кэшбэк 10%',s:'Идёт · для всех гостей',
+   kv:[['Начислено','18 900 ฿'],['Потрачено гостями','6 500 ฿'],['Возврат баллов','34%'],['Обязательство','12 400 ฿']],
+   b:'Изменить процент'},
+ o3:{t:'Десерт новым гостям сети',s:'Ваучер виден всем гостям Positive',
+   kv:[['Показов в каталоге','1 240'],['Забрали ваучер','57'],['Дошли до вас','38'],['Стоимость','только себестоимость десерта']],
+   b:'Продлить'},
+ o4:{t:'−20% с 14:00 до 17:00',s:'Запланирована на 1 сентября',
+   kv:[['Когда','будни, 14:00–17:00'],['Кому','всем гостям'],['Прогноз','около 25 гостей в неделю']],
+   b:'Запустить сейчас',b2:'Изменить'}
+};
+function sheet(k){const d=S[k];if(!d)return;
+  let h='<div style="font-size:20px;font-weight:750;letter-spacing:-.03em">'+d.t+'</div>'+
+    '<div style="color:var(--tx3);font-size:12.5px;margin:4px 0 14px">'+d.s+'</div>';
+  if(d.tpl)d.tpl.forEach(t=>h+='<div class="tpl" onclick="closeSheet();toast(\'Шаблон: '+t[1]+'\')">'+
+    '<div class="ico i-m">'+t[0]+'</div><div style="flex:1"><div class="tn">'+t[1]+'</div>'+
+    '<div class="td">'+t[2]+'</div></div>'+(t[3]?'<span class="rc">'+t[3]+'</span>':'')+'</div>');
+  if(d.opts)d.opts.forEach((o,i)=>h+='<div class="opt'+(o[2]?' on':'')+'" onclick="pickOpt(this)"><div class="rd"></div>'+
+    '<div><div class="on1">'+o[0]+'</div><div class="od">'+o[1]+'</div></div></div>');
+  if(d.link)h+='<div style="background:var(--surf);border:1px solid var(--mint);border-radius:14px;padding:13px;'+
+    'font-size:13px;margin:10px 0 4px;color:var(--tx2);font-family:ui-monospace,monospace">'+d.link+'</div>';
+  if(d.msg)h+='<div style="background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:14px;'+
+    'font-size:13.5px;line-height:1.5;margin-bottom:12px">'+d.msg+'</div>';
+  if(d.kv)d.kv.forEach(r=>h+='<div style="display:flex;justify-content:space-between;padding:11px 0;'+
+    'border-bottom:1px solid var(--line);font-size:13.5px"><span style="color:var(--tx3)">'+r[0]+
+    '</span><span style="font-weight:640">'+r[1]+'</span></div>');
+  if(d.note)h+='<div style="background:var(--surf2);border-left:2px solid var(--mint);border-radius:0 12px 12px 0;'+
+    'padding:12px 14px;color:var(--tx2);font-size:12.5px;line-height:1.5;margin-top:13px">'+d.note+'</div>';
+  h+='<button class="btn" onclick="closeSheet()">'+d.b+'</button>';
+  if(d.b2)h+='<button class="btn g" onclick="closeSheet()">'+d.b2+'</button>';
+  I('shc').innerHTML=h;I('bd').classList.add('on');I('sh').classList.add('on');}
+function closeSheet(){I('bd').classList.remove('on');I('sh').classList.remove('on');}
+function pickOpt(el){el.parentElement.querySelectorAll('.opt').forEach(o=>o.classList.remove('on'));el.classList.add('on');}
+
+/* toast */
+let tt;
+function toast(m){
+  let el=I('tst');
+  if(!el){el=document.createElement('div');el.id='tst';
+    el.style.cssText='position:absolute;bottom:104px;left:50%;transform:translate(-50%,140%);z-index:97;'+
+      'background:var(--sheetbg);border:1px solid var(--line);border-radius:15px;padding:12px 18px;'+
+      'font-weight:650;font-size:13px;transition:transform .5s var(--spring);box-shadow:0 16px 40px -10px rgba(0,0,0,.6)';
+    document.querySelector('.phone').appendChild(el);}
+  el.textContent=m;requestAnimationFrame(()=>el.style.transform='translate(-50%,0)');
+  clearTimeout(tt);tt=setTimeout(()=>el.style.transform='translate(-50%,140%)',2400);
+}
+calcM();
+applyRole();
+setTimeout(showPush,1800);
+</script>
+</body>
+</html>

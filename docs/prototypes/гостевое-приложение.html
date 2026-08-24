@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Positive — приложение гостя v2</title>
+<style>
+:root{
+  --ink:#07090D; --ink2:#0C1016; --surf:#141A24; --surf2:#1B2430; --line:#232D3C;
+  --tx:#EEF3F9; --tx2:#95A2B4; --tx3:#606C7E;
+  --mint:#34E1B4; --cyan:#22D3EE; --amber:#FFB84D; --coral:#FF7A6B; --violet:#A78BFA;
+  --grad:linear-gradient(135deg,#34E1B4,#22D3EE);
+  --spring:cubic-bezier(.34,1.5,.64,1); --ease:cubic-bezier(.22,.61,.36,1);
+  --navbg:rgba(12,16,22,.97); --navbg0:rgba(12,16,22,0);
+  --overlay:rgba(4,6,10,.72); --coachbg:rgba(4,6,10,.86); --toastbg:rgba(20,26,36,.96);
+  --ringtrack:rgba(255,255,255,.08); --swbg:rgba(255,255,255,.045);
+  --ctabg:#03120F; --ctatx:#34E1B4;
+  --glow1:rgba(52,225,180,.12); --glow2:rgba(167,139,250,.11);
+  --shadow:0 60px 120px -32px rgba(0,0,0,.85),0 0 0 11px #05070A,0 0 0 12px rgba(255,255,255,.06);
+  --qcshadow:0 30px 78px -22px rgba(52,225,180,.45);
+  --pillTx:#04120E;
+}
+body[data-theme="light"]{
+  --ink:#EEF1F6; --ink2:#FFFFFF; --surf:#F5F8FB; --surf2:#E9EEF5; --line:#DFE5EE;
+  --tx:#0D131C; --tx2:#4E5A6C; --tx3:#8592A4;
+  --navbg:rgba(255,255,255,.97); --navbg0:rgba(255,255,255,0);
+  --overlay:rgba(20,28,40,.42); --coachbg:rgba(245,248,251,.93); --toastbg:rgba(255,255,255,.97);
+  --ringtrack:rgba(13,19,28,.09); --swbg:rgba(13,19,28,.045);
+  --glow1:rgba(52,225,180,.16); --glow2:rgba(167,139,250,.14);
+  --shadow:0 40px 90px -30px rgba(23,38,56,.34),0 0 0 11px #DDE3EC,0 0 0 12px rgba(13,19,28,.07);
+  --qcshadow:0 20px 50px -20px rgba(23,38,56,.3);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:
+    radial-gradient(900px 620px at 12% -8%,var(--glow1),transparent 60%),
+    radial-gradient(900px 620px at 88% 106%,var(--glow2),transparent 60%),var(--ink);
+  color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Inter,sans-serif;
+  display:flex;flex-direction:column;align-items:center;padding:22px 16px 34px;-webkit-font-smoothing:antialiased;
+  transition:background .45s var(--ease),color .45s var(--ease)}
+
+.brandbar{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+.logo{width:32px;height:32px;border-radius:10px;background:var(--grad);display:grid;place-items:center;
+  font-weight:800;color:#04120E;font-size:16px;box-shadow:0 6px 20px rgba(52,225,180,.34)}
+.brandbar b{font-size:18px;letter-spacing:-.02em}
+.brandbar span{color:var(--tx3);font-size:12.5px;display:block;margin-top:-2px}
+
+.modesw{display:flex;gap:5px;background:var(--swbg);border:1px solid var(--line);
+  padding:4px;border-radius:13px;margin-bottom:16px;position:relative}
+.modesw button{border:0;background:transparent;color:var(--tx2);font:650 12.5px/1 inherit;
+  padding:9px 15px;border-radius:9px;cursor:pointer;position:relative;z-index:2;transition:color .25s}
+.modesw button.on{color:var(--pillTx)}
+.mpill{position:absolute;top:4px;left:4px;height:calc(100% - 8px);border-radius:9px;background:var(--grad);
+  z-index:1;transition:transform .45s var(--spring),width .45s var(--spring)}
+
+/* ---------- phone ---------- */
+.phone{width:392px;height:822px;max-width:94vw;max-height:calc(100vh - 230px);
+  border-radius:52px;background:var(--ink2);position:relative;overflow:hidden;
+  border:1px solid rgba(255,255,255,.09);
+  box-shadow:var(--shadow);transition:box-shadow .45s var(--ease),background .45s var(--ease)}
+.notch{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:110px;height:30px;
+  background:#05070A;border-radius:20px;z-index:60}
+.sbar{position:absolute;top:0;left:0;right:0;height:50px;z-index:55;display:flex;align-items:center;
+  justify-content:space-between;padding:15px 27px 0;font-size:12.5px;font-weight:650;pointer-events:none}
+.sbar .r{display:flex;gap:4px;align-items:center;opacity:.9}
+.b{width:3px;border-radius:2px;background:var(--tx)}
+
+.vp{position:absolute;inset:0;overflow:hidden;border-radius:52px}
+.scr{position:absolute;inset:0;padding:60px 19px 104px;overflow-y:auto;overflow-x:hidden;
+  opacity:0;pointer-events:none;transform:translateY(12px) scale(.99);
+  transition:opacity .32s var(--ease),transform .42s var(--ease);scrollbar-width:none}
+.scr::-webkit-scrollbar{display:none}
+.scr.on{opacity:1;pointer-events:auto;transform:none}
+.scr.on .st{animation:rise .5s var(--ease) both;animation-delay:calc(var(--i,0)*52ms + 30ms)}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin:4px 0 16px}
+.hd .t{font-size:25px;font-weight:750;letter-spacing:-.035em;line-height:1.12}
+.hd .s{color:var(--tx3);font-size:12.5px;margin-top:5px}
+.av{width:38px;height:38px;border-radius:13px;background:linear-gradient(140deg,#FFB84D,#FF7A6B);
+  display:grid;place-items:center;font-weight:800;color:#2A1000;font-size:14px;flex:0 0 auto}
+.qmark{width:30px;height:30px;border-radius:10px;background:var(--surf);border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--tx2);font-size:14px;font-weight:750;cursor:pointer;
+  transition:all .28s var(--spring);flex:0 0 auto}
+.qmark:active{transform:scale(.9)}
+
+/* ---------- hero: money + one action ---------- */
+.hero{border-radius:26px;overflow:hidden;margin-bottom:14px;
+  box-shadow:0 22px 52px -20px rgba(52,225,180,.5)}
+.hero .money{background:var(--grad);color:#03120F;padding:21px 21px 19px;position:relative;overflow:hidden}
+.hero .money::after{content:"";position:absolute;inset:-60% -20%;
+  background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.5) 50%,transparent 62%);
+  animation:sheen 5s ease-in-out infinite}
+@keyframes sheen{0%,70%{transform:translateX(-125%)}100%{transform:translateX(125%)}}
+.hero .lbl{font-size:12.5px;font-weight:700;opacity:.7;position:relative}
+.hero .val{font-size:43px;font-weight:800;letter-spacing:-.045em;line-height:1;margin:8px 0 6px;
+  font-variant-numeric:tabular-nums;position:relative}
+.hero .val small{font-size:20px;opacity:.62;margin-left:2px}
+.hero .sub{font-size:12.5px;font-weight:650;opacity:.72;position:relative}
+.cta{width:100%;border:0;background:var(--ctabg);color:var(--ctatx);padding:17px;font:750 15.5px/1 inherit;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;
+  transition:background .25s,transform .25s var(--spring)}
+.cta:active{transform:scale(.985);background:#061A16}
+
+/* ---------- steps how ---------- */
+.how{display:flex;gap:9px;margin-bottom:16px}
+.hs{flex:1;background:var(--surf);border:1px solid var(--line);border-radius:15px;padding:13px 11px;text-align:center}
+.hs .n{width:21px;height:21px;border-radius:99px;background:rgba(52,225,180,.15);color:var(--mint);
+  display:grid;place-items:center;font-size:11px;font-weight:800;margin:0 auto 8px}
+.hs .x{font-size:11.5px;color:var(--tx2);line-height:1.35}
+
+/* ---------- cards ---------- */
+.sec{font-size:11.5px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);
+  margin:20px 0 11px;display:flex;align-items:center;gap:8px}
+.sec .cnt{background:var(--surf2);color:var(--tx2);padding:2px 8px;border-radius:99px;
+  font-size:10.5px;letter-spacing:0}
+.card{background:var(--surf);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:11px;
+  transition:transform .3s var(--spring),border-color .25s;position:relative;overflow:hidden}
+.card.tap{cursor:pointer} .card.tap:active{transform:scale(.978);border-color:rgba(52,225,180,.4)}
+.card h4{margin:0 0 4px;font-size:15.5px;font-weight:680;letter-spacing:-.015em}
+.card p{margin:0;color:var(--tx2);font-size:13px;line-height:1.45}
+
+/* progress */
+.prog{display:flex;gap:14px;align-items:center}
+.ring{width:66px;height:66px;position:relative;flex:0 0 auto}
+.ring svg{transform:rotate(-90deg)}
+.ring .tr{stroke:var(--ringtrack)}
+.ring .pr{stroke:url(#gg);stroke-linecap:round;transition:stroke-dashoffset 1.1s var(--ease)}
+.ring .n{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:14px;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.gift{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:rgba(255,184,77,.13);
+  color:var(--amber);padding:5px 10px;border-radius:99px;font-size:11px;font-weight:700}
+
+/* offer */
+.of{border-radius:20px;padding:17px;margin-bottom:11px;position:relative;overflow:hidden;
+  border:1px solid var(--line);background:var(--surf);cursor:pointer;
+  transition:transform .3s var(--spring)}
+.of:active{transform:scale(.978)}
+.of .gl{position:absolute;width:170px;height:170px;border-radius:99px;filter:blur(56px);top:-68px;right:-46px;opacity:.46}
+.of .tp{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;position:relative}
+.tag{font-size:11px;font-weight:750;padding:4px 9px;border-radius:99px}
+.t-mint{background:rgba(52,225,180,.14);color:var(--mint)}
+.t-amber{background:rgba(255,184,77,.14);color:var(--amber)}
+.t-violet{background:rgba(167,139,250,.14);color:var(--violet)}
+.of .big{font-size:22px;font-weight:770;letter-spacing:-.035em;margin:10px 0 5px;position:relative}
+.of .cn{color:var(--tx2);font-size:12.5px;position:relative}
+.of .get{display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:12px;
+  border-top:1px solid var(--line);color:var(--tx3);font-size:12px;position:relative}
+.of .get b{color:var(--tx2);font-weight:650}
+.timer{display:inline-flex;align-items:center;gap:6px;background:rgba(255,122,107,.14);color:var(--coral);
+  padding:5px 10px;border-radius:99px;font-size:11px;font-weight:750;margin-top:11px;position:relative}
+.pl{width:6px;height:6px;border-radius:99px;background:var(--coral);animation:pl 1.6s infinite}
+@keyframes pl{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+
+/* venue */
+.vn{display:flex;gap:12px;align-items:center}
+.vi{width:52px;height:52px;border-radius:16px;flex:0 0 auto;display:grid;place-items:center;font-size:23px;
+  position:relative;overflow:hidden}
+.vi::after{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,.15),transparent)}
+.vm{display:flex;gap:8px;align-items:center;margin-top:5px;font-size:11.5px;color:var(--tx3)}
+.dt{width:3px;height:3px;border-radius:99px;background:var(--tx3)}
+
+/* chips */
+.chips{display:flex;gap:7px;overflow-x:auto;padding:2px 19px 13px;margin:0 -19px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:9px 14px;border-radius:99px;background:var(--surf);border:1px solid var(--line);
+  font-size:12.5px;font-weight:650;color:var(--tx2);cursor:pointer;transition:all .3s var(--spring);white-space:nowrap}
+.chip.on{background:var(--tx);color:var(--ink);border-color:var(--tx)}
+.chip:active{transform:scale(.94)}
+
+/* QR */
+.qrw{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100%;padding-bottom:16px}
+.qrtop{text-align:center;margin-bottom:20px}
+.qrtop .t1{font-size:21px;font-weight:750;letter-spacing:-.03em}
+.qrtop .t2{color:var(--tx2);font-size:13px;margin-top:6px}
+.qc{background:#fff;border-radius:30px;padding:24px;position:relative;
+  box-shadow:var(--qcshadow);animation:qin .65s var(--spring) both}
+@keyframes qin{from{opacity:0;transform:scale(.85) translateY(26px)}to{opacity:1;transform:none}}
+.qr{width:198px;height:198px;display:grid;grid-template:repeat(21,1fr)/repeat(21,1fr)}
+.qr i{background:#0B0F14;border-radius:1px}
+.qc .nm{color:#0B0F14;text-align:center;font-weight:750;margin-top:14px;font-size:14.5px}
+.qc .id{color:#7A8493;text-align:center;font-size:11.5px;margin-top:3px;font-variant-numeric:tabular-nums}
+.sl{position:absolute;left:24px;right:24px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,transparent,var(--mint),transparent);animation:sc 2.6s ease-in-out infinite}
+@keyframes sc{0%,100%{top:28px}50%{top:216px}}
+.off{display:inline-flex;align-items:center;gap:7px;margin-top:18px;background:rgba(52,225,180,.12);
+  color:var(--mint);padding:8px 14px;border-radius:99px;font-size:12px;font-weight:700}
+
+/* profile */
+.pl2{background:var(--surf);border:1px solid var(--line);border-radius:20px;overflow:hidden;margin-bottom:11px}
+.pi{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .22s}
+.pi:last-child{border-bottom:none} .pi:active{background:var(--surf2)}
+.pi .lb{flex:1;font-size:14px;font-weight:620}
+.pi .sd{color:var(--tx3);font-size:11.5px;margin-top:2px;font-weight:400}
+.pi .vl{color:var(--tx3);font-size:13px}
+.ico{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-size:16px;flex:0 0 auto}
+.i-m{background:rgba(52,225,180,.13)} .i-a{background:rgba(255,184,77,.13)}
+.i-c{background:rgba(255,122,107,.13)} .i-v{background:rgba(167,139,250,.13)}
+.i-y{background:rgba(34,211,238,.13)}
+.tgl{width:44px;height:26px;border-radius:99px;background:var(--line);position:relative;cursor:pointer;
+  transition:background .32s;flex:0 0 auto}
+.tgl.on{background:var(--mint)}
+.tgl::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:99px;
+  background:#fff;transition:transform .38s var(--spring)}
+.tgl.on::after{transform:translateX(18px)}
+.lgs{display:flex;gap:6px}
+.lg{width:32px;height:28px;border-radius:9px;background:var(--surf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:10.5px;font-weight:750;color:var(--tx3);cursor:pointer;transition:all .3s var(--spring)}
+.lg.on{background:var(--tx);color:var(--ink);border-color:var(--tx)}
+
+/* nav */
+.nav{position:absolute;bottom:0;left:0;right:0;height:88px;z-index:50;
+  background:linear-gradient(to top,var(--navbg) 55%,var(--navbg0));
+  backdrop-filter:blur(18px);display:flex;align-items:flex-start;padding:12px 12px 0}
+.nav button[data-s]{flex:1;background:none;border:0;cursor:pointer;padding:9px 0 0;display:flex;
+  flex-direction:column;align-items:center;gap:5px;color:var(--tx3);font:650 10.5px/1 inherit;
+  transition:color .28s;position:relative}
+.nav button[data-s].on{color:var(--mint)}
+.nav button[data-s] svg{transition:transform .5s var(--spring)}
+.nav button[data-s].on svg{transform:translateY(-3px) scale(1.14)}
+.nav button[data-s]::before{content:"";position:absolute;top:0;width:24px;height:3px;border-radius:99px;
+  background:var(--mint);transform:scaleX(0);transition:transform .45s var(--spring)}
+.nav button[data-s].on::before{transform:scaleX(1)}
+.fab{flex:0 0 auto!important;width:60px;margin-top:-22px}
+.fb{width:58px;height:58px;border-radius:21px;background:var(--grad);border:0;cursor:pointer;
+  display:grid;place-items:center;box-shadow:0 12px 30px -6px rgba(52,225,180,.6);
+  transition:transform .4s var(--spring)}
+.fb:active{transform:scale(.9)} .fb.on{transform:rotate(45deg) scale(1.03)}
+
+/* sheet */
+.bd{position:absolute;inset:0;background:var(--overlay);backdrop-filter:blur(7px);opacity:0;
+  pointer-events:none;transition:opacity .36s var(--ease);z-index:70}
+.bd.on{opacity:1;pointer-events:auto}
+.sh{position:absolute;left:0;right:0;bottom:0;z-index:80;background:var(--ink2);
+  border-radius:30px 30px 52px 52px;padding:11px 19px 28px;border-top:1px solid var(--line);
+  transform:translateY(101%);transition:transform .55s var(--spring);max-height:80%;overflow-y:auto;scrollbar-width:none}
+.sh::-webkit-scrollbar{display:none}
+.sh.on{transform:none}
+.gb{width:36px;height:4px;border-radius:99px;background:var(--line);margin:0 auto 16px}
+.hero2{height:104px;border-radius:20px;display:grid;place-items:center;font-size:42px;margin-bottom:15px;position:relative;overflow:hidden}
+.hero2::after{content:"";position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,.16),transparent 60%)}
+.btn{width:100%;padding:16px;border-radius:17px;border:0;background:var(--grad);color:#04120E;
+  font:750 15px/1 inherit;cursor:pointer;transition:transform .3s var(--spring);margin-top:7px}
+.btn:active{transform:scale(.97)}
+.btn.g{background:var(--surf);color:var(--tx);border:1px solid var(--line)}
+.stepn{display:flex;gap:11px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
+.stepn:last-of-type{border-bottom:none}
+.stepn .sn{width:23px;height:23px;border-radius:99px;background:rgba(52,225,180,.15);color:var(--mint);
+  display:grid;place-items:center;font-size:11.5px;font-weight:800;flex:0 0 auto;margin-top:1px}
+.stepn .sx{font-size:13.5px;line-height:1.45}
+.kv{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.kv:last-of-type{border-bottom:none}
+.kv span:first-child{color:var(--tx3)}
+.kv span:last-child{font-weight:640}
+
+/* coach */
+.coach{position:absolute;inset:0;z-index:88;background:var(--coachbg);backdrop-filter:blur(9px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;
+  opacity:0;pointer-events:none;transition:opacity .4s var(--ease)}
+.coach.on{opacity:1;pointer-events:auto}
+.coach .em{font-size:48px;margin-bottom:18px;animation:bob 2.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.coach h3{font-size:22px;font-weight:750;letter-spacing:-.03em;margin:0 0 10px}
+.coach p{color:var(--tx2);font-size:14px;margin:0 0 24px;max-width:270px;line-height:1.5}
+.dots{display:flex;gap:7px;margin-bottom:22px}
+.dots i{width:7px;height:7px;border-radius:99px;background:var(--line);transition:all .35s var(--spring)}
+.dots i.on{background:var(--mint);width:20px}
+
+/* toast + particles */
+.toast{position:absolute;top:62px;left:50%;transform:translate(-50%,-280%);z-index:95;
+  background:var(--toastbg);backdrop-filter:blur(16px);border:1px solid rgba(52,225,180,.35);
+  border-radius:19px;padding:13px 19px;display:flex;align-items:center;gap:11px;
+  box-shadow:0 18px 44px -10px rgba(0,0,0,.72);transition:transform .6s var(--spring);white-space:nowrap}
+.toast.on{transform:translate(-50%,0)}
+.toast .tv{font-size:18px;font-weight:800;color:var(--mint);letter-spacing:-.02em}
+.toast .ts{font-size:11.5px;color:var(--tx2);margin-top:2px}
+.pts{position:absolute;inset:0;pointer-events:none;z-index:94;overflow:hidden}
+.pt{position:absolute;width:8px;height:8px;border-radius:2px;top:92px;left:50%;animation:fly 1.25s var(--ease) forwards}
+@keyframes fly{0%{opacity:1;transform:translate(0,0) scale(1) rotate(0)}
+  100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3) rotate(var(--rot))}}
+
+/* demo bar */
+.demo{margin-top:18px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center;align-items:center}
+.demo .lb{color:var(--tx3);font-size:12px;margin-right:2px}
+.demo button{background:var(--surf);border:1px solid var(--line);color:var(--tx);
+  padding:10px 15px;border-radius:12px;font:650 12.5px/1 inherit;cursor:pointer;
+  transition:all .28s var(--spring)}
+.demo button:hover{border-color:var(--mint);color:var(--mint)}
+.demo button:active{transform:scale(.95)}
+.cap{margin-top:14px;max-width:600px;text-align:center;color:var(--tx3);font-size:12.5px;line-height:1.6}
+@media(max-width:460px){.phone{border-radius:38px;box-shadow:none;border:0;height:calc(100vh - 210px)}.vp{border-radius:38px}}
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="logo">P</div>
+  <div><b>Positive</b><span>приложение гостя · версия 2</span></div>
+</div>
+
+<div class="modesw" id="msw">
+  <div class="mpill" id="mpill"></div>
+  <button class="on" data-m="tourist">Турист</button>
+  <button data-m="resident">Живёт здесь</button>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="sbar"><span id="clk">9:41</span>
+    <span class="r"><span class="b" style="height:5px"></span><span class="b" style="height:8px"></span>
+      <span class="b" style="height:11px"></span><span class="b" style="height:11px;opacity:.35"></span>
+      <svg width="21" height="10" viewBox="0 0 22 11" fill="none"><rect x=".5" y=".5" width="18" height="10" rx="3" stroke="currentColor" opacity=".45"/><rect x="2" y="2" width="13" height="7" rx="1.6" fill="currentColor"/></svg>
+    </span></div>
+
+  <svg width="0" height="0"><defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#34E1B4"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs></svg>
+
+  <div class="vp">
+
+  <!-- ======== ГЛАВНАЯ ======== -->
+  <section class="scr on" id="s-home">
+    <div class="hd st" style="--i:0">
+      <div><div class="t" id="greet">Привет, Danil</div>
+        <div class="s" id="gsub">3-й день на Пхукете · 12 мест рядом</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="qmark" id="thbtn" onclick="theme()" title="Светлая или тёмная тема">🌙</div>
+        <div class="qmark" onclick="sheet('how')">?</div>
+        <div class="av">D</div>
+      </div>
+    </div>
+
+    <div class="hero st" style="--i:1">
+      <div class="money">
+        <div class="lbl" id="hlbl">Ваши бонусы</div>
+        <div class="val"><span id="pts">240</span><small>฿</small></div>
+        <div class="sub" id="hsub">Можно потратить в 4 заведениях рядом</div>
+      </div>
+      <button class="cta" onclick="go('qr')">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v3M17 20h4"/></svg>
+        Показать код на кассе
+      </button>
+    </div>
+
+    <div class="how st" style="--i:2">
+      <div class="hs"><div class="n">1</div><div class="x">Покажите код</div></div>
+      <div class="hs"><div class="n">2</div><div class="x">Оплатите как обычно</div></div>
+      <div class="hs"><div class="n">3</div><div class="x">Бонусы придут сразу</div></div>
+    </div>
+
+    <div class="card st" style="--i:3">
+      <div class="prog">
+        <div class="ring">
+          <svg width="66" height="66"><circle class="tr" cx="33" cy="33" r="27" stroke-width="6.5" fill="none"/>
+            <circle class="pr" id="ringp" cx="33" cy="33" r="27" stroke-width="6.5" fill="none"
+              stroke-dasharray="170" stroke-dashoffset="142"/></svg>
+          <div class="n"><span id="sn">2</span>/12</div>
+        </div>
+        <div style="flex:1">
+          <h4>Sabai Thai Massage</h4>
+          <p id="progtxt">Осталось 10 визитов — и массаж бесплатно</p>
+          <div class="gift">🎁 2 визита вам уже подарили</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec st" id="sec1">Успейте сегодня <span class="cnt">3</span></div>
+
+    <div class="of st" style="--i:4" onclick="sheet('o1')">
+      <div class="gl" style="background:var(--coral)"></div>
+      <div class="tp"><span class="tag t-amber">Только завтра</span>
+        <div class="ico i-c" style="width:36px;height:36px;border-radius:12px;font-size:16px">🍜</div></div>
+      <div class="big">Вернём 200 ฿</div>
+      <div class="cn">Kata Beach Kitchen · 180 м от вас</div>
+      <div class="timer"><span class="pl"></span> сгорает через 19 ч 24 мин</div>
+      <div class="get">→ <b>Как получить:</b> закажите на 800 ฿ и покажите код</div>
+    </div>
+
+    <div class="of st" style="--i:5" onclick="sheet('o2')">
+      <div class="gl" style="background:var(--violet)"></div>
+      <div class="tp"><span class="tag t-violet">Подарок новичку</span>
+        <div class="ico i-v" style="width:36px;height:36px;border-radius:12px;font-size:16px">🛵</div></div>
+      <div class="big">Шлем и дождевик даром</div>
+      <div class="cn">Phuket Ride · 520 м от вас</div>
+      <div class="get">→ <b>Как получить:</b> арендуйте байк от 2 суток</div>
+    </div>
+
+    <div class="of st" style="--i:6" onclick="sheet('o3')">
+      <div class="gl" style="background:var(--amber)"></div>
+      <div class="tp"><span class="tag t-amber">Сейчас 15:20 — работает</span>
+        <div class="ico i-a" style="width:36px;height:36px;border-radius:12px;font-size:16px">💆</div></div>
+      <div class="big">Массаж дешевле на 20%</div>
+      <div class="cn">Sabai Thai Massage · до 17:00</div>
+      <div class="get">→ <b>Как получить:</b> просто придите до 17:00</div>
+    </div>
+  </section>
+
+  <!-- ======== РЯДОМ ======== -->
+  <section class="scr" id="s-map">
+    <div class="hd st" style="--i:0"><div><div class="t">Что рядом</div>
+      <div class="s">Ката · показываем в 1,5 км от вас</div></div></div>
+    <div class="chips st" style="--i:1">
+      <div class="chip on">Всё · 12</div><div class="chip">Поесть</div><div class="chip">Массаж</div>
+      <div class="chip">Транспорт</div><div class="chip">Кофе</div>
+    </div>
+
+    <div class="card tap st" style="--i:2" onclick="sheet('v1')">
+      <div class="vn"><div class="vi" style="background:linear-gradient(140deg,#FF7A6B,#FFB84D)">🍜</div>
+        <div style="flex:1"><h4>Kata Beach Kitchen</h4>
+          <div class="vm"><span>Тайская кухня</span><i class="dt"></i><span>180 м</span><i class="dt"></i><span>★ 4,8</span></div>
+          <div style="margin-top:7px"><span class="tag t-amber">Вернут 200 ฿</span></div></div></div>
+    </div>
+    <div class="card tap st" style="--i:3" onclick="sheet('v2')">
+      <div class="vn"><div class="vi" style="background:linear-gradient(140deg,#34E1B4,#22D3EE)">💆</div>
+        <div style="flex:1"><h4>Sabai Thai Massage</h4>
+          <div class="vm"><span>Спа и массаж</span><i class="dt"></i><span>340 м</span><i class="dt"></i><span>★ 4,9</span></div>
+          <div style="margin-top:7px"><span class="tag t-mint">Ваши 2 визита</span> <span class="tag t-amber">−20% сейчас</span></div></div></div>
+    </div>
+    <div class="card tap st" style="--i:4" onclick="sheet('v3')">
+      <div class="vn"><div class="vi" style="background:linear-gradient(140deg,#A78BFA,#22D3EE)">🛵</div>
+        <div style="flex:1"><h4>Phuket Ride</h4>
+          <div class="vm"><span>Аренда байков</span><i class="dt"></i><span>520 м</span><i class="dt"></i><span>★ 4,7</span></div>
+          <div style="margin-top:7px"><span class="tag t-violet">Подарок новичку</span></div></div></div>
+    </div>
+    <div class="card tap st" style="--i:5" onclick="sheet('v4')">
+      <div class="vn"><div class="vi" style="background:linear-gradient(140deg,#FFB84D,#FF7A6B)">☕</div>
+        <div style="flex:1"><h4>Slow Coffee Kata</h4>
+          <div class="vm"><span>Кофейня</span><i class="dt"></i><span>610 м</span><i class="dt"></i><span>★ 4,6</span></div>
+          <div style="margin-top:7px"><span class="tag t-amber">Завтрак 120 ฿</span></div></div></div>
+    </div>
+    <div class="card tap st" style="--i:6" onclick="sheet('v5')">
+      <div class="vn"><div class="vi" style="background:linear-gradient(140deg,#22D3EE,#A78BFA)">🍣</div>
+        <div style="flex:1"><h4>Kata Sushi Bar</h4>
+          <div class="vm"><span>Суши · доставка</span><i class="dt"></i><span>780 м</span><i class="dt"></i><span>★ 4,8</span></div>
+          <div style="margin-top:7px"><span class="tag t-mint">Вернут 10%</span></div></div></div>
+    </div>
+  </section>
+
+  <!-- ======== QR ======== -->
+  <section class="scr" id="s-qr" style="padding-top:50px">
+    <div class="qrw">
+      <div class="qrtop"><div class="t1">Покажите этот код</div>
+        <div class="t2">Кассир отсканирует — бонусы придут сразу</div></div>
+      <div class="qc"><div class="qr" id="qr"></div><div class="sl"></div>
+        <div class="nm">Danil · Positive</div><div class="id">ID 4821 · 0937</div></div>
+      <div class="off">⚡ работает даже без интернета</div>
+    </div>
+  </section>
+
+  <!-- ======== АКЦИИ ======== -->
+  <section class="scr" id="s-of">
+    <div class="hd st" style="--i:0"><div><div class="t">Все акции</div>
+      <div class="s">28 предложений на острове</div></div></div>
+    <div class="chips st" style="--i:1"><div class="chip on">Все</div><div class="chip">Сгорают сегодня</div>
+      <div class="chip">Для новичков</div><div class="chip">Рядом</div></div>
+
+    <div class="of st" style="--i:2" onclick="sheet('o1')">
+      <div class="gl" style="background:var(--coral)"></div>
+      <div class="tp"><span class="tag t-amber">Только завтра</span></div>
+      <div class="big">Вернём 200 ฿</div><div class="cn">Kata Beach Kitchen</div>
+      <div class="get">→ <b>Как получить:</b> закажите на 800 ฿</div></div>
+
+    <div class="of st" style="--i:3" onclick="sheet('o4')">
+      <div class="gl" style="background:var(--mint)"></div>
+      <div class="tp"><span class="tag t-mint">10 + 1</span></div>
+      <div class="big">11-й массаж бесплатно</div><div class="cn">Sabai Thai Massage</div>
+      <div class="get">→ <b>Как получить:</b> просто ходите, штампы ставятся сами</div></div>
+
+    <div class="of st" style="--i:4" onclick="sheet('o2')">
+      <div class="gl" style="background:var(--violet)"></div>
+      <div class="tp"><span class="tag t-violet">Подарок новичку</span></div>
+      <div class="big">Шлем и дождевик даром</div><div class="cn">Phuket Ride</div>
+      <div class="get">→ <b>Как получить:</b> аренда от 2 суток</div></div>
+
+    <div class="of st" style="--i:5" onclick="sheet('o5')">
+      <div class="gl" style="background:var(--amber)"></div>
+      <div class="tp"><span class="tag t-amber">До 11:00</span></div>
+      <div class="big">Кофе и круассан 120 ฿</div><div class="cn">Slow Coffee Kata</div>
+      <div class="get">→ <b>Как получить:</b> придите утром</div></div>
+  </section>
+
+  <!-- ======== Я ======== -->
+  <section class="scr" id="s-me">
+    <div class="hd st" style="--i:0"><div><div class="t">Профиль</div>
+      <div class="s">+66 •• •• 4821</div></div><div class="av">D</div></div>
+
+    <div class="card st" style="--i:1">
+      <div class="vn"><div class="ico i-m" style="width:44px;height:44px;border-radius:14px;font-size:20px" id="modeIco">🏝️</div>
+        <div style="flex:1"><h4 id="modeT">Вы гость острова</h4>
+          <p id="modeD">Показываем короткие акции и мгновенную выгоду</p></div></div>
+    </div>
+
+    <div class="pl2 st" style="--i:2">
+      <div class="pi"><div class="ico i-y">🌐</div><div class="lb">Язык</div>
+        <div class="lgs" id="lgs"><div class="lg on">RU</div><div class="lg">EN</div><div class="lg">TH</div><div class="lg">中</div></div></div>
+      <div class="pi" onclick="tg(this)"><div class="ico i-v">✈️</div>
+        <div class="lb">Акции в Telegram<div class="sd">Бесплатно, можно отключить</div></div><div class="tgl on"></div></div>
+      <div class="pi" onclick="tg(this)"><div class="ico i-m">💬</div>
+        <div class="lb">LINE<div class="sd">Для тайских заведений</div></div><div class="tgl"></div></div>
+      <div class="pi" onclick="tg(this)"><div class="ico i-a">📲</div>
+        <div class="lb">Карта в Apple Wallet<div class="sd">Баланс виден на заблокированном экране</div></div><div class="tgl on"></div></div>
+      <div class="pi" onclick="theme()"><div class="ico i-y" id="thIco">🌙</div>
+        <div class="lb">Тема<div class="sd" id="thSd">Тёмная. По умолчанию — как в системе</div></div>
+        <div class="tgl" id="thTgl"></div></div>
+    </div>
+
+    <div class="pl2 st" style="--i:3">
+      <div class="pi"><div class="lb">Куда я ходил</div><div class="vl">14 визитов →</div></div>
+      <div class="pi"><div class="lb">Позвать друга</div><div class="vl">+100 ฿ →</div></div>
+      <div class="pi"><div class="lb">Мои данные</div><div class="vl">→</div></div>
+      <div class="pi" onclick="sheet('how')"><div class="lb">Как всё работает</div><div class="vl">→</div></div>
+    </div>
+    <div style="text-align:center;color:var(--tx3);font-size:11.5px;margin-top:16px" class="st">
+      Positive · приложение ставить не нужно</div>
+  </section>
+
+  </div><!-- /vp -->
+
+  <div class="pts" id="parts"></div>
+  <div class="toast" id="toast">
+    <div class="ico i-m" style="width:38px;height:38px;border-radius:12px;font-size:18px">✨</div>
+    <div><div class="tv" id="tv">+240 ฿</div><div class="ts" id="ts">Kata Beach Kitchen · чек 2 400 ฿</div></div>
+  </div>
+
+  <div class="bd" id="bd" onclick="closeSheet()"></div>
+  <div class="sh" id="sh"><div class="gb"></div><div id="shc"></div></div>
+
+  <!-- coach -->
+  <div class="coach" id="coach">
+    <div class="em" id="cem">👋</div>
+    <h3 id="cht">Ничего не нужно устанавливать</h3>
+    <p id="chp">Это просто страница. Отсканировали код в кафе — и карта уже ваша.</p>
+    <div class="dots" id="dots"><i class="on"></i><i></i><i></i></div>
+    <button class="btn" style="max-width:230px" onclick="coachNext()" id="cbtn">Дальше</button>
+    <button class="btn g" style="max-width:230px;background:transparent;border:0;color:var(--tx3)" onclick="coachEnd()">Пропустить</button>
+  </div>
+
+  <nav class="nav" id="nav">
+    <button class="on" data-s="home">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V20h13V9.5"/></svg>Главная</button>
+    <button data-s="map">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="2.6"/></svg>Рядом</button>
+    <div class="fab"><button class="fb" id="fab" onclick="go('qr')">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#04120E" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v3M17 20h4"/></svg></button></div>
+    <button data-s="of">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.6z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg>Акции</button>
+    <button data-s="me">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>Я</button>
+  </nav>
+</div>
+
+<div class="demo">
+  <span class="lb">Демо:</span>
+  <button onclick="earn()">💳 Гость оплатил счёт</button>
+  <button onclick="reset()">↺ Сбросить</button>
+  <button onclick="coachStart()">👋 Показать подсказки</button>
+  <button onclick="theme()" id="thDemo">☀️ Светлая тема</button>
+</div>
+
+<div class="cap">
+  Что изменилось: главное действие вынесено кнопкой на первый экран, у каждой акции написано
+  «как получить», прогресс объясняется словами, а не только кольцом, и есть подсказки для первого запуска.
+</div>
+
+<script>
+/* QR */
+(function(){const q=document.getElementById('qr');let s=11;
+ const rnd=()=>{s=(s*1103515245+12345)&0x7fffffff;return s/0x7fffffff};
+ for(let r=0;r<21;r++)for(let c=0;c<21;c++){const i=document.createElement('i');
+   const inF=(R,C)=>r>=R&&r<R+7&&c>=C&&c<C+7;
+   const ring=(R,C)=>{const dr=r-R,dc=c-C;return(dr===0||dr===6||dc===0||dc===6)||(dr>=2&&dr<=4&&dc>=2&&dc<=4)};
+   let on;
+   if(inF(0,0))on=ring(0,0);else if(inF(0,14))on=ring(0,14);else if(inF(14,0))on=ring(14,0);
+   else on=rnd()>0.52;
+   if(!on)i.style.background='transparent';q.appendChild(i);}})();
+
+setInterval(()=>{const d=new Date();
+  document.getElementById('clk').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');},1000);
+
+/* nav */
+let cur='home';
+function go(id){if(cur===id)return;
+  const o=document.getElementById('s-'+cur),n=document.getElementById('s-'+id);
+  if(o)o.classList.remove('on');
+  if(n){n.classList.remove('on');void n.offsetWidth;n.classList.add('on');n.scrollTop=0;}
+  cur=id;
+  document.querySelectorAll('#nav button[data-s]').forEach(b=>b.classList.toggle('on',b.dataset.s===id));
+  document.getElementById('fab').classList.toggle('on',id==='qr');}
+document.querySelectorAll('#nav button[data-s]').forEach(b=>b.onclick=()=>go(b.dataset.s));
+
+/* mode */
+const msw=document.getElementById('msw'),mp=document.getElementById('mpill');
+function mv(b){mp.style.width=b.offsetWidth+'px';mp.style.transform='translateX('+(b.offsetLeft-4)+'px)';}
+let mode='tourist';
+msw.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  msw.querySelectorAll('button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  mv(b);mode=b.dataset.m;applyMode();});
+setTimeout(()=>mv(msw.querySelector('.on')),50);
+
+function applyMode(){
+  const T=mode==='tourist';
+  document.getElementById('greet').textContent=T?'Привет, Danil':'С возвращением, Danil';
+  document.getElementById('gsub').textContent=T?'3-й день на Пхукете · 12 мест рядом':'14 визитов · 3 любимых места';
+  document.getElementById('hlbl').textContent=T?'Ваши бонусы':'Ваши бонусы · уровень «Свой»';
+  document.getElementById('hsub').textContent=T?'Можно потратить в 4 заведениях рядом':'Кэшбэк 12% вместо 10% — за то, что вы часто ходите';
+  document.getElementById('sec1').innerHTML=T?'Успейте сегодня <span class="cnt">3</span>':'Мы подобрали для вас <span class="cnt">3</span>';
+  document.getElementById('modeT').textContent=T?'Вы гость острова':'Вы здесь свой';
+  document.getElementById('modeD').textContent=T
+    ?'Показываем короткие акции и мгновенную выгоду'
+    :'Копите бонусы, растите в уровне, получайте персональные предложения';
+  document.getElementById('modeIco').textContent=T?'🏝️':'🏠';
+  const m=document.querySelector('.hero .money');
+  m.style.background=T?'linear-gradient(135deg,#34E1B4,#22D3EE)':'linear-gradient(135deg,#FFB84D,#FF7A6B)';
+  m.style.color=T?'#03120F':'#2A1000';
+  document.querySelector('.hero').style.boxShadow=T
+    ?'0 22px 52px -20px rgba(52,225,180,.5)':'0 22px 52px -20px rgba(255,150,90,.5)';
+  document.body.style.setProperty('--ctabg',T?'#03120F':'#241100');
+  document.body.style.setProperty('--ctatx',T?'#34E1B4':'#FFB84D');
+}
+
+/* theme */
+let light=false;
+function theme(){
+  light=!light;
+  document.body.dataset.theme=light?'light':'';
+  document.getElementById('thbtn').textContent=light?'☀️':'🌙';
+  document.getElementById('thIco').textContent=light?'☀️':'🌙';
+  document.getElementById('thSd').textContent=light?'Светлая':'Тёмная. По умолчанию — как в системе';
+  document.getElementById('thTgl').classList.toggle('on',light);
+  document.getElementById('thDemo').textContent=light?'🌙 Тёмная тема':'☀️ Светлая тема';
+  applyMode();
+}
+
+/* earn */
+let pts=240,sn=2;
+function earn(){
+  const add=mode==='resident'?288:240,from=pts;pts+=add;
+  const el=document.getElementById('pts'),t0=performance.now();
+  (function f(t){const k=Math.min(1,(t-t0)/900),e=1-Math.pow(1-k,3);
+    el.textContent=Math.round(from+(pts-from)*e).toLocaleString('ru-RU');
+    if(k<1)requestAnimationFrame(f);})(t0);
+  const t=document.getElementById('toast');
+  document.getElementById('tv').textContent='+'+add+' ฿';
+  document.getElementById('ts').textContent=mode==='resident'
+    ?'Kata Beach Kitchen · кэшбэк 12%':'Kata Beach Kitchen · чек 2 400 ฿';
+  t.classList.add('on');setTimeout(()=>t.classList.remove('on'),2600);
+  const P=document.getElementById('parts'),C=['#34E1B4','#22D3EE','#FFB84D','#FF7A6B','#A78BFA'];
+  for(let i=0;i<22;i++){const p=document.createElement('span');p.className='pt';
+    p.style.background=C[i%C.length];const a=(Math.PI*2*i)/22+Math.random();
+    p.style.setProperty('--dx',(Math.cos(a)*(90+Math.random()*110)).toFixed(0)+'px');
+    p.style.setProperty('--dy',(Math.sin(a)*(70+Math.random()*130)+40).toFixed(0)+'px');
+    p.style.setProperty('--rot',(Math.random()*540-270)+'deg');
+    p.style.animationDelay=(Math.random()*.12)+'s';P.appendChild(p);setTimeout(()=>p.remove(),1500);}
+  if(sn<12){sn++;document.getElementById('sn').textContent=sn;
+    document.getElementById('ringp').style.strokeDashoffset=(170-170*sn/12).toFixed(1);
+    document.getElementById('progtxt').textContent='Осталось '+(12-sn)+' визитов — и массаж бесплатно';}
+  if(cur!=='home')go('home');
+}
+function reset(){pts=240;sn=2;document.getElementById('pts').textContent='240';
+  document.getElementById('sn').textContent='2';
+  document.getElementById('ringp').style.strokeDashoffset='142';
+  document.getElementById('progtxt').textContent='Осталось 10 визитов — и массаж бесплатно';}
+
+/* chips / toggles */
+document.querySelectorAll('.chips').forEach(g=>g.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+  g.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');}));
+function tg(r){const t=r.querySelector('.tgl');if(t)t.classList.toggle('on');}
+document.querySelectorAll('#lgs .lg').forEach(l=>l.onclick=e=>{e.stopPropagation();
+  document.querySelectorAll('#lgs .lg').forEach(x=>x.classList.remove('on'));l.classList.add('on');});
+
+/* sheets */
+const S={
+ how:{h:'💡',g:'var(--grad)',t:'Как это работает',s:'Три шага, больше ничего не нужно',
+   steps:[['1','Покажите свой код на кассе — он всегда во вкладке в центре меню'],
+          ['2','Оплатите как обычно, любым способом'],
+          ['3','Бонусы придут сразу. Тратить можно в любом заведении, где вы их накопили']],
+   note:'Приложение ставить не нужно. Если хотите, положите карту в Apple Wallet — тогда баланс будет виден на заблокированном экране.',
+   b:'Понятно',b2:''},
+ o1:{h:'🍜',g:'linear-gradient(140deg,#FF7A6B,#FFB84D)',t:'Вернём 200 ฿',s:'Kata Beach Kitchen · только завтра',
+   steps:[['1','Закажите сегодня на 800 ฿ или больше'],['2','Покажите свой код кассиру'],
+          ['3','Завтра придёте — 200 ฿ спишутся со счёта']],
+   kv:[['Осталось','19 ч 24 мин'],['Промокод','KATA-200'],['До заведения','180 м']],
+   b:'Активировать',b2:'Как дойти'},
+ o2:{h:'🛵',g:'linear-gradient(140deg,#A78BFA,#22D3EE)',t:'Шлем и дождевик даром',s:'Phuket Ride · подарок новым гостям',
+   steps:[['1','Возьмите байк в аренду от 2 суток'],['2','Покажите код при получении'],
+          ['3','Шлем и дождевик отдадут бесплатно']],
+   kv:[['Осталось подарков','43 из 100'],['Байк','от 250 ฿ / сутки'],['До заведения','520 м']],
+   b:'Забрать подарок',b2:'Написать им'},
+ o3:{h:'💆',g:'linear-gradient(140deg,#34E1B4,#22D3EE)',t:'Массаж дешевле на 20%',s:'Sabai Thai Massage · до 17:00',
+   steps:[['1','Придите с 14:00 до 17:00 — сейчас 15:20, успеваете'],['2','Покажите код'],
+          ['3','Скидка применится сама']],
+   kv:[['Тайский массаж','240 ฿ вместо 300 ฿'],['До заведения','340 м']],
+   b:'Записаться на 16:00',b2:'Другое время'},
+ o4:{h:'💆',g:'linear-gradient(140deg,#34E1B4,#22D3EE)',t:'11-й массаж бесплатно',s:'Sabai Thai Massage',
+   steps:[['1','Просто ходите — штампы ставятся сами при оплате'],
+          ['2','Два штампа вам уже подарили при регистрации'],
+          ['3','На 12-м визите массаж будет бесплатным']],
+   kv:[['Ваш прогресс','2 из 12'],['Карта действует','6 месяцев']],
+   b:'Показать мой код',b2:''},
+ o5:{h:'☕',g:'linear-gradient(140deg,#FFB84D,#FF7A6B)',t:'Кофе и круассан 120 ฿',s:'Slow Coffee Kata · до 11:00',
+   steps:[['1','Придите утром, до 11:00'],['2','Покажите код'],['3','Заплатите 120 ฿ вместо 185 ฿']],
+   kv:[['Экономия','65 ฿'],['До заведения','610 м']],b:'Напомнить завтра утром',b2:''},
+ v1:{h:'🍜',g:'linear-gradient(140deg,#FF7A6B,#FFB84D)',t:'Kata Beach Kitchen',s:'Тайская кухня · открыто до 23:00',
+   kv:[['Ваши бонусы здесь','120 ฿'],['Возвращают','10% с чека'],['Средний чек','около 650 ฿'],
+       ['Телефон','+66 76 330 118'],['До заведения','180 м']],
+   note:'Заказ идёт напрямую в заведение — без комиссии агрегатора, и баллы начислятся так же, как в зале.',
+   b:'🛎 Заказать из меню',b2:'Показать мой код'},
+ v2:{h:'💆',g:'linear-gradient(140deg,#34E1B4,#22D3EE)',t:'Sabai Thai Massage',s:'Спа и массаж · открыто до 22:00',
+   kv:[['Ваши визиты','2 из 12'],['Сейчас действует','−20% до 17:00'],['Тайский массаж','300 ฿ / час'],['До заведения','340 м']],
+   b:'Записаться',b2:'Показать мой код'},
+ v3:{h:'🛵',g:'linear-gradient(140deg,#A78BFA,#22D3EE)',t:'Phuket Ride',s:'Аренда байков и авто',
+   kv:[['Подарок новичку','шлем и дождевик'],['Байк','250 ฿ / сутки'],['Вернут за продление','300 ฿ от 3 суток'],['До заведения','520 м']],
+   b:'Забрать подарок',b2:'Написать им'},
+ v4:{h:'☕',g:'linear-gradient(140deg,#FFB84D,#FF7A6B)',t:'Slow Coffee Kata',s:'Кофейня · открыто до 18:00',
+   kv:[['Завтрак до 11:00','120 ฿'],['Возвращают','8% с чека'],['Wi-Fi','есть'],['До заведения','610 м']],
+   b:'Показать мой код',b2:'Как дойти'},
+ v5:{h:'🍣',g:'linear-gradient(140deg,#22D3EE,#A78BFA)',t:'Kata Sushi Bar',s:'Суши и роллы · есть доставка',
+   kv:[['Возвращают','10% с чека'],['Доставка','от 300 ฿, около 30 мин'],['Сет «Ката»','590 ฿'],['До заведения','780 м']],
+   note:'Заказ идёт напрямую в заведение — без комиссии агрегатора, и баллы начислятся так же, как в зале.',
+   b:'🛎 Заказать доставку',b2:'Показать мой код'}
+};
+function sheet(k){const d=S[k];if(!d)return;
+  let html='<div class="hero2" style="background:'+d.g+'">'+d.h+'</div>'+
+    '<div style="font-size:21px;font-weight:750;letter-spacing:-.03em">'+d.t+'</div>'+
+    '<div style="color:var(--tx3);font-size:12.5px;margin:5px 0 14px">'+d.s+'</div>';
+  if(d.steps){html+='<div style="font-size:11.5px;font-weight:750;letter-spacing:.09em;text-transform:uppercase;color:var(--tx3);margin-bottom:6px">Как получить</div>';
+    d.steps.forEach(s=>html+='<div class="stepn"><div class="sn">'+s[0]+'</div><div class="sx">'+s[1]+'</div></div>');}
+  if(d.kv){html+='<div style="height:12px"></div>';
+    d.kv.forEach(r=>html+='<div class="kv"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>');}
+  if(d.note)html+='<div style="background:var(--surf2);border-left:2px solid var(--mint);border-radius:0 11px 11px 0;padding:12px 14px;color:var(--tx2);font-size:12.5px;line-height:1.5;margin-top:14px">'+d.note+'</div>';
+  html+='<button class="btn" onclick="closeSheet()">'+d.b+'</button>';
+  if(d.b2)html+='<button class="btn g" onclick="closeSheet()">'+d.b2+'</button>';
+  document.getElementById('shc').innerHTML=html;
+  document.getElementById('bd').classList.add('on');document.getElementById('sh').classList.add('on');}
+function closeSheet(){document.getElementById('bd').classList.remove('on');
+  document.getElementById('sh').classList.remove('on');}
+
+/* coach */
+const C=[['👋','Ничего не нужно устанавливать','Это просто страница. Отсканировали код в кафе — и карта уже ваша.'],
+ ['📱','Одна кнопка — и всё','«Показать код на кассе». Больше от вас ничего не требуется.'],
+ ['🏝️','Одна карта на весь остров','Бонусы копятся в каждом заведении сети. Рядом с вами их уже 12.']];
+let ci=0;
+function coachStart(){ci=0;paint();document.getElementById('coach').classList.add('on');}
+function coachNext(){ci++;if(ci>=C.length){coachEnd();return;}paint();}
+function coachEnd(){document.getElementById('coach').classList.remove('on');}
+function paint(){document.getElementById('cem').textContent=C[ci][0];
+  document.getElementById('cht').textContent=C[ci][1];
+  document.getElementById('chp').textContent=C[ci][2];
+  document.getElementById('cbtn').textContent=ci===C.length-1?'Начать':'Дальше';
+  document.getElementById('dots').querySelectorAll('i').forEach((d,i)=>d.classList.toggle('on',i===ci));}
+setTimeout(coachStart,700);
+</script>
+</body>
+</html>
