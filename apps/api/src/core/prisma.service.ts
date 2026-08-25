@@ -1,0 +1,137 @@
+import { Injectable, Logger } from '@nestjs/common'
+import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { PrismaPg } from '@prisma/adapter-pg'
+
+import { getEnv } from '../common/config/env'
+import { PrismaClient } from '../generated/prisma/client'
+
+/**
+ * PrismaClient, завёрнутый в провайдер Nest.
+ *
+ * Жизненный цикл. Соединение открывается на `onModuleInit` и закрывается на
+ * `onModuleDestroy`. Второе работает только потому, что в `main.ts` вызван
+ * `app.enableShutdownHooks()`: без него Nest не подписывается на SIGTERM, и Railway
+ * при деплое убивал бы процесс с открытым пулом посреди транзакции.
+ *
+ * Почему driver adapter. В Prisma 7 блок `datasource` больше не принимает `url`:
+ * строка подключения приходит из `prisma.config.ts` для CLI и из адаптера — для
+ * рантайма. Отсюда `@prisma/adapter-pg`, а не «магическая» переменная окружения
+ * внутри клиента.
+ */
+
+/** Видно в pg_stat_activity: понятно, чьи соединения висят в базе. */
+const APPLICATION_NAME = 'positive-loyalty-api'
+
+const POSTGRES_SCHEMES = ['postgres:', 'postgresql:']
+
+/**
+ * Разбирает строку подключения.
+ *
+ * Значение наружу не отдаётся никогда: в строке лежит пароль, а он не попадает
+ * ни в логи, ни в тексты ошибок (docs/05, раздел 10). Поэтому сообщения об ошибке
+ * называют переменную, но не показывают её содержимое.
+ *
+ * Политика отсутствующей переменной различается по окружению — ровно как у
+ * CORS_ORIGINS в `common/config/env.ts`:
+ *
+ *   • production — падаем на старте. API без базы не работает, и узнать об этом
+ *     на первом чеке в кассе хуже, чем на деплое;
+ *   • dev, test и CI — переменной может не быть вовсе (в CI её и нет), и это не
+ *     повод ронять процесс: /health обязан отвечать без базы. Ошибку пишем в лог,
+ *     а первое же обращение к базе честно упадёт на соединении.
+ *
+ * Кривая строка — ошибка в любом окружении: опечатка остаётся опечаткой и на CI.
+ *
+ * TODO(Задача 3): когда `common/config/env.ts` обзаведётся секцией базы, перенести
+ * разбор туда — разбор окружения должен жить в одном месте.
+ */
+const readRawDatabaseUrl = (): string | undefined => {
+  const raw = process.env.DATABASE_URL?.trim()
+  return raw === undefined || raw.length === 0 ? undefined : raw
+}
+
+const resolveDatabaseUrl = (): string | undefined => {
+  const raw = readRawDatabaseUrl()
+
+  if (raw === undefined) {
+    if (getEnv().nodeEnv === 'production') {
+      throw new Error(
+        'Некорректная конфигурация окружения — DATABASE_URL обязателен в production: ' +
+          'API не поднимается без строки подключения к PostgreSQL',
+      )
+    }
+
+    return undefined
+  }
+
+  let scheme: string
+
+  try {
+    scheme = new URL(raw).protocol
+  } catch {
+    throw new Error('Некорректная конфигурация окружения — DATABASE_URL не является URL')
+  }
+
+  if (!POSTGRES_SCHEMES.includes(scheme)) {
+    throw new Error(
+      'Некорректная конфигурация окружения — DATABASE_URL должен начинаться с postgresql://',
+    )
+  }
+
+  return raw
+}
+
+/**
+ * Опции клиента.
+ *
+ * `log: ['error']` — сознательное ограничение. Уровень `query` печатает SQL вместе со
+ * связанными параметрами, а среди них телефоны гостей и коды подтверждения; это прямое
+ * нарушение железного правила 5 (CLAUDE.md). Включать его можно только точечно и только
+ * локально, никогда не в общей конфигурации.
+ *
+ * `errorFormat: 'minimal'` — по той же причине: `pretty` подставляет в текст ошибки
+ * значения аргументов запроса.
+ */
+const createClientOptions = (): ConstructorParameters<typeof PrismaClient>[0] => ({
+  adapter: new PrismaPg({
+    connectionString: resolveDatabaseUrl(),
+    application_name: APPLICATION_NAME,
+  }),
+  log: ['error'],
+  errorFormat: 'minimal',
+})
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PrismaService.name)
+
+  constructor() {
+    // Разбор конфигурации внутри аргумента super(), а не отдельной строкой выше:
+    // так конструктор остаётся тривиальным, а неверная конфигурация роняет процесс
+    // на этапе создания провайдера, до того как порт начнёт слушаться.
+    super(createClientOptions())
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (readRawDatabaseUrl() === undefined) {
+      // Сюда попадаем только вне production: resolveDatabaseUrl() уже отработал.
+      this.logger.error(
+        'DATABASE_URL не задан — обращения к базе будут падать на соединении. ' +
+          'Для локальной работы скопируйте .env.example в .env',
+      )
+      return
+    }
+
+    // $connect у driver adapter поднимает пул, но сокет открывает лениво — первым
+    // запросом. То есть это НЕ проба доступности базы: если Postgres лежит, узнаем
+    // об этом на первом запросе, а не здесь. Настоящая проба (SELECT 1) — дело
+    // readiness-эндпоинта, она приедет вместе с расширением /health.
+    await this.$connect()
+    this.logger.log('Пул соединений с PostgreSQL создан')
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.$disconnect()
+    this.logger.log('Соединение с PostgreSQL закрыто')
+  }
+}

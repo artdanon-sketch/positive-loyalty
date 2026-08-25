@@ -19,8 +19,15 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
-/** Конфиги сборщиков и тест-раннеров: код на TypeScript, но не приложение. */
-const TOOLING_FILES = ['**/vite.config.ts', '**/vitest.config.ts', '**/*.config.mts']
+/** Конфиги сборщиков, тест-раннеров и CLI: код на TypeScript, но не приложение. */
+const TOOLING_FILES = [
+  '**/vite.config.ts',
+  '**/vitest.config.ts',
+  '**/*.config.mts',
+  // Конфиг Prisma CLI лежит в корне и ни в один tsconfig не входит:
+  // типизированный линт на нём падает с «not found by the project service».
+  'prisma.config.ts',
+]
 
 /** Тесты: и юнит, и e2e, и файлы подготовки окружения. */
 const TEST_FILES = [
@@ -44,6 +51,10 @@ export default tseslint.config(
       '**/.wrangler/**',
       'docs/**',
       'pnpm-lock.yaml',
+      // Клиент Prisma собирается генератором из prisma/schema.prisma.
+      // Файлы помечены @ts-nocheck и eslint-disable самим генератором;
+      // линтить их — тратить время CI на чужой код.
+      '**/generated/prisma/**',
     ],
   },
 
