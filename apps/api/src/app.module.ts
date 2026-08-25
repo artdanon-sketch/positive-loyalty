@@ -1,13 +1,17 @@
-import { Module } from '@nestjs/common'
+import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { APP_GUARD } from '@nestjs/core'
 
+import { AdminModule } from './admin/admin.module'
+import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware'
+import { TenantGuard } from './common/tenant/tenant.guard'
 import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
 
 /**
- * Корневой модуль. Сейчас в нём конфигурация, health-check и ядро (Prisma + ledger):
- * остальные домены (rules, identity, risk, comms, integrations, admin, pos, platform)
- * приезжают следующими задачами дорожной карты.
+ * Корневой модуль. Сейчас в нём конфигурация, health-check, ядро (Prisma + ledger)
+ * и API бэк-офиса: остальные домены (rules, identity, risk, comms, integrations,
+ * pos, platform) приезжают следующими задачами дорожной карты.
  */
 @Module({
   imports: [
@@ -22,6 +26,27 @@ import { HealthModule } from './health/health.module'
     // а в process.env её кладёт именно ConfigModule.
     CoreModule,
     HealthModule,
+    AdminModule,
+  ],
+  providers: [
+    {
+      /**
+       * Гвард тенанта — ГЛОБАЛЬНЫЙ, и это принципиально.
+       *
+       * Умолчание «закрыто», исключения помечаются `@Public()` поштучно. Обратный
+       * подход — вешать гвард на каждый контроллер — держится на том, что никто
+       * не забудет, а забывают всегда: новый контроллер без гварда выглядит
+       * работающим и молча отдаёт данные без токена.
+       */
+      provide: APP_GUARD,
+      useClass: TenantGuard,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // Контекст открывается на ВСЕХ маршрутах, включая публичные: сквозной
+    // requestId нужен в логах и на /health тоже. Решение о доступе принимает гвард.
+    consumer.apply(TenantContextMiddleware).forRoutes('*')
+  }
+}

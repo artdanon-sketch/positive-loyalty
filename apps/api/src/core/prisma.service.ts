@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 
 import { getEnv } from '../common/config/env'
 import { PrismaClient } from '../generated/prisma/client'
+import type { Prisma } from '../generated/prisma/client'
 
 /**
  * PrismaClient, завёрнутый в провайдер Nest.
@@ -133,5 +134,40 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect()
     this.logger.log('Соединение с PostgreSQL закрыто')
+  }
+
+  /**
+   * Рубеж 2 из docs/01, раздел 5: выполняет работу под включённым RLS.
+   *
+   * ПОЧЕМУ ОБЯЗАТЕЛЬНО ТРАНЗАКЦИЯ. Политики читают `current_setting('app.tenant_id')`,
+   * а выставить её можно только через `SET LOCAL` — то есть внутри транзакции.
+   * Обычный `SET` привязан к соединению, а соединения берутся из пула и возвращаются
+   * туда же: следующий запрос другого тенанта получил бы чужое значение. Это не
+   * теоретический риск, а самый частый способ сломать RLS в связке с пулером.
+   *
+   * `set_config(..., true)` — тот же `SET LOCAL` в виде функции: третий аргумент
+   * `is_local = true` означает «до конца транзакции».
+   *
+   * Цена — транзакция на каждое чтение. Она осознанная: без неё политики не
+   * применяются вовсе, а «RLS включён, но не действует» хуже отсутствующего RLS,
+   * потому что создаёт ложную уверенность.
+   */
+  async forTenant<T>(
+    tenantId: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    if (tenantId.trim().length === 0) {
+      throw new Error(
+        'forTenant вызван без tenantId. Пустое значение выключило бы политики RLS ' +
+          'и вернуло данные всех заведений сразу.',
+      )
+    }
+
+    return this.$transaction(async (tx) => {
+      // Параметризованный вызов, а не интерполяция в строку: tenantId приходит из
+      // токена, но подставлять его в SQL текстом всё равно нельзя.
+      await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`
+      return fn(tx)
+    })
   }
 }

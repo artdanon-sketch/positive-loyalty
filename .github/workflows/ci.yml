@@ -148,10 +148,28 @@ jobs:
           DATABASE_URL_TEST: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_test?schema=public
           PGPASSWORD: postgres
         run: |
+          # Пароль роли и секрет токена ГЕНЕРИРУЮТСЯ здесь, а не лежат в файле.
+          #
+          # Сначала они были вписаны в этот workflow строками — и gitleaks
+          # справедливо остановил PR: даже одноразовые учётные данные в
+          # репозитории это учётные данные в репозитории. Расширять allowlist
+          # было бы лечением симптома: сканер начал бы пропускать целый класс
+          # находок ради двух строк, которых вообще не должно существовать.
+          APP_PASSWORD="$(openssl rand -hex 16)"
+          export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
+          export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/positive_loyalty_test?schema=public"
+
           # Сервис создаёт только positive_loyalty (POSTGRES_DB). Тестовую заводим рядом.
           psql -h 127.0.0.1 -U postgres -d postgres -c 'CREATE DATABASE positive_loyalty_test;'
+
           # Миграция идёт на ТЕСТОВУЮ базу: именно к ней подключаются тесты.
+          # Она же создаёт роль positive_app — без пароля и без права входа.
           DATABASE_URL="$DATABASE_URL_TEST" pnpm db:deploy
+
+          # Вход и пароль выдаём отдельным шагом: в миграции их быть не должно.
+          psql -h 127.0.0.1 -U postgres -d positive_loyalty_test \
+            -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
+
           pnpm --filter @positive/api run test:integration
 
       - name: Build
