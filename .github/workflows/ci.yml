@@ -23,11 +23,19 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Минимум прав. checkout читает код, gitleaks читает историю — записи не нужно
-# никому. Комментарии gitleaks в PR выключены ниже, поэтому pull-requests: write
-# здесь не требуется.
+# Минимум прав, но не меньше необходимого.
+#
+# contents: read       — checkout читает код и историю.
+# pull-requests: read  — на событии pull_request gitleaks-action запрашивает
+#                        GET /repos/:owner/:repo/pulls/:n/commits, чтобы понять,
+#                        какие коммиты сканировать. Без этого права шаг падает
+#                        с 403 «Resource not accessible by integration».
+#                        Проверено на первом же прогоне: PR #1, run 32812968330.
+#
+# pull-requests: write НЕ нужен: комментарии gitleaks в PR выключены ниже.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   check:
@@ -37,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # gitleaks сканирует историю коммитов, а не только рабочее дерево,
           # поэтому мелкий клон не годится.
@@ -46,10 +54,10 @@ jobs:
       - name: Setup pnpm
         # Версию здесь НЕ дублируем: action читает packageManager из package.json.
         # Один источник правды — иначе рано или поздно разъедется.
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -80,7 +88,7 @@ jobs:
         #     GITLEAKS_LICENSE, иначе шаг падает с ошибкой лицензии.
         # Если переносим репозиторий под организацию — сначала получаем ключ на
         # gitleaks.io, кладём в Secrets репозитория как GITLEAKS_LICENSE.
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
