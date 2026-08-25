@@ -11,8 +11,14 @@
 name: CI
 
 on:
+  # У pull_request фильтра по базовой ветке НЕТ — и это осознанно.
+  #
+  # Было `branches: [main]`, и гейт молча не срабатывал на стопочных PR:
+  # PR #2 с базой chore/monorepo-ci не запустил ни одной проверки, а GitHub
+  # показал mergeStateStatus = CLEAN. PR без проверок выглядит ровно так же
+  # зелено, как проверенный, — и мержится так же легко.
+  # Стопки PR это нормальная практика, гейт обязан работать для всех.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
@@ -42,6 +48,28 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Postgres для интеграционных тестов ledger.
+    # docs/06, раздел 3: «test:integration — поднимает postgres в сервисе».
+    # Без него четыре обязательных теста Задачи 2 гоняются только на машине
+    # разработчика, то есть не гоняются: сломать их может кто угодно и заметит
+    # это лично он, а не гейт.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: positive_loyalty_test
+        ports:
+          - 5432:5432
+        # Без healthcheck шаги стартуют раньше, чем база готова принимать
+        # соединения, и первый же тест падает на ECONNREFUSED.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -99,6 +127,21 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Test integration
+        # Четыре обязательных теста Задачи 2: идемпотентность, гонка двух
+        # начислений, компенсация возврата, сверка кэша с журналом.
+        # docs/06, раздел 2: «Если тест на гонку не проходит — вся остальная
+        # работа бессмысленна».
+        #
+        # Миграция накатывается отдельным шагом до тестов: append-only задаётся
+        # триггерами из migration.sql, и без них тесты проверяли бы пустоту.
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_test?schema=public
+          DATABASE_URL_TEST: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_test?schema=public
+        run: |
+          pnpm db:deploy
+          pnpm --filter @positive/api run test:integration
 
       - name: Build
         run: pnpm build
