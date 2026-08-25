@@ -2,10 +2,15 @@ import { Controller, Get } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import type { HealthResponse } from '@positive/contracts'
 
+import { Public } from '../common/tenant/public.decorator'
+
 import { HealthService } from './health.service'
 
 @ApiTags('health')
 @Controller('health')
+// Единственный публичный маршрут: на него смотрит healthcheck Railway,
+// у которого токена нет и быть не может.
+@Public()
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
