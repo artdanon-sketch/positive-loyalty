@@ -122,6 +122,9 @@ model Tenant {
 
   memberships   Membership[]
   ledgerEntries LedgerEntry[]
+  staff         Staff[]
+  staffDevices  StaffDevice[]
+  sessions      Session[]
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -166,6 +169,11 @@ model Membership {
   ledgerEntries LedgerEntry[]
 
   @@unique([guestId, tenantId])
+  // Под политику RLS на Guest: она делает EXISTS по участиям на каждую строку.
+  // Индекс создан миграцией 20260826120000_tenant_isolation_rls; объявлен здесь,
+  // иначе следующий diff посчитал бы его лишним и удалил — тихая деградация
+  // в последовательный скан на каждом чтении гостя.
+  @@index([guestId, tenantId])
   @@index([tenantId, lastVisitAt])
 }
 
@@ -219,4 +227,116 @@ model LedgerEntry {
   @@index([tenantId, createdAt])
   @@index([membershipId, createdAt])
   @@index([guestId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Аутентификация и роли
+// docs/05_Безопасность_и_антифрод.md, разделы 2 и 3
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Роли из docs/05, раздел 3. Матрица прав — там же.
+enum Role {
+  CASHIER
+  MANAGER
+  OWNER
+  /// Отдельный контур: свой поддомен, IP-allowlist, обязательная 2FA.
+  PLATFORM_ADMIN
+}
+
+/// Сотрудник заведения.
+///
+/// Владелец входит через OAuth POSitive POS и в этой таблице появляется без PIN.
+/// Кассир и менеджер входят по PIN, и ТОЛЬКО с зарегистрированного устройства.
+model Staff {
+  id       String @id @default(uuid())
+  tenantId String
+  role     Role   @default(CASHIER)
+
+  displayName String
+  /// PII. В логи не попадает, наружу отдаётся маскированным.
+  phoneE164   String?
+
+  /// PIN не хранится. Здесь производная scrypt вместе с солью и параметрами.
+  /// null у владельца: он входит не по PIN.
+  pinHash           String?
+  /// Сколько неверных PIN подряд. Сбрасывается успешным входом.
+  pinFailedAttempts Int       @default(0)
+  /// До какого момента вход заблокирован после серии неудач.
+  pinLockedUntil    DateTime?
+
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  devices  StaffDevice[]
+  sessions Session[]
+
+  @@index([tenantId, role])
+}
+
+/// Устройство, с которого сотруднику разрешено входить.
+///
+/// Регистрирует владелец. Без записи здесь PIN не принимается: иначе кассир
+/// заходит с домашнего телефона и начисляет себе ночью (docs/05, раздел 2).
+model StaffDevice {
+  id       String @id @default(uuid())
+  tenantId String
+  staffId  String
+
+  /// Отпечаток устройства, приходит от клиента кассы. Уникален глобально:
+  /// одно физическое устройство не должно числиться за двумя заведениями.
+  deviceId String @unique
+  /// Человекочитаемая метка для списка в бэк-офисе: «Планшет у бара».
+  label    String
+
+  isActive     Boolean   @default(true)
+  registeredAt DateTime  @default(now())
+  /// Кто зарегистрировал. Нужен аудиту.
+  registeredBy String?
+  revokedAt    DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, staffId])
+}
+
+/// Сессия: одно звено цепочки refresh-токенов.
+///
+/// Каждое обновление выдаёт новый refresh и инвалидирует старый (ротация).
+/// Повторное использование отозванного — сигнал кражи: отзывается ВСЯ цепочка
+/// (`familyId`), а не только это звено (docs/05, раздел 2).
+model Session {
+  id       String @id @default(uuid())
+  tenantId String
+
+  /// Кто владеет сессией. Гость появится вместе с OTP-входом.
+  staffId String?
+
+  /// Цепочка ротаций. Общий для всех звеньев одного входа.
+  familyId String
+  /// Предыдущее звено. Позволяет восстановить порядок при разборе инцидента.
+  parentId String? @unique
+
+  /// Сам токен не хранится — только SHA-256 от него.
+  /// Refresh высокоэнтропийный и случайный, поэтому медленный KDF здесь не нужен:
+  /// перебор невозможен, а быстрый хеш не даёт сравнивать за разное время.
+  refreshTokenHash String @unique
+
+  /// Привязка к устройству: refresh с чужого устройства не принимается.
+  deviceId String?
+
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime
+  usedAt        DateTime?
+  revokedAt     DateTime?
+  /// TOKEN_ROTATED | TOKEN_REUSED | LOGOUT | DEVICE_REVOKED | STAFF_DISABLED
+  revokedReason String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  staff  Staff? @relation(fields: [staffId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, familyId])
+  @@index([staffId, issuedAt])
 }

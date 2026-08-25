@@ -3,6 +3,8 @@ import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nest
 import { AdminListQuery } from '@positive/contracts'
 import type { AdminLedgerEntry, AdminLedgerList, AdminMembership } from '@positive/contracts'
 
+import { Roles } from '../common/tenant/roles.decorator'
+
 import { AdminService } from './admin.service'
 
 /**
@@ -16,6 +18,9 @@ import { AdminService } from './admin.service'
  */
 @ApiTags('admin')
 @Controller('admin')
+// Матрица прав из docs/05, раздел 3: «Аналитика точки» — менеджер и владелец.
+// Кассиру бэк-офис не положен: он работает на кассе, а не смотрит выручку.
+@Roles('MANAGER', 'OWNER')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
