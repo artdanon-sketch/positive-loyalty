@@ -60,7 +60,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: positive_loyalty_test
+          POSTGRES_DB: positive_loyalty
         ports:
           - 5432:5432
         # Без healthcheck шаги стартуют раньше, чем база готова принимать
@@ -136,11 +136,22 @@ jobs:
         #
         # Миграция накатывается отдельным шагом до тестов: append-only задаётся
         # триггерами из migration.sql, и без них тесты проверяли бы пустоту.
+        #
+        # ДВЕ РАЗНЫЕ БАЗЫ, а не одна. Сначала я указал обе переменные на
+        # positive_loyalty_test, и прогон отбила защита из
+        # test/integration/setup-integration-env.ts: тесты пишут в журнал
+        # строки, которые физически нельзя удалить (append-only), поэтому
+        # общая база с рабочей копилась бы мусором навсегда.
+        # Проверка сработала как задумано — оставляем разведение баз.
         env:
-          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_test?schema=public
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty?schema=public
           DATABASE_URL_TEST: postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_test?schema=public
+          PGPASSWORD: postgres
         run: |
-          pnpm db:deploy
+          # Сервис создаёт только positive_loyalty (POSTGRES_DB). Тестовую заводим рядом.
+          psql -h 127.0.0.1 -U postgres -d postgres -c 'CREATE DATABASE positive_loyalty_test;'
+          # Миграция идёт на ТЕСТОВУЮ базу: именно к ней подключаются тесты.
+          DATABASE_URL="$DATABASE_URL_TEST" pnpm db:deploy
           pnpm --filter @positive/api run test:integration
 
       - name: Build
