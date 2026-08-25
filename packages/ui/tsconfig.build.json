@@ -1,0 +1,13 @@
+{
+  // Сборка публикуемого dist. Приложения потребляют собранный dist, а не исходники:
+  // иначе tsc в apps/* упрётся в rootDir чужого пакета.
+  // tokens.css через tsc не проходит — он отдаётся исходником, см. exports в package.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

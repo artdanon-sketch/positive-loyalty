@@ -1,0 +1,11 @@
+{
+  "name": "@positive/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Общие настройки инструментов: tsconfig-пресеты и prettier",
+  "devDependencies": {
+    "prettier": "3.9.6"
+  }
+}

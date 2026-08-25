@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Локальная среда разработки. docs/01_Архитектура_и_данные.md, раздел 7:
+#
+#   local  →  API localhost:3000 · фронты localhost:5173 / 5174 · docker postgres
+#
+# Здесь живут только stateful-зависимости: PostgreSQL и Redis. Сами приложения
+# запускаются через `pnpm dev` на хосте — так работает hot reload и отладчик.
+#
+#   docker compose up -d      поднять
+#   docker compose ps         посмотреть здоровье
+#   docker compose logs -f    логи
+#   docker compose down       остановить (данные остаются в томах)
+#   docker compose down -v    остановить и стереть данные
+#
+# ⚠ ПАРОЛИ НИЖЕ — ТОЛЬКО ДЛЯ LOCAL. Это не секреты: они совпадают с дефолтами
+# в .env.example и специально сделаны очевидными. Боевые значения живут в
+# Railway env, Cloudflare env и Supabase Vault и в репозиторий не попадают
+# никогда (docs/05_Безопасность_и_антифрод.md, раздел 9).
+# Порты слушают только 127.0.0.1: база разработчика не должна торчать в
+# кафейный Wi-Fi.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: positive-loyalty
+
+services:
+  postgres:
+    # Версия совпадает с Supabase — расхождение мажора рано или поздно
+    # выстреливает разницей в поведении миграций.
+    image: postgres:16-alpine
+    container_name: positive-loyalty-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres # local only
+      POSTGRES_DB: positive_loyalty
+      # Ускоряет первый запуск и делает сортировку предсказуемой между машинами.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d positive_loyalty']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    command:
+      # Логируем всё, что дольше 200 мс: медленный запрос видно сразу,
+      # а не когда он всплывёт на проде.
+      - postgres
+      - -c
+      - log_min_duration_statement=200
+      # Тестам ledger нужны параллельные Serializable-транзакции.
+      - -c
+      - max_connections=200
+
+  redis:
+    # Очереди BullMQ и rate limit. В облаке — Upstash (rediss://).
+    image: redis:7-alpine
+    container_name: positive-loyalty-redis
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    command:
+      - redis-server
+      # appendonly, чтобы отложенные задачи BullMQ переживали перезапуск
+      # контейнера — иначе после down/up очередь молча пустая.
+      - --appendonly
+      - 'yes'
+      # BullMQ требует noeviction: вытеснение ключей теряет задачи.
+      - --maxmemory-policy
+      - noeviction
+
+volumes:
+  postgres-data:
+  redis-data:

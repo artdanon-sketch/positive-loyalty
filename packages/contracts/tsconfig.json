@@ -1,0 +1,15 @@
+{
+  "extends": "@positive/config/tsconfig/base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    // Пакет собирается в CommonJS (см. комментарий в package.json), а
+    // verbatimModuleSyntax запрещает ESM-синтаксис в файлах с CommonJS-выводом.
+    // Исходники остаются на import/export, tsc переписывает их в require.
+    "verbatimModuleSyntax": false,
+
+    "noEmit": true
+  },
+  "include": ["src"]
+}

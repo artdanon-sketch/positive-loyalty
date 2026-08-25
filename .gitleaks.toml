@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gitleaks — сканер секретов. Требование docs/05_Безопасность_и_антифрод.md,
+# раздел 9: «Один закоммиченный ключ дороже дня работы».
+#
+# ГДЕ ЭТОТ КОНФИГ РАБОТАЕТ СЕЙЧАС: только в CI, шагом `Gitleaks` в
+# .github/workflows/ci.yml. Pre-commit-хука в репозитории НЕТ — ни husky,
+# ни lefthook, ни prepare-скрипта. ТЗ хочет сканер и в pre-commit тоже, но
+# любой из этих вариантов — новая зависимость и общий git-хук на всю команду,
+# поэтому вопрос открыт и решается с владельцем репозитория отдельно.
+# До тех пор единственный гейт — CI: секрет ловится на PR, а не до коммита.
+#
+# Базовый набор правил gitleaks покрывает AWS, GCP, Stripe, GitHub, Slack,
+# приватные ключи и прочее. Мы его расширяем, а не заменяем, и добавляем
+# allowlist, чтобы примеры из документации не давали ложных срабатываний.
+# ─────────────────────────────────────────────────────────────────────────────
+
+title = "POSitive Loyalty gitleaks config"
+
+[extend]
+# Тянем встроенный набор правил. Своё пишем только сверху.
+useDefault = true
+
+# ── Глобальные allowlist'ы ───────────────────────────────────────────────────
+# Здесь только места, где секрет по определению не настоящий: шаблон окружения,
+# документация и HTML-прототипы с демонстрационными значениями.
+# Всё остальное сканируется без исключений — если правило мешает, надо чинить
+# правило, а не расширять этот список.
+#
+# ПРО regexTarget. По умолчанию gitleaks сопоставляет regex из allowlist'а
+# с найденным ЗНАЧЕНИЕМ (`secret`), а не со строкой исходника. Раньше все записи
+# лежали в одном блоке с этим умолчанием, и записи вида `redis://localhost`
+# почти никогда не срабатывали: у встроенных правил secret — это пароль или
+# токен, а не строка подключения целиком. Поэтому блоков теперь два: строчные
+# исключения вынесены в allowlist с regexTarget = "line", а те, что рассчитаны
+# на само значение, остались с умолчанием и сужены якорями и границами слов.
+# Требует gitleaks >= 8.21 (таблица [[allowlists]]); экшен в CI тянет свежий.
+
+[[allowlists]]
+description = "Файлы, где секретов не бывает по определению"
+
+paths = [
+  # Шаблон окружения. Значения здесь — локальные заглушки, реальные секреты
+  # живут в Railway env, Cloudflare env и Supabase Vault.
+  '''^\.env\.example$''',
+  # ТЗ и HTML-прототипы: строки подключения, токены и подписи в примерах.
+  '''^docs/''',
+  # Локальная среда разработки: пароли postgres/redis очевидно локальные.
+  '''^docker-compose\.yml$''',
+  # Лок-файл пакетного менеджера: длинные хеши целостности ловятся как энтропия.
+  '''^pnpm-lock\.yaml$''',
+]
+
+[[allowlists]]
+description = "Плейсхолдеры внутри самого значения"
+# regexTarget по умолчанию — "secret": проверяем именно найденное значение.
+# Слова взяты в границы \b, иначе `key` и `me` матчились внутри случайного
+# хвоста base64 и глушили настоящие находки.
+regexes = [
+  '''(?i)\b(your|my|our|example|sample|placeholder|change|replace)[-_]?(me|this|token|secret|key|value)\b''',
+  '''(?i)\b(xxx+|yyy+|zzz+|todo|tbd|dummy|fake|redacted)\b''',
+]
+
+[[allowlists]]
+description = "Локальные строки подключения: сопоставляем со строкой целиком"
+regexTarget = "line"
+regexes = [
+  # docker-compose и .env.example: postgres/postgres на localhost.
+  '''postgres(ql)?://postgres:postgres@(localhost|127\.0\.0\.1)(:\d{2,5})?(/|\b)''',
+  # Redis без пароля на локальном хосте. Строка с паролем сюда уже не попадает:
+  # `rediss?://user:pass@localhost` под этот якорь не подпадает.
+  '''rediss?://(localhost|127\.0\.0\.1)(:\d{2,5})?(/|\b)''',
+]
+
+# ── Свои правила ─────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "positive-loyalty-webhook-secret"
+description = "webhookSecret тенанта для подписи вебхуков POSitive POS"
+# У каждого тенанта свой секрет, он генерируется при подключении и ротируется
+# кнопкой. В коде его быть не может — только в базе и в env.
+regex = '''(?i)webhook[_-]?secret['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "webhook"]
+
+[[rules]]
+id = "positive-loyalty-qr-signing-key"
+description = "Ключ подписи гостевых QR-кодов"
+regex = '''(?i)qr[_-]?(signing[_-]?)?key['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "qr"]
+
+[[rules]]
+id = "positive-loyalty-database-url"
+description = "Строка подключения к PostgreSQL с непустым паролем"
+regex = '''postgres(ql)?://[A-Za-z0-9._%-]+:[^:@\s/'"]{8,}@'''
+tags = ["positive-loyalty", "database"]
+[rules.allowlist]
+regexes = [
+  '''postgres(ql)?://postgres:postgres@''',
+  '''postgres(ql)?://[A-Za-z0-9._%-]+:(password|changeme|secret|<[^>]+>|\$\{[^}]+\})@''',
+]
+
+[[rules]]
+id = "positive-loyalty-redis-url"
+description = "Строка подключения к Redis с паролем (Upstash — rediss://)"
+regex = '''rediss?://[A-Za-z0-9._%-]*:[^:@\s/'"]{8,}@'''
+tags = ["positive-loyalty", "redis"]
+
+[[rules]]
+id = "positive-loyalty-messaging-token"
+description = "Токен Telegram-бота или LINE Messaging API"
+regex = '''(?i)(telegram[_-]?bot[_-]?token|line[_-]?channel[_-]?(access[_-]?token|secret))['"\s]*[:=]['"\s]*[A-Za-z0-9/+=:_\-]{20,}'''
+tags = ["positive-loyalty", "comms"]
+
+[[rules]]
+id = "positive-loyalty-jwt-secret"
+description = "Секрет подписи JWT"
+regex = '''(?i)jwt[_-]?(secret|private[_-]?key)['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "auth"]

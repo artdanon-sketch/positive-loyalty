@@ -1,0 +1,25 @@
+{
+  "app.brand": "POSitive Loyalty",
+  "app.section": "Venue back office",
+  "app.skipToContent": "Skip to content",
+
+  "theme.toggle.label": "Switch theme",
+  "theme.dark": "Dark",
+  "theme.light": "Light",
+
+  "overview.title": "Overview",
+  "overview.subtitle": "What is happening with the programme right now",
+
+  "overview.loading.label": "Loading the overview",
+  "overview.loading.hint": "Counting visits and points for the selected period",
+
+  "overview.error.title": "Could not load the overview",
+  "overview.error.hint": "The data did not arrive. Press “Retry”. If that does not help, check your connection.",
+  "overview.error.retry": "Retry",
+
+  "overview.empty.title": "Nothing to show yet",
+  "overview.empty.hint": "The overview comes alive after your first enrolled guest. Three steps to make that happen today:",
+  "overview.empty.step.qr": "Print the QR sign and put it on the counter",
+  "overview.empty.step.staff": "Show a staff member how to enrol a guest at the till",
+  "overview.empty.step.guest": "Enrol your first guest and award them points"
+}

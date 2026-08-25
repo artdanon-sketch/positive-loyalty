@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ЗАГОТОВКА. Деплой production по тегу v*.
+# docs/06_Процесс_и_дорожная_карта.md раздел 3: «На тег v*: деплой на прод
+# с ручным подтверждением».
+#
+# Ручное подтверждение делает `environment: production`: в настройках репозитория
+# у этого environment нужно включить Required reviewers — тогда job встаёт
+# на паузу и ждёт нажатия Approve. Без включённого правила подтверждения не будет,
+# environment сам по себе его не даёт.
+#
+# Проекты Railway и Cloudflare ЕЩЁ НЕ СОЗДАНЫ — имена в env плейсхолдеры,
+# ЗАМЕНИТЕ их. Без секретов workflow проходит зелёным и ничего не делает.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Deploy production
+
+on:
+  push:
+    tags: ['v*']
+
+# Прод не выкатываем параллельно и начатую выкатку не отменяем.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # ── ПЛЕЙСХОЛДЕРЫ, заменить на реальные имена проектов ──────────────────────
+  RAILWAY_API_SERVICE: positive-loyalty-api
+  RAILWAY_WORKER_SERVICE: positive-loyalty-worker
+  RAILWAY_ENVIRONMENT: production
+  CLOUDFLARE_ADMIN_PROJECT: positive-loyalty-admin
+  CLOUDFLARE_GUEST_PROJECT: positive-loyalty-guest
+  # Продовая ветка Cloudflare Pages — та, что привязана к боевым доменам.
+  CLOUDFLARE_PRODUCTION_BRANCH: main
+  # ── Секреты ───────────────────────────────────────────────────────────────
+  # Аккаунтный токен (Account Settings → Tokens): один секрет на все окружения,
+  # включая динамические pr-N. Project-token привязан к паре проект + окружение,
+  # поэтому одним и тем же секретом три workflow обслужить не смог бы.
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  # Аккаунтный токен не знает, какой проект деплоить, а на чистом раннере
+  # нет .railway со ссылкой на него — поэтому id проекта задаётся явно.
+  RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+jobs:
+  production:
+    name: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Ручное подтверждение + продовые секреты, привязанные к environment.
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # ── ТРЕБОВАНИЕ ТЗ: миграции ДО деплоя кода ─────────────────────────────
+      # docs/06_Процесс_и_дорожная_карта.md, раздел 3:
+      # «Миграции применяются отдельным шагом до деплоя кода и должны быть
+      # обратимо совместимы — иначе откат кода при живой миграции ломает прод».
+      #
+      # Отсюда правило из CLAUDE.md: колонку не удаляем в одном релизе с кодом,
+      # который перестал её использовать. Между ними — минимум один деплой.
+      # Шаг включается в Задаче 2, когда появится prisma/schema.prisma.
+      - name: Apply migrations (production)
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: echo "TODO(Задача 2) — prisma migrate deploy на боевую базу, ДО деплоя кода"
+
+      # ── Railway: api и worker ──────────────────────────────────────────────
+      - name: Install Railway CLI
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: npm install -g @railway/cli
+
+      # `railway up` не угадывает проект: аккаунтный токен даёт доступ ко всем
+      # проектам сразу, а привязки на раннере нет. Линкуем явно — иначе команда
+      # падает с ошибкой о непривязанном проекте.
+      - name: Link Railway project
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_API_SERVICE"
+
+      - name: Deploy api to Railway production
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway up --service "$RAILWAY_API_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --ci
+
+      - name: Deploy worker to Railway production
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway up --service "$RAILWAY_WORKER_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --ci
+
+      # ── Cloudflare Pages: admin и guest ────────────────────────────────────
+      - name: Deploy admin to Cloudflare Pages production
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=${{ env.CLOUDFLARE_ADMIN_PROJECT }} --branch=${{ env.CLOUDFLARE_PRODUCTION_BRANCH }}
+
+      - name: Deploy guest to Cloudflare Pages production
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/guest/dist --project-name=${{ env.CLOUDFLARE_GUEST_PROJECT }} --branch=${{ env.CLOUDFLARE_PRODUCTION_BRANCH }}
+
+      - name: Report skipped targets
+        if: env.RAILWAY_TOKEN == '' || env.RAILWAY_PROJECT_ID == '' || env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        # GitHub запускает run через `bash -e`, поэтому конструкция
+        # `[ -z "$X" ] && echo ...` уронила бы шаг, когда условие ложно.
+        # Пишем через if/fi.
+        run: |
+          {
+            echo "### Деплой production пропущен"
+            echo
+            if [ -z "$RAILWAY_TOKEN" ] || [ -z "$RAILWAY_PROJECT_ID" ]; then
+              echo "- Railway — нет RAILWAY_TOKEN / RAILWAY_PROJECT_ID, api и worker не задеплоены."
+            fi
+            if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+              echo "- Cloudflare Pages — нет CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID, admin и guest не задеплоены."
+            fi
+            echo
+            echo "Это ожидаемо, пока деплой не подключён. Подробности — в README, раздел «Окружения и деплой»."
+          } >> "$GITHUB_STEP_SUMMARY"

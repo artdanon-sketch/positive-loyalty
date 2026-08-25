@@ -1,0 +1,38 @@
+{
+  "name": "@positive/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "zod-схемы запросов и ответов — единственный источник правды для API и фронтов",
+  "//": "type: commonjs — не по вкусу, а по потребителю. NestJS 10 компилируется в CommonJS и не может require() ESM-пакет; фронты идут через сборщик, которому CJS-зависимость не мешает. Когда API переедет на ESM — переедет и этот пакет.",
+  "type": "commonjs",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@positive/config": "workspace:*",
+    "@vitest/coverage-v8": "4.1.11",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

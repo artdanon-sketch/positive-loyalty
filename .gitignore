@@ -1,19 +1,46 @@
+# зависимости
 node_modules/
+.pnpm-store/
+
+# сборка
 dist/
 build/
 .turbo/
-coverage/
-*.log
-.DS_Store
-
-.env
-.env.*
-!.env.example
-
 .vite/
-.wrangler/
+*.tsbuildinfo
+
+# тесты и отчёты
+coverage/
 playwright-report/
 test-results/
 
+# окружение: в репозитории живёт только .env.example
+.env
+.env.*
+!.env.example
+*.local
+
+# деплой
+.wrangler/
+.railway/
+
+# логи
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# кэш инструментов
+.cache/
+.eslintcache
+
+# локальная база
 prisma/*.db
 prisma/*.db-journal
+
+# ос и редакторы
+.DS_Store
+Thumbs.db
+.idea/
