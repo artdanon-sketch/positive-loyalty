@@ -280,8 +280,6 @@ export class PosService {
 
     let replayed = false
     let redeemed = 0
-    let earned = 0
-    let newBalance = balanceNow
     // Идентификатором операции служит первая созданная строка журнала:
     // выдумывать отдельный uuid, которого нет ни в одной таблице, значит
     // отдать кассе ссылку в никуда.
@@ -306,7 +304,6 @@ export class PosService {
       )
       replayed = replayed || result.replayed
       redeemed = preview.redeem
-      newBalance = result.entry.balanceAfter
       transactionId = result.entry.id
     }
 
@@ -316,7 +313,7 @@ export class PosService {
     // а ради этого сравнения она и существует (docs/01, раздел 4.2).
     // Заодно у каждого чека гарантированно есть запись: transactionId не пуст,
     // счётчик визитов растёт ровно один раз, отмена чека возвращает и его.
-    {
+    const earnOutcome = await (async () => {
       const result = await this.ledger.earn(
         {
           membershipId: preview.membershipId,
@@ -334,10 +331,9 @@ export class PosService {
         scope,
       )
       replayed = replayed || result.replayed
-      earned = preview.pointsToEarn
-      newBalance = result.entry.balanceAfter
       transactionId = transactionId ?? result.entry.id
-    }
+      return result
+    })()
 
     await this.prisma.forTenant(tenantId, async (tx) => {
       await tx.transactionPreview.updateMany({
@@ -352,7 +348,15 @@ export class PosService {
       throw new Error('Чек проведён без единой записи журнала — это ошибка логики')
     }
 
-    return { transactionId, redeemed, earned, newBalance, replayed }
+    // Начисление есть у каждого чека, поэтому итоговый баланс — его снимок,
+    // а сумма начисления — ровно из предрасчёта, который и проводили.
+    return {
+      transactionId,
+      redeemed,
+      earned: preview.pointsToEarn,
+      newBalance: earnOutcome.entry.balanceAfter,
+      replayed,
+    }
   }
 
   /**
