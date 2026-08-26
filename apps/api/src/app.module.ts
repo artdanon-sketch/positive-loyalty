@@ -3,7 +3,9 @@ import { ConfigModule } from '@nestjs/config'
 import { APP_GUARD } from '@nestjs/core'
 
 import { AdminModule } from './admin/admin.module'
+import { AuthModule } from './auth/auth.module'
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware'
+import { RolesGuard } from './common/tenant/roles.guard'
 import { TenantGuard } from './common/tenant/tenant.guard'
 import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
@@ -26,6 +28,7 @@ import { HealthModule } from './health/health.module'
     // а в process.env её кладёт именно ConfigModule.
     CoreModule,
     HealthModule,
+    AuthModule,
     AdminModule,
   ],
   providers: [
@@ -40,6 +43,13 @@ import { HealthModule } from './health/health.module'
        */
       provide: APP_GUARD,
       useClass: TenantGuard,
+    },
+    {
+      // Порядок важен: RolesGuard идёт ПОСЛЕ TenantGuard, потому что роль
+      // берётся из уже проверенного токена. Nest применяет глобальные гварды
+      // в порядке объявления.
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })
