@@ -9,6 +9,7 @@ import { RolesGuard } from './common/tenant/roles.guard'
 import { TenantGuard } from './common/tenant/tenant.guard'
 import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
+import { IdentityModule } from './identity/identity.module'
 import { PosModule } from './pos/pos.module'
 
 /**
@@ -30,6 +31,7 @@ import { PosModule } from './pos/pos.module'
     CoreModule,
     HealthModule,
     AuthModule,
+    IdentityModule,
     AdminModule,
     PosModule,
   ],

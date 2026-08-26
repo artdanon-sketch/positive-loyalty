@@ -142,6 +142,7 @@ model Guest {
   lastSeenAt   DateTime?
 
   memberships   Membership[]
+  guestSessions GuestSession[]
   ledgerEntries LedgerEntry[]
 }
 
@@ -389,4 +390,61 @@ model TransactionPreview {
 
   @@index([tenantId, expiresAt])
   @@index([membershipId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Гостевой доступ: OTP и сессии гостя
+// docs/02, разделы 1.1–1.2 · docs/05, раздел 2
+//
+// Обе таблицы ГЛОБАЛЬНЫЕ — без tenantId, как и сам Guest: гость один на весь
+// остров, его вход не принадлежит заведению. Изоляция здесь другая, чем у
+// тенантных таблиц: строки адресуются только секретом (хеш кода, хеш refresh),
+// знание которого само по себе и есть право доступа. Подробности — в миграции.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Запрос кода подтверждения.
+model OtpRequest {
+  id String @id @default(uuid())
+
+  /// PII. В логи не попадает, маскируется на выводе.
+  phoneE164 String
+
+  /// Сам код не хранится — только производная scrypt с солью.
+  codeHash String
+
+  /// Куда ушёл код. Пока единственный канал DEV: без SMS-провайдера код
+  /// печатается в лог сервера (и отдаётся в ответе вне production).
+  channel String @default("DEV")
+
+  /// Неверные попытки. После пятой запрос блокируется (docs/02, раздел 1.2).
+  attempts Int @default(0)
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  verifiedAt DateTime?
+
+  @@index([phoneE164, createdAt])
+}
+
+/// Сессия гостя: звено цепочки refresh-токенов. Устройство ротации то же,
+/// что у сотрудников (Session): повтор отозванного звена гасит всю цепочку.
+model GuestSession {
+  id      String @id @default(uuid())
+  guestId String
+
+  familyId String
+  parentId String? @unique
+
+  /// Хеш refresh-токена. Быстрый SHA-256: токен высокоэнтропийный, KDF не нужен.
+  refreshTokenHash String @unique
+
+  issuedAt      DateTime  @default(now())
+  expiresAt     DateTime
+  usedAt        DateTime?
+  revokedAt     DateTime?
+  revokedReason String?
+
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([guestId, familyId])
 }

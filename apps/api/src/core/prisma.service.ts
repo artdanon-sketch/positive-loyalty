@@ -170,4 +170,24 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       return fn(tx)
     })
   }
+  /**
+   * Гостевой контур RLS: работа от имени гостя.
+   *
+   * Зеркало forTenant для второго контура политик (миграция 20260826230000):
+   * гость видит свой профиль, свои участия во всех заведениях и свою историю.
+   * Тот же механизм SET LOCAL в транзакции — и по тем же причинам: значение
+   * не должно пережить транзакцию и утечь следующему запросу из пула.
+   */
+  async forGuest<T>(guestId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    if (guestId.trim().length === 0) {
+      throw new Error(
+        'forGuest вызван без guestId. Пустое значение выключило бы политики гостевого контура.',
+      )
+    }
+
+    return this.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.guest_id', ${guestId}, true)`
+      return fn(tx)
+    })
+  }
 }

@@ -14,6 +14,9 @@ import type {
 } from '@positive/contracts'
 import { parseProgramConfig } from '@positive/contracts'
 
+import { verifyGuestQrToken } from '../common/tenant/access-token'
+import { getEnv } from '../common/config/env'
+import { AccessTokenInvalidError } from '../common/tenant/tenant.errors'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError } from '../core/ledger.errors'
 import { LedgerService } from '../core/ledger.service'
@@ -114,6 +117,69 @@ export class PosService {
           : null,
       isControlGroup: membership.isControlGroup,
     }
+  }
+
+  /**
+   * Поиск гостя по токену с его экрана. docs/02, раздел 3.1.
+   *
+   * Токен вида guest-qr, живёт пять минут; подпись проверяется тем же
+   * секретом, что и всё остальное. Гость, впервые пришедший в ЭТО заведение,
+   * оформляется прямо здесь: участие создаётся при первом сканировании —
+   * гость уже согласился, показав код. Ровно этот случай ручной поиск по
+   * телефону закрыть не может: RLS показывает только своих.
+   */
+  async findGuestByQrToken(token: string): Promise<PosGuest> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    let guestId: string
+    try {
+      guestId = verifyGuestQrToken(token, getEnv().accessTokenSecret).guestId
+    } catch (error) {
+      if (!(error instanceof AccessTokenInvalidError)) {
+        throw error
+      }
+      // Просрочен или подделан — для кассы это одно и то же: код не читается,
+      // гость обновит экран. Различать причины наружу нельзя.
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Код не читается — попросите гостя обновить экран' },
+      })
+    }
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const guest = await tx.guest.findFirst({ where: { id: guestId } })
+
+      const membership =
+        (await tx.membership.findFirst({ where: { guestId, tenantId } })) ??
+        (await tx.membership.create({
+          data: { guestId, tenantId, source: 'ORGANIC' },
+        }))
+
+      // Гость может быть ещё не виден тенантному контуру (участие создано
+      // этой же транзакцией — политика Guest смотрит на участия). Читаем
+      // повторно уже после создания участия.
+      const visibleGuest = guest ?? (await tx.guest.findFirst({ where: { id: guestId } }))
+
+      if (visibleGuest === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Гость не найден' },
+        })
+      }
+
+      return {
+        guestId: visibleGuest.id,
+        membershipId: membership.id,
+        displayName: visibleGuest.displayName,
+        isNew: membership.visitsTotal === 0,
+        mode: visibleGuest.mode,
+        points: membership.pointsBalance,
+        visitsTotal: membership.visitsTotal,
+        avgCheck:
+          membership.visitsTotal > 0
+            ? Math.round(membership.spentTotal / membership.visitsTotal)
+            : null,
+        isControlGroup: membership.isControlGroup,
+      }
+    })
   }
 
   /**
