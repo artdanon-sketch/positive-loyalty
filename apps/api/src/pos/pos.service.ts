@@ -1,8 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import type { CommitResult, PosGuest, PreviewResult } from '@positive/contracts'
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
+import type {
+  CommitResult,
+  PosGuest,
+  PosVoidResult,
+  PreviewResult,
+  ReversalReason,
+} from '@positive/contracts'
 import { parseProgramConfig } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
+import { AlreadyReversedError } from '../core/ledger.errors'
 import { LedgerService } from '../core/ledger.service'
 import { PrismaService } from '../core/prisma.service'
 
@@ -20,8 +33,13 @@ import { PrismaService } from '../core/prisma.service'
 /** docs/02, раздел 3.3: PREVIEW_EXPIRED — прошло больше десяти минут. */
 const PREVIEW_TTL_MINUTES = 10
 
+/** docs/02, раздел 3.5: окно отмены для кассира. Дальше — менеджер с комментарием. */
+const VOID_WINDOW_MINUTES = 15
+
 @Injectable()
 export class PosService {
+  private readonly logger = new Logger(PosService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
@@ -341,6 +359,158 @@ export class PosService {
     }
 
     return { transactionId, redeemed, earned, newBalance, replayed }
+  }
+
+  /**
+   * Отмена проведённого чека. docs/02, раздел 3.5.
+   *
+   * `transactionId` — идентификатор ЛЮБОЙ записи чека (commit возвращает первую):
+   * по нему находится номер чека, а по номеру — все его записи. Компенсируется
+   * каждая, в порядке создания; списание и начисление отменяются парой.
+   *
+   * ОКНО И РОЛИ. Кассиру — 15 минут с момента операции, дальше только менеджер
+   * или владелец, и только с комментарием. Комментарий менеджера обязателен
+   * ВСЕГДА, не только после окна: его отмена не ограничена ничем, и без
+   * объяснения неотличима от заметания следов.
+   *
+   * ЧЕГО ЗДЕСЬ НЕТ. Аннулирование ваучеров и снятие награды сотруднику — их
+   * механик ещё нет (Срезы 3 и 5). Комментарий уходит в лог с requestId;
+   * постоянное хранилище — AuditLog — приедет со Срезом 5. Это учтённый долг,
+   * а не забытая строчка.
+   */
+  async voidTransaction(
+    transactionId: string,
+    reason: ReversalReason,
+    comment: string | undefined,
+  ): Promise<PosVoidResult> {
+    const { tenantId, role, actorId, requestId } = TenantContext.getOrThrow()
+
+    const anchor = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findFirst({ where: { id: transactionId, tenantId } }),
+    )
+
+    if (anchor === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+
+    if (anchor.refType !== 'receipt' || anchor.refId === null) {
+      throw new BadRequestException({
+        error: {
+          code: 'NOT_A_RECEIPT',
+          message: 'Отменять можно только операции, проведённые чеком',
+        },
+      })
+    }
+
+    const legs = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({
+        where: {
+          tenantId,
+          membershipId: anchor.membershipId,
+          refType: 'receipt',
+          refId: anchor.refId,
+          type: { in: ['EARN', 'REDEEM'] },
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    )
+
+    if (legs.length === 0) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+
+    const ageMs = Date.now() - (legs[0]?.createdAt.getTime() ?? 0)
+    const isCashier = role === 'CASHIER'
+
+    if (isCashier && ageMs > VOID_WINDOW_MINUTES * 60_000) {
+      // 403, а не 404: операция своя и существует, не хватает именно прав.
+      throw new ForbiddenException({
+        error: {
+          code: 'VOID_WINDOW_EXPIRED',
+          message: 'Окно отмены кассира истекло — позовите менеджера',
+        },
+      })
+    }
+
+    if (!isCashier && (comment === undefined || comment.trim().length === 0)) {
+      throw new BadRequestException({
+        error: {
+          code: 'COMMENT_REQUIRED',
+          message: 'Отмена менеджером или владельцем — только с комментарием',
+        },
+      })
+    }
+
+    if (comment !== undefined) {
+      // PII здесь нет: причина, номер чека и сквозной requestId.
+      this.logger.log(
+        `Отмена чека ${anchor.refId}: причина ${reason}, комментарий «${comment}», requestId ${requestId}`,
+      )
+    }
+
+    const scope = { tenantId }
+    const origin = {
+      source: 'STAFF_MANUAL' as const,
+      actorType: 'STAFF' as const,
+      ...(actorId === null ? {} : { actorId }),
+    }
+
+    const reversals: Array<{ entryId: string; reversalId: string; amount: number }> = []
+    let replayed = true
+
+    for (const leg of legs) {
+      try {
+        const result = await this.ledger.reverse(
+          {
+            entryId: leg.id,
+            // Ключ выводится из ключа исходной записи: повтор отмены того же
+            // чека при любом числе ретраев попадает в те же ключи и получает
+            // прежние компенсации, а не вторые.
+            idempotencyKey: `pos:void:${leg.idempotencyKey}`,
+            reason,
+            ...(comment === undefined ? {} : { comment }),
+            ...origin,
+          },
+          scope,
+        )
+        replayed = replayed && result.replayed
+        reversals.push({
+          entryId: leg.id,
+          reversalId: result.entry.id,
+          amount: result.entry.amount,
+        })
+      } catch (error) {
+        if (!(error instanceof AlreadyReversedError)) {
+          throw error
+        }
+        // Запись уже компенсирована другим путём (вручную из бэк-офиса).
+        // Для кассы исход тот же — «чек отменён»: находим существующую
+        // компенсацию и отвечаем как при повторе, а не пятисотим.
+        const existing = await this.prisma.forTenant(tenantId, async (tx) =>
+          tx.ledgerEntry.findFirst({ where: { tenantId, reversalOfId: leg.id } }),
+        )
+        if (existing === null) {
+          throw error
+        }
+        reversals.push({ entryId: leg.id, reversalId: existing.id, amount: existing.amount })
+      }
+    }
+
+    // Баланс читаем после всех компенсаций: порядок записей чека не обязан
+    // совпадать с порядком компенсаций, «последняя строка цикла» — не истина.
+    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: anchor.membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+      return membership?.pointsBalance ?? 0
+    })
+
+    return { transactionId, reversals, newBalance: balanceNow, replayed }
   }
 
   private async loadConfig(tenantId: string): Promise<ReturnType<typeof parseProgramConfig>> {

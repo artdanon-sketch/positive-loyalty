@@ -5,12 +5,14 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common'
 import { ApiOperation, ApiTags } from '@nestjs/swagger'
-import { CommitInput, PosGuestQuery, PreviewInput } from '@positive/contracts'
-import type { CommitResult, PosGuest, PreviewResult } from '@positive/contracts'
+import { CommitInput, PosGuestQuery, PosVoidInput, PreviewInput } from '@positive/contracts'
+import type { CommitResult, PosGuest, PosVoidResult, PreviewResult } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -106,5 +108,32 @@ export class PosController {
     }
 
     return this.posService.commit(parsed.data)
+  }
+
+  @Post('transactions/:transactionId/void')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Отменить проведённый чек',
+    description:
+      'Компенсирует записи чека. Кассиру доступно 15 минут; менеджеру и владельцу — ' +
+      'без окна, но только с комментарием. Повтор отмены возвращает прежний результат.',
+  })
+  async voidTransaction(
+    @Param('transactionId', ParseUUIDPipe) transactionId: string,
+    @Body() body: unknown,
+  ): Promise<PosVoidResult> {
+    const parsed = PosVoidInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.voidTransaction(transactionId, parsed.data.reason, parsed.data.comment)
   }
 }
