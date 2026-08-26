@@ -280,8 +280,6 @@ export class PosService {
 
     let replayed = false
     let redeemed = 0
-    let earned = 0
-    let newBalance = balanceNow
     // Идентификатором операции служит первая созданная строка журнала:
     // выдумывать отдельный uuid, которого нет ни в одной таблице, значит
     // отдать кассе ссылку в никуда.
@@ -306,11 +304,16 @@ export class PosService {
       )
       replayed = replayed || result.replayed
       redeemed = preview.redeem
-      newBalance = result.entry.balanceAfter
       transactionId = result.entry.id
     }
 
-    if (preview.pointsToEarn > 0) {
+    // Начисление пишется ВСЕГДА, даже нулевое. Ноль — это визит гостя из
+    // контрольной группы: баллов не положено, но сам визит обязан попасть
+    // в журнал, иначе группе не с чем сравнивать основную массу гостей —
+    // а ради этого сравнения она и существует (docs/01, раздел 4.2).
+    // Заодно у каждого чека гарантированно есть запись: transactionId не пуст,
+    // счётчик визитов растёт ровно один раз, отмена чека возвращает и его.
+    const earnOutcome = await (async () => {
       const result = await this.ledger.earn(
         {
           membershipId: preview.membershipId,
@@ -328,10 +331,9 @@ export class PosService {
         scope,
       )
       replayed = replayed || result.replayed
-      earned = preview.pointsToEarn
-      newBalance = result.entry.balanceAfter
       transactionId = transactionId ?? result.entry.id
-    }
+      return result
+    })()
 
     await this.prisma.forTenant(tenantId, async (tx) => {
       await tx.transactionPreview.updateMany({
@@ -341,24 +343,20 @@ export class PosService {
     })
 
     if (transactionId === null) {
-      // Ни списания, ни начисления: гость в контрольной группе и баллов ему
-      // не полагается, а тратить нечего.
-      //
-      // ОТКРЫТЫЙ ВОПРОС, НЕ РЕШЁННЫЙ ЗДЕСЬ. Визит такого гостя нигде не
-      // фиксируется: visitsTotal растёт только вместе с записью в журнале.
-      // Но контрольная группа существует ровно для сравнения — и сравнивать
-      // не с чем, если её визиты не считаются (docs/01, раздел 4.2).
-      // Напрашивается запись журнала с нулевой суммой: «визит был, баллов нет».
-      // Это меняет смысл нулевой операции, поэтому решение за владельцем схемы.
-      throw new BadRequestException({
-        error: {
-          code: 'NOTHING_TO_RECORD',
-          message: 'Операция не создана: гость в контрольной группе, начислять и списывать нечего',
-        },
-      })
+      // Недостижимо: запись начисления создаётся всегда, включая нулевую.
+      // Ветка оставлена как страховка от будущего рефакторинга.
+      throw new Error('Чек проведён без единой записи журнала — это ошибка логики')
     }
 
-    return { transactionId, redeemed, earned, newBalance, replayed }
+    // Начисление есть у каждого чека, поэтому итоговый баланс — его снимок,
+    // а сумма начисления — ровно из предрасчёта, который и проводили.
+    return {
+      transactionId,
+      redeemed,
+      earned: preview.pointsToEarn,
+      newBalance: earnOutcome.entry.balanceAfter,
+      replayed,
+    }
   }
 
   /**

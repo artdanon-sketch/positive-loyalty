@@ -317,3 +317,49 @@ describe('Проведение чека', () => {
     expect(JSON.stringify(response.body)).toMatch(/BALANCE_CHANGED/)
   })
 })
+
+describe('Контрольная группа', () => {
+  it('визит записывается нулевым начислением: баланс нулевой, визит посчитан', async () => {
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+    await prisma.membership.update({
+      where: { id: fixture.membershipId },
+      data: { isControlGroup: true },
+    })
+
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set(...auth())
+      .send({ membershipId: fixture.membershipId, amount: 150_000 })
+      .expect(200)
+
+    expect((preview.body as PreviewBody).pointsToEarn).toBe(0)
+
+    const receiptId = `rcpt-control-${Date.now()}`
+    const commit = await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send({ previewId: (preview.body as PreviewBody).previewId, receiptId })
+      .expect(200)
+
+    const body = commit.body as CommitBody
+    expect(body.earned).toBe(0)
+    expect(body.newBalance).toBe(0)
+
+    // Визит и потраченное посчитаны — иначе группе не с чем сравнивать основную.
+    const membership = await prisma.membership.findFirstOrThrow({
+      where: { id: fixture.membershipId },
+    })
+    expect(membership.pointsBalance).toBe(0)
+    expect(membership.visitsTotal).toBe(1)
+    expect(membership.spentTotal).toBe(150_000)
+
+    // В журнале ровно одна запись чека — нулевое начисление.
+    const entries = await prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({ where: { tenantId, refId: receiptId } }),
+    )
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.type).toBe('EARN')
+    expect(entries[0]?.amount).toBe(0)
+    expect(entries[0]?.basisAmount).toBe(150_000)
+  })
+})
