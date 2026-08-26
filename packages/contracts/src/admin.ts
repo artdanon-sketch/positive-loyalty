@@ -72,3 +72,38 @@ export const AdminListQuery = z
   .strict()
 
 export type AdminListQuery = z.infer<typeof AdminListQuery>
+
+/** Гость в списке бэк-офиса — участие плюс витринные поля гостя. */
+export const AdminGuestRow = z
+  .object({
+    /** Идентификатор участия: все действия на экране адресуются к нему. */
+    membershipId: z.uuid(),
+    guestId: z.uuid(),
+    displayName: z.string().nullable(),
+    /**
+     * Телефон. Менеджеру приходит маскированным («+66 •• •• 4821»), владельцу —
+     * целиком: матрица прав docs/05, раздел 3 разрешает полный номер только ему.
+     * Решение о маскировании принимает сервер по роли из токена — клиент
+     * ничего не «домаскирует», у него просто нет полного значения.
+     */
+    phone: z.string().min(1),
+    mode: z.enum(['TOURIST', 'RESIDENT']),
+    pointsBalance: z.number().int(),
+    visitsTotal: z.number().int().nonnegative(),
+    /** Сумма покупок в минорных единицах. */
+    spentTotal: z.number().int().nonnegative(),
+    lastVisitAt: z.iso.datetime().nullable(),
+    isControlGroup: z.boolean(),
+  })
+  .strict()
+
+export type AdminGuestRow = z.infer<typeof AdminGuestRow>
+
+export const AdminGuestsList = z
+  .object({
+    items: z.array(AdminGuestRow),
+    total: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type AdminGuestsList = z.infer<typeof AdminGuestsList>

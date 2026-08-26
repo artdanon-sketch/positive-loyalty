@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import type { AdminLedgerEntry, AdminLedgerList, AdminMembership } from '@positive/contracts'
+import type {
+  AdminGuestRow,
+  AdminGuestsList,
+  AdminLedgerEntry,
+  AdminLedgerList,
+  AdminMembership,
+} from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
@@ -82,6 +88,48 @@ export class AdminService {
     return toLedgerEntry(row)
   }
 
+  /**
+   * Список гостей заведения: участия, отсортированные по последнему визиту.
+   *
+   * Телефон маскируется ПО РОЛИ ИЗ ТОКЕНА: полный номер видит только владелец
+   * (docs/05, раздел 3). Маскирование делает сервер — у клиента полного
+   * значения просто нет, и «размаскировать» на фронте нечего.
+   */
+  async listGuests(limit: number, offset: number): Promise<AdminGuestsList> {
+    const { tenantId, role } = TenantContext.getOrThrow()
+    const showFullPhone = role === 'OWNER'
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const [rows, total] = await Promise.all([
+        tx.membership.findMany({
+          where: { tenantId },
+          include: { guest: { select: { displayName: true, phoneE164: true, mode: true } } },
+          // Спящие гости в конце: экран отвечает на вопрос «кто был недавно»,
+          // а «кто давно не был» — это отдельный сегмент рассылок (Срез 4).
+          orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+          take: limit,
+          skip: offset,
+        }),
+        tx.membership.count({ where: { tenantId } }),
+      ])
+
+      const items: AdminGuestRow[] = rows.map((row) => ({
+        membershipId: row.id,
+        guestId: row.guestId,
+        displayName: row.guest.displayName,
+        phone: showFullPhone ? row.guest.phoneE164 : maskPhone(row.guest.phoneE164),
+        mode: row.guest.mode,
+        pointsBalance: row.pointsBalance,
+        visitsTotal: row.visitsTotal,
+        spentTotal: row.spentTotal,
+        lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
+        isControlGroup: row.isControlGroup,
+      }))
+
+      return { items, total }
+    })
+  }
+
   async getMembership(id: string): Promise<AdminMembership> {
     const { tenantId } = TenantContext.getOrThrow()
 
@@ -134,3 +182,14 @@ const toLedgerEntry = (row: LedgerRow): AdminLedgerEntry => ({
   reversalOfId: row.reversalOfId,
   createdAt: row.createdAt.toISOString(),
 })
+
+/**
+ * Маска телефона по образцу docs/02, раздел 2.1: «+66 •• •• 4821».
+ * Код страны и последние четыре цифры — достаточно, чтобы гость узнал свой
+ * номер на экране кассира, и мало, чтобы номер утёк с экрана.
+ */
+const maskPhone = (e164: string): string => {
+  const head = e164.slice(0, 3)
+  const tail = e164.slice(-4)
+  return `${head} •• •• ${tail}`
+}

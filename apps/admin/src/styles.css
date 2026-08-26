@@ -375,3 +375,251 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Навигация в шапке ─────────────────────────────────────────────────── */
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-nav__link {
+  padding: 7px 14px;
+  border-radius: var(--r-pill, 99px);
+  color: var(--tx-2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 450;
+  transition:
+    color 0.3s var(--ease),
+    background 0.3s var(--ease);
+}
+
+.app-nav__link:hover {
+  color: var(--tx);
+}
+
+.app-nav__link--active {
+  color: var(--tx);
+  background: var(--surf-2);
+  font-weight: 700;
+}
+
+.app-header__side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.app-user__name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.app-user__role {
+  font-size: 11px;
+  color: var(--tx-3);
+}
+
+/* ── Таблицы данных ────────────────────────────────────────────────────── */
+
+/* Широкая таблица прокручивается внутри себя: страница вбок не едет. */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surf);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+  padding: 12px 14px;
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.data-table__num {
+  text-align: right;
+}
+
+.data-table__mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.amount--in {
+  color: var(--good);
+}
+
+.amount--out {
+  color: var(--bad);
+}
+
+/* ── Чипы ──────────────────────────────────────────────────────────────── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--r-pill, 99px);
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.chip + .chip {
+  margin-left: 6px;
+}
+
+.chip--good {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+  border-color: color-mix(in srgb, var(--good) 26%, transparent);
+}
+
+.chip--bad {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  border-color: color-mix(in srgb, var(--bad) 26%, transparent);
+}
+
+.chip--neutral {
+  color: var(--tx-2);
+  background: var(--surf-2);
+  border-color: var(--line);
+}
+
+.chip--muted {
+  color: var(--tx-3);
+  background: transparent;
+  border-color: var(--line);
+}
+
+/* ── Постраничная навигация ────────────────────────────────────────────── */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.pager__info {
+  font-size: 13px;
+  color: var(--tx-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Вход ──────────────────────────────────────────────────────────────── */
+
+.login {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  position: relative;
+}
+
+.login__theme {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.login__card {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 26px 24px;
+}
+
+.login__title {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.login__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-2);
+}
+
+.login__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login__label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.login__input {
+  font: inherit;
+  color: var(--tx);
+  background: var(--surf-2);
+  border: 1px solid var(--line-2, var(--line));
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: border-color 0.3s var(--ease);
+}
+
+.login__input:focus-visible {
+  outline: none;
+  border-color: var(--mint);
+}
+
+.login__error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+.login__submit {
+  margin-top: 4px;
+}
+
+/* ── Заставка восстановления сессии ────────────────────────────────────── */
+
+.splash {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+}

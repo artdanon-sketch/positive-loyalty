@@ -506,3 +506,70 @@ export const buildVisits = (memberships: readonly MembershipSeed[]): readonly Vi
 export const DEMO_MEMBERSHIP_ID = uuidFromIndex('30000000', 0)
 export const DEMO_GUEST_ID = uuidFromIndex('20000000', 0)
 export const DEMO_TENANT_ID = uuidFromIndex('10000000', 1)
+
+// ─── Сотрудники ──────────────────────────────────────────────────────────────
+// CLAUDE.md: «по 4 сотрудника с разными ролями». Владелец, менеджер, два кассира.
+//
+// PIN'ы и коды устройств — демо-данные и печатаются seed'ом в консоль: без них
+// в бэк-офис не войти, а искать их по исходникам владелец полигона не обязан.
+// В настоящих средах сотрудников заводит владелец из бэк-офиса, PIN'ы не
+// совпадают с демо и нигде не печатаются.
+
+export interface StaffSeed {
+  readonly id: string
+  readonly tenantId: string
+  readonly role: 'OWNER' | 'MANAGER' | 'CASHIER'
+  readonly displayName: string
+  /** Демо-PIN. Хеш считается на каждом запуске seed'а — scrypt с солью. */
+  readonly pin: string
+  /** Код устройства, с которого сотруднику разрешён вход. Глобально уникален. */
+  readonly deviceId: string
+  readonly deviceLabel: string
+}
+
+interface StaffTemplate {
+  readonly role: StaffSeed['role']
+  readonly name: string
+  readonly pin: string
+  readonly device: string
+  readonly label: string
+}
+
+const STAFF_TEMPLATES: readonly StaffTemplate[] = [
+  { role: 'OWNER', name: 'Владелец', pin: '7311', device: 'owner', label: 'Телефон владельца' },
+  { role: 'MANAGER', name: 'Менеджер', pin: '4207', device: 'manager', label: 'Ноутбук менеджера' },
+  {
+    role: 'CASHIER',
+    name: 'Кассир смены А',
+    pin: '1984',
+    device: 'pos-a',
+    label: 'Планшет у кассы',
+  },
+  {
+    role: 'CASHIER',
+    name: 'Кассир смены Б',
+    pin: '2648',
+    device: 'pos-b',
+    label: 'Планшет на террасе',
+  },
+]
+
+const TENANT_SLUGS: Readonly<Record<string, string>> = {
+  'Kata Beach Kitchen': 'kata',
+  'Sabai Thai Massage': 'sabai',
+  'Phuket Ride': 'ride',
+}
+
+export const STAFF: readonly StaffSeed[] = TENANTS.flatMap((tenant, tenantIndex) => {
+  const slug = TENANT_SLUGS[tenant.brandName] ?? `t${tenantIndex + 1}`
+
+  return STAFF_TEMPLATES.map((template, templateIndex) => ({
+    id: uuidFromIndex('40000000', tenantIndex * 10 + templateIndex + 1),
+    tenantId: tenant.id,
+    role: template.role,
+    displayName: `${template.name} · ${tenant.brandName}`,
+    pin: template.pin,
+    deviceId: `demo-${slug}-${template.device}`,
+    deviceLabel: template.label,
+  }))
+})

@@ -1,7 +1,12 @@
 import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common'
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { AdminListQuery } from '@positive/contracts'
-import type { AdminLedgerEntry, AdminLedgerList, AdminMembership } from '@positive/contracts'
+import type {
+  AdminGuestsList,
+  AdminLedgerEntry,
+  AdminLedgerList,
+  AdminMembership,
+} from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -48,6 +53,25 @@ export class AdminController {
     }
 
     return this.adminService.listLedger(parsed.data.limit, parsed.data.offset)
+  }
+
+  @Get('guests')
+  @ApiOperation({ summary: 'Гости заведения' })
+  @ApiOkResponse({ description: 'Участия своего заведения, недавние визиты первыми' })
+  async listGuests(@Query() query: Record<string, unknown>): Promise<AdminGuestsList> {
+    const parsed = AdminListQuery.safeParse(query)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректные параметры запроса',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.adminService.listGuests(parsed.data.limit, parsed.data.offset)
   }
 
   @Get('ledger/:id')

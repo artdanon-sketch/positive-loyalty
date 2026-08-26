@@ -8,6 +8,8 @@
  *
  *   • три тенанта из CLAUDE.md: ресторан Kata Beach Kitchen, спа Sabai Thai Massage,
  *     прокат Phuket Ride — с настоящим ProgramConfig (docs/01, раздел 4.3);
+ *   • по 4 сотрудника на тенанта (CLAUDE.md): владелец, менеджер, два кассира —
+ *     с PIN'ами и зарегистрированными устройствами, коды печатаются ниже;
  *   • 40 гостей в пропорции 60% туристы / 40% резиденты;
  *   • участия: каждый гость минимум в одной программе, каждый четвёртый — в двух;
  *   • контрольная группа: ровно 5% участий с `isControlGroup = true`;
@@ -22,8 +24,7 @@
  * seed обязан соответствовать схеме, а не опережать её.
  *
  *   ОТЛОЖЕНО              ПОЧЕМУ
- *   Location, Staff       моделей нет в schema.prisma (Задача 2 — четыре модели
- *                         ledger-контура: Tenant, Guest, Membership, LedgerEntry)
+ *   Location              модели нет в schema.prisma
  *   Offer, акции          нет модели Offer и нет движка правил
  *   Подозрительный        схема антифрода живёт в Staff, Device и AuditLog —
  *   кассир                без них «подозрительность» показывать не на чем
@@ -58,6 +59,7 @@ import {
   buildMemberships,
   buildVisits,
   SEED_VERSION,
+  STAFF,
   TENANTS,
   type GuestSeed,
   type MembershipSeed,
@@ -272,6 +274,75 @@ const renderTenantSummary = (
   return renderTable(TENANT_COLUMNS, rows)
 }
 
+/**
+ * Сотрудники и их устройства.
+ *
+ * PIN хешируется тем же scrypt из apps/api/dist, которым API проверяет вход, —
+ * второй реализации хеширования в репозитории быть не должно. Хеш пересчитывается
+ * на каждом запуске (соль случайная), сам PIN при этом одинаков от запуска к запуску.
+ */
+const upsertStaff = async (): Promise<void> => {
+  for (const member of STAFF) {
+    const pinHash = await runtime.hashPin(member.pin)
+
+    await runtime.prisma.staff.upsert({
+      where: { id: member.id },
+      create: {
+        id: member.id,
+        tenantId: member.tenantId,
+        role: member.role,
+        displayName: member.displayName,
+        pinHash,
+      },
+      update: {
+        role: member.role,
+        displayName: member.displayName,
+        pinHash,
+        isActive: true,
+        pinFailedAttempts: 0,
+        pinLockedUntil: null,
+      },
+    })
+
+    await runtime.prisma.staffDevice.upsert({
+      where: { deviceId: member.deviceId },
+      create: {
+        tenantId: member.tenantId,
+        staffId: member.id,
+        deviceId: member.deviceId,
+        label: member.deviceLabel,
+      },
+      update: { staffId: member.id, label: member.deviceLabel, isActive: true, revokedAt: null },
+    })
+  }
+}
+
+const STAFF_COLUMNS: readonly TableColumn[] = [
+  { title: 'Заведение', align: 'left' },
+  { title: 'Роль', align: 'left' },
+  { title: 'Устройство', align: 'left' },
+  { title: 'PIN', align: 'left' },
+]
+
+const ROLE_LABELS: Readonly<Record<string, string>> = {
+  OWNER: 'владелец',
+  MANAGER: 'менеджер',
+  CASHIER: 'кассир',
+}
+
+const renderStaffLogins = (): string => {
+  const brandById = new Map(TENANTS.map((tenant) => [tenant.id, tenant.brandName]))
+
+  const rows = STAFF.map((member) => [
+    brandById.get(member.tenantId) ?? member.tenantId,
+    ROLE_LABELS[member.role] ?? member.role,
+    member.deviceId,
+    member.pin,
+  ])
+
+  return renderTable(STAFF_COLUMNS, rows)
+}
+
 const seed = async (): Promise<void> => {
   const guests = buildGuests()
   const memberships = buildMemberships(guests)
@@ -288,6 +359,9 @@ const seed = async (): Promise<void> => {
 
   await upsertMemberships(memberships)
   out(`Участий записано: ${memberships.length}`)
+
+  await upsertStaff()
+  out(`Сотрудников записано: ${STAFF.length}, устройств: ${STAFF.length}`)
 
   const tally = await replayVisits(visits)
   out(
@@ -314,6 +388,10 @@ const seed = async (): Promise<void> => {
     out(`Участия с расхождением: ${drifted.join(', ')}`)
     throw new Error('Кэш баланса разошёлся с журналом сразу после наполнения полигона')
   }
+
+  out(heading('Входы для демо: бэк-офис и касса'))
+  out('Бэк-офис — менеджер или владелец; касса — кассир. Вход: код устройства + PIN.')
+  out(renderStaffLogins())
 
   out('\nГотово. Демонстрация продаж: pnpm demo:sales')
 }
