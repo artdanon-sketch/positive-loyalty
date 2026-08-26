@@ -41,13 +41,31 @@ const EnvSchema = z
     CORS_ORIGINS: z.string().optional(),
     /** Версия сборки, её отдаёт /health. Railway прокидывает сюда номер релиза. */
     APP_VERSION: z.string().min(1).default('0.0.0'),
+    /**
+     * Секрет подписи access-токенов. Из него берётся tenantId — то есть от него
+     * напрямую зависит изоляция заведений: подобрал секрет, выписал себе токен
+     * с чужим tenantId. Минимум 32 символа, в production обязателен.
+     */
+    ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
     port: raw.PORT,
     appVersion: raw.APP_VERSION,
     corsOrigins: resolveCorsOrigins(raw.CORS_ORIGINS, raw.NODE_ENV),
+    accessTokenSecret: raw.ACCESS_TOKEN_SECRET ?? '',
   }))
+  .superRefine((env, ctx) => {
+    if (env.nodeEnv === 'production' && env.accessTokenSecret.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['ACCESS_TOKEN_SECRET'],
+        message:
+          'обязателен в production: без него нечем проверить подпись токена, ' +
+          'а значит нечем подтвердить tenantId',
+      })
+    }
+  })
 
 export type Env = z.infer<typeof EnvSchema>
 
