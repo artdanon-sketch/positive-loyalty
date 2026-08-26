@@ -125,6 +125,7 @@ model Tenant {
   staff         Staff[]
   staffDevices  StaffDevice[]
   sessions      Session[]
+  previews      TransactionPreview[]
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -164,9 +165,10 @@ model Membership {
   referredById   String? // Membership, приведший этого гостя; FK появится вместе с рефералкой
   isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
 
-  guest         Guest         @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest         Guest                @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   ledgerEntries LedgerEntry[]
+  previews      TransactionPreview[]
 
   @@unique([guestId, tenantId])
   // Под политику RLS на Guest: она делает EXISTS по участиям на каждую строку.
@@ -339,4 +341,52 @@ model Session {
 
   @@index([tenantId, familyId])
   @@index([staffId, issuedAt])
+}
+
+/// Предрасчёт кассы: что произойдёт, если чек провести.
+///
+/// ПОЧЕМУ ТАБЛИЦА, А НЕ REDIS. Redis в проекте будет (Upstash, docs/01 раздел 6),
+/// но предрасчёт — это финансовое намерение: по нему через минуту спишут баллы.
+/// Потеря записи при перезапуске кеша означает «касса нажала подтвердить,
+/// а система забыла, что обещала». В Postgres он живёт вместе с журналом,
+/// попадает под ту же изоляцию и переживает всё, что переживает журнал.
+///
+/// Живёт 10 минут (docs/02, раздел 3.3: PREVIEW_EXPIRED). Чистится фоновой
+/// задачей, когда появится воркер с очередями.
+model TransactionPreview {
+  id       String @id @default(uuid())
+  tenantId String
+
+  membershipId String
+  guestId      String
+
+  /// Сумма чека в минорных единицах.
+  amount          Int
+  /// Сколько баллов гость просит списать.
+  redeemRequested Int @default(0)
+  /// Сколько списать можно на самом деле: минимум из запроса, баланса и потолка.
+  redeem          Int
+  /// Сколько начислится после списания.
+  pointsToEarn    Int
+  /// К оплате деньгами после списания баллов.
+  amountToPay     Int
+
+  /// Баланс на момент расчёта. Расхождение при коммите — BALANCE_CHANGED.
+  balanceAtPreview Int
+
+  receiptNumber String?
+  locationId    String?
+  /// Кто считал. Нужен и аудиту, и будущей награде сотруднику.
+  staffId       String?
+
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  /// Заполняется при коммите: повторное проведение того же предрасчёта запрещено.
+  committedAt DateTime?
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, expiresAt])
+  @@index([membershipId, createdAt])
 }
