@@ -1,0 +1,22 @@
+{
+  // Отдельный конфиг для файлов, которые исполняет не пакет, а инструмент:
+  // vitest поднимает свой конфиг через сборщик, поэтому здесь ESM и bundler-резолвер,
+  // а не CommonJS, в который собирается сам пакет.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["vitest.config.mts"]
+}

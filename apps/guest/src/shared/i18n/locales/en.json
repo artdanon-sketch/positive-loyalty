@@ -1,0 +1,17 @@
+{
+  "app.name": "POSitive",
+  "app.theme.toDark": "Dark theme",
+  "app.theme.toLight": "Light theme",
+
+  "card.title": "My card",
+  "card.subtitle": "The card lives in your browser — nothing to install",
+
+  "card.loading.label": "Loading your card",
+
+  "card.empty.title": "No points yet",
+  "card.empty.text": "Show this page at the counter — your first points arrive right after you pay.",
+
+  "card.error.title": "The card did not load",
+  "card.error.text": "Looks like the connection dropped. Check the network and open the card again.",
+  "card.error.retry": "Try again"
+}

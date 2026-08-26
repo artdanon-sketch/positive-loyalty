@@ -1,0 +1,20 @@
+# Переводы строк: в репозитории всегда LF, в рабочей копии тоже LF.
+#
+# Зачем: prettier настроен на endOfLine: 'lf' (packages/config/prettier/index.mjs),
+# а git на Windows по умолчанию идёт с core.autocrlf=true и отдаёт рабочей копии CRLF.
+# Без этого файла на свежем клоне под Windows `pnpm format:check` краснеет на всём
+# репозитории сразу — и локально, и в шаге Format в CI расхождение не видно,
+# потому что раннер линуксовый.
+* text=auto eol=lf
+
+# Бинарные файлы не нормализуем.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pdf binary

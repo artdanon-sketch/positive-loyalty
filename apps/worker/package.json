@@ -1,0 +1,31 @@
+{
+  "name": "@positive/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "BullMQ-воркер: рассылки, отложенные начисления, сгорание баллов, ночная сверка",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "pnpm run build && pnpm run --parallel \"/^dev:/\"",
+    "dev:compile": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "dev:run": "node --env-file-if-exists=../../.env --enable-source-maps --watch dist/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "bullmq": "6.2.0",
+    "ioredis": "6.0.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "@vitest/coverage-v8": "4.1.11",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

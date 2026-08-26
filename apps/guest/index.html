@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content="POSitive Loyalty — карта гостя в браузере" />
+    <title>POSitive — моя карта</title>
+    <!--
+      Тема выставляется до первой отрисовки, иначе на слабой сети гость успевает увидеть
+      вспышку чужой темы. Ключ и значения — THEME_STORAGE_KEY и Theme из @positive/ui:
+      сюда их не импортировать (скрипт обязан отработать до загрузки бандла), поэтому
+      при изменении ключа в дизайн-системе правится и эта строка.
+    -->
+    <script>
+      try {
+        var stored = localStorage.getItem('positive:theme')
+        var prefersLight =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-color-scheme: light)').matches
+        document.documentElement.dataset.theme =
+          stored === 'light' || stored === 'dark' ? stored : prefersLight ? 'light' : 'dark'
+      } catch (error) {
+        document.documentElement.dataset.theme = 'dark'
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Чтобы открыть карту, включите JavaScript в браузере.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

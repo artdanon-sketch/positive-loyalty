@@ -1,0 +1,25 @@
+{
+  "app.brand": "POSitive Loyalty",
+  "app.section": "Бэк-офис заведения",
+  "app.skipToContent": "Перейти к содержимому",
+
+  "theme.toggle.label": "Переключить тему",
+  "theme.dark": "Тёмная",
+  "theme.light": "Светлая",
+
+  "overview.title": "Обзор",
+  "overview.subtitle": "Что происходит с программой прямо сейчас",
+
+  "overview.loading.label": "Загружаем обзор",
+  "overview.loading.hint": "Считаем визиты и баллы за выбранный период",
+
+  "overview.error.title": "Не получилось загрузить обзор",
+  "overview.error.hint": "Данные не пришли. Нажмите «Повторить». Если не помогло — проверьте связь с интернетом.",
+  "overview.error.retry": "Повторить",
+
+  "overview.empty.title": "Пока нечего показать",
+  "overview.empty.hint": "Обзор оживёт после первого оформленного гостя. Три шага, чтобы это случилось сегодня:",
+  "overview.empty.step.qr": "Напечатать табличку с QR-кодом и поставить её на стойку",
+  "overview.empty.step.staff": "Показать сотруднику, как оформить гостя на кассе",
+  "overview.empty.step.guest": "Оформить первого гостя и начислить ему баллы"
+}

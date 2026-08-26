@@ -1,0 +1,124 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ЗАГОТОВКА. Деплой PR-окружения: api и worker → Railway, admin и guest →
+# Cloudflare Pages preview.  docs/01_Архитектура_и_данные.md, раздел 7.
+#
+# Проекты Railway и Cloudflare ЕЩЁ НЕ СОЗДАНЫ. Ниже в env лежат плейсхолдеры —
+# ЗАМЕНИТЕ их на реальные имена, когда заведёте проекты.
+#
+# Пока секретов нет, workflow проходит зелёным и НИЧЕГО не делает. Так сделано
+# намеренно: неподключённый деплой не должен красить PR в красный.
+# Схема гейтинга: контекст secrets НЕДОСТУПЕН в `if` на уровне job, поэтому
+# секрет пробрасывается в env, а проверка живёт на уровне шага.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Deploy preview
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: deploy-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # ── ПЛЕЙСХОЛДЕРЫ, заменить на реальные имена проектов ──────────────────────
+  RAILWAY_API_SERVICE: positive-loyalty-api
+  RAILWAY_WORKER_SERVICE: positive-loyalty-worker
+  CLOUDFLARE_ADMIN_PROJECT: positive-loyalty-admin
+  CLOUDFLARE_GUEST_PROJECT: positive-loyalty-guest
+  # ── Секреты. Заводятся в Settings → Secrets and variables → Actions ────────
+  # Аккаунтный токен (Account Settings → Tokens): один секрет на все окружения,
+  # включая динамические pr-N. Project-token привязан к паре проект + окружение,
+  # поэтому одним и тем же секретом три workflow обслужить не смог бы.
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+  # Аккаунтный токен не знает, какой проект деплоить, а на чистом раннере
+  # нет .railway со ссылкой на него — поэтому id проекта задаётся явно.
+  RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+jobs:
+  preview:
+    name: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # ── Railway: api и worker в PR-окружение ────────────────────────────────
+      # Окружение на PR Railway создаёт сам, если в проекте включён PR-deploy.
+      # Имя окружения ниже — соглашение, поправьте под настройки проекта.
+      - name: Install Railway CLI
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: npm install -g @railway/cli
+
+      # `railway up` не угадывает проект: аккаунтный токен даёт доступ ко всем
+      # проектам сразу, а привязки на раннере нет. Линкуем явно — иначе команда
+      # падает с ошибкой о непривязанном проекте.
+      - name: Link Railway project
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway link --project "$RAILWAY_PROJECT_ID" --environment "pr-${{ github.event.pull_request.number }}" --service "$RAILWAY_API_SERVICE"
+
+      - name: Deploy api to Railway PR environment
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway up --service "$RAILWAY_API_SERVICE" --environment "pr-${{ github.event.pull_request.number }}" --ci
+
+      - name: Deploy worker to Railway PR environment
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
+        run: railway up --service "$RAILWAY_WORKER_SERVICE" --environment "pr-${{ github.event.pull_request.number }}" --ci
+
+      # ── Cloudflare Pages: admin и guest в preview на ветку ──────────────────
+      - name: Deploy admin to Cloudflare Pages preview
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/admin/dist --project-name=${{ env.CLOUDFLARE_ADMIN_PROJECT }} --branch=${{ github.head_ref }}
+
+      - name: Deploy guest to Cloudflare Pages preview
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/guest/dist --project-name=${{ env.CLOUDFLARE_GUEST_PROJECT }} --branch=${{ github.head_ref }}
+
+      - name: Report skipped targets
+        if: env.RAILWAY_TOKEN == '' || env.RAILWAY_PROJECT_ID == '' || env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        # GitHub запускает run через `bash -e`, поэтому конструкция
+        # `[ -z "$X" ] && echo ...` уронила бы шаг, когда условие ложно.
+        # Пишем через if/fi.
+        run: |
+          {
+            echo "### Деплой превью пропущен"
+            echo
+            if [ -z "$RAILWAY_TOKEN" ] || [ -z "$RAILWAY_PROJECT_ID" ]; then
+              echo "- Railway — нет RAILWAY_TOKEN / RAILWAY_PROJECT_ID, api и worker не задеплоены."
+            fi
+            if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+              echo "- Cloudflare Pages — нет CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID, admin и guest не задеплоены."
+            fi
+            echo
+            echo "Это ожидаемо, пока деплой не подключён. Подробности — в README, раздел «Окружения и деплой»."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,139 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gitleaks — сканер секретов. Требование docs/05_Безопасность_и_антифрод.md,
+# раздел 9: «Один закоммиченный ключ дороже дня работы».
+#
+# ГДЕ ЭТОТ КОНФИГ РАБОТАЕТ СЕЙЧАС: только в CI, шагом `Gitleaks` в
+# .github/workflows/ci.yml. Pre-commit-хука в репозитории НЕТ — ни husky,
+# ни lefthook, ни prepare-скрипта. ТЗ хочет сканер и в pre-commit тоже, но
+# любой из этих вариантов — новая зависимость и общий git-хук на всю команду,
+# поэтому вопрос открыт и решается с владельцем репозитория отдельно.
+# До тех пор единственный гейт — CI: секрет ловится на PR, а не до коммита.
+#
+# Базовый набор правил gitleaks покрывает AWS, GCP, Stripe, GitHub, Slack,
+# приватные ключи и прочее. Мы его расширяем, а не заменяем, и добавляем
+# allowlist, чтобы примеры из документации не давали ложных срабатываний.
+# ─────────────────────────────────────────────────────────────────────────────
+
+title = "POSitive Loyalty gitleaks config"
+
+[extend]
+# Тянем встроенный набор правил. Своё пишем только сверху.
+useDefault = true
+
+# ── Глобальные allowlist'ы ───────────────────────────────────────────────────
+# Здесь только места, где секрет по определению не настоящий: шаблон окружения,
+# документация и HTML-прототипы с демонстрационными значениями.
+# Всё остальное сканируется без исключений — если правило мешает, надо чинить
+# правило, а не расширять этот список.
+#
+# ПОЧЕМУ ЗДЕСЬ ОДИН БЛОК [allowlist], А НЕ НЕСКОЛЬКО [[allowlists]].
+#
+# Раньше тут лежали три таблицы [[allowlists]] с комментарием «требует
+# gitleaks >= 8.21». Это неверно: множественные allowlist'ы поддерживаются
+# ТОЛЬКО на уровне правила. В gitleaks 8.24.3, config/config.go:
+#
+#     Rules []struct {
+#         AllowList  *viperRuleAllowlist    // [rules.allowlist]
+#         Allowlists []viperRuleAllowlist   // [[rules.allowlists]]
+#     }
+#     Allowlist struct { ... }              // [allowlist] — и только он
+#
+# Поля Allowlists на верхнем уровне нет вообще, поэтому все три блока молча
+# игнорировались — без ошибки, без предупреждения. Обнаружено первым же
+# прогоном в CI: run 32813182448 дал две находки на наших же плейсхолдерах
+# (.env.example и фикстура воркера), хотя обе были «покрыты» allowlist'ом.
+#
+# ПРО regexTarget. По умолчанию gitleaks сопоставляет regex со значением
+# (`secret`), а не со строкой исходника. Что именно попадает в `secret` у
+# правила без secretGroup — зависит от версии, и полагаться на это хрупко:
+# правило positive-loyalty-database-url имело рабочий [rules.allowlist] с
+# регексом на строку подключения целиком, и он всё равно не сработал.
+# Поэтому здесь и в правилах ниже везде явно указан regexTarget = "line":
+# сопоставляем со строкой исходника, это предсказуемо и проверяемо глазами.
+
+[allowlist]
+description = "Места, где секрета не может быть по определению"
+regexTarget = "line"
+
+paths = [
+  # Шаблоны окружения — в корне и в каждом приложении. Значения здесь
+  # локальные заглушки, реальные секреты живут в Railway env, Cloudflare env
+  # и Supabase Vault.
+  '''(^|/)\.env\.example$''',
+  # ТЗ и HTML-прототипы: строки подключения, токены и подписи в примерах.
+  '''^docs/''',
+  # Локальная среда разработки: пароли postgres/redis очевидно локальные.
+  '''^docker-compose\.yml$''',
+  # Лок-файл пакетного менеджера: длинные хеши целостности ловятся как энтропия.
+  '''^pnpm-lock\.yaml$''',
+  # Сам конфиг сканера: в нём по необходимости лежат образцы того, что ловим.
+  '''^\.gitleaks\.toml$''',
+]
+
+regexes = [
+  # Явные плейсхолдеры. Слова взяты в границы \b, иначе `key` и `me`
+  # матчились внутри случайного хвоста base64 и глушили настоящие находки.
+  '''(?i)\b(your|my|our|example|sample|placeholder|change|replace)[-_]?(me|this|token|secret|key|value)\b''',
+  '''(?i)\b(xxx+|yyy+|zzz+|dummy|fake|redacted)\b''',
+  # Локальные строки подключения: postgres/postgres и redis на localhost.
+  '''postgres(ql)?://postgres:postgres@(localhost|127\.0\.0\.1)(:\d{2,5})?(/|\b)''',
+  '''rediss?://(localhost|127\.0\.0\.1)(:\d{2,5})?(/|\b)''',
+]
+
+# ── Свои правила ─────────────────────────────────────────────────────────────
+
+[[rules]]
+id = "positive-loyalty-webhook-secret"
+description = "webhookSecret тенанта для подписи вебхуков POSitive POS"
+# У каждого тенанта свой секрет, он генерируется при подключении и ротируется
+# кнопкой. В коде его быть не может — только в базе и в env.
+regex = '''(?i)webhook[_-]?secret['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "webhook"]
+
+[[rules]]
+id = "positive-loyalty-qr-signing-key"
+description = "Ключ подписи гостевых QR-кодов"
+regex = '''(?i)qr[_-]?(signing[_-]?)?key['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "qr"]
+
+[[rules]]
+id = "positive-loyalty-database-url"
+description = "Строка подключения к PostgreSQL с непустым паролем"
+regex = '''postgres(ql)?://[A-Za-z0-9._%-]+:[^:@\s/'"]{8,}@'''
+tags = ["positive-loyalty", "database"]
+
+[[rules.allowlists]]
+description = "Локальные и явно шаблонные строки подключения"
+regexTarget = "line"
+regexes = [
+  '''postgres(ql)?://postgres:postgres@''',
+  '''(?i)postgres(ql)?://[A-Za-z0-9._%-]+:(password|changeme|placeholder|<[^>]+>|\$\{[^}]+\})[A-Za-z0-9._%-]*@''',
+]
+
+[[rules]]
+id = "positive-loyalty-redis-url"
+description = "Строка подключения к Redis с паролем (Upstash — rediss://)"
+regex = '''rediss?://[A-Za-z0-9._%-]*:[^:@\s/'"]{8,}@'''
+tags = ["positive-loyalty", "redis"]
+
+[[rules.allowlists]]
+description = "Явно шаблонные пароли в строке подключения"
+# Сюда попадает фикстура apps/worker/src/config.test.ts: она специально несёт
+# пароль в строке подключения, чтобы проверить, что он НЕ утекает в текст
+# ошибки. Настоящим секретом она от этого не становится.
+regexTarget = "line"
+regexes = [
+  '''(?i)rediss?://[A-Za-z0-9._%-]*:(password|changeme|placeholder)[A-Za-z0-9._%-]*@''',
+]
+
+[[rules]]
+id = "positive-loyalty-messaging-token"
+description = "Токен Telegram-бота или LINE Messaging API"
+regex = '''(?i)(telegram[_-]?bot[_-]?token|line[_-]?channel[_-]?(access[_-]?token|secret))['"\s]*[:=]['"\s]*[A-Za-z0-9/+=:_\-]{20,}'''
+tags = ["positive-loyalty", "comms"]
+
+[[rules]]
+id = "positive-loyalty-jwt-secret"
+description = "Секрет подписи JWT"
+regex = '''(?i)jwt[_-]?(secret|private[_-]?key)['"\s]*[:=]['"\s]*[A-Za-z0-9/+=_\-]{16,}'''
+tags = ["positive-loyalty", "auth"]

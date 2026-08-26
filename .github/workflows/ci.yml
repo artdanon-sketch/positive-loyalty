@@ -1,0 +1,104 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — единственный обязательный гейт перед мержем.
+# docs/06_Процесс_и_дорожная_карта.md, раздел 3.
+#
+# Порядок шагов зафиксирован постановкой задачи и менять его не нужно:
+# lint → typecheck → gitleaks → test → build.
+# Дешёвые проверки идут первыми, чтобы очевидная ошибка падала за минуту.
+# Format:check вписан рядом с lint по тому же принципу: это самая дешёвая
+# проверка в наборе, и порядок обязательных шагов она не нарушает.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Новый пуш в ту же ветку отменяет предыдущий прогон: незачем греть раннеры
+# на коде, который уже устарел. На main отмену тоже держим — main всегда
+# деплоится с последнего коммита.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Минимум прав, но не меньше необходимого.
+#
+# contents: read       — checkout читает код и историю.
+# pull-requests: read  — на событии pull_request gitleaks-action запрашивает
+#                        GET /repos/:owner/:repo/pulls/:n/commits, чтобы понять,
+#                        какие коммиты сканировать. Без этого права шаг падает
+#                        с 403 «Resource not accessible by integration».
+#                        Проверено на первом же прогоне: PR #1, run 32812968330.
+#
+# pull-requests: write НЕ нужен: комментарии gitleaks в PR выключены ниже.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # gitleaks сканирует историю коммитов, а не только рабочее дерево,
+          # поэтому мелкий клон не годится.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        # Версию здесь НЕ дублируем: action читает packageManager из package.json.
+        # Один источник правды — иначе рано или поздно разъедется.
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        # Prettier проверяет форматирование, не чинит его. Шаг стоит сразу после
+        # lint: он самый дешёвый из всех и падает за секунды. Локальная починка —
+        # `pnpm format`.
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Gitleaks
+        # Сканер секретов в CI — требование docs/05_Безопасность_и_антифрод.md,
+        # раздел 9: «Один закоммиченный ключ дороже дня работы».
+        #
+        # ВАЖНО ПРО ЛИЦЕНЗИЮ:
+        #   • личный репозиторий (владелец — пользователь) — работает бесплатно,
+        #     GITLEAKS_LICENSE не нужен;
+        #   • репозиторий в организации GitHub — экшену ОБЯЗАТЕЛЕН ключ
+        #     GITLEAKS_LICENSE, иначе шаг падает с ошибкой лицензии.
+        # Если переносим репозиторий под организацию — сначала получаем ключ на
+        # gitleaks.io, кладём в Secrets репозитория как GITLEAKS_LICENSE.
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Не комментируем PR — иначе понадобится pull-requests: write.
+          GITLEAKS_ENABLE_COMMENTS: false
+          # Правила и allowlist — в .gitleaks.toml в корне репозитория.
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

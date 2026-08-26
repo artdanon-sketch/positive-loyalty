@@ -1,0 +1,23 @@
+{
+  // Конфиг для файлов, которые исполняет инструмент, а не приложение.
+  // Приложение — CommonJS (NestJS 10), но vitest загружает свой конфиг через сборщик,
+  // поэтому здесь ESM и bundler-резолвер: иначе импорт vitest/config не проходит проверку.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "types": ["node"],
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["vitest.config.mts"]
+}

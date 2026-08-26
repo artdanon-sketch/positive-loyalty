@@ -1,0 +1,43 @@
+{
+  "name": "positive-loyalty",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "POSitive Loyalty — программа лояльности для малого бизнеса Пхукета",
+  "packageManager": "pnpm@11.23.0",
+  "engines": {
+    "node": ">=22.13",
+    "pnpm": ">=11.23.0"
+  },
+  "scripts": {
+    "build:packages": "pnpm --filter @positive/contracts --filter @positive/ui run build",
+    "dev": "pnpm build:packages && pnpm --parallel --filter @positive/api --filter @positive/admin --filter @positive/guest run dev",
+    "dev:api": "pnpm --filter @positive/api run dev",
+    "dev:worker": "pnpm --filter @positive/worker run dev",
+    "dev:admin": "pnpm --filter @positive/admin run dev",
+    "dev:guest": "pnpm --filter @positive/guest run dev",
+    "lint": "pnpm build:packages && eslint .",
+    "lint:fix": "pnpm build:packages && eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm build:packages && pnpm -r run typecheck",
+    "test": "pnpm build:packages && pnpm -r run test",
+    "test:e2e": "pnpm build:packages && pnpm --filter @positive/api exec vitest run e2e-spec",
+    "build": "pnpm -r run build",
+    "clean": "pnpm -r --include-workspace-root exec node --input-type=module -e \"import { rm } from 'node:fs/promises'; await Promise.all(['dist', 'build', 'coverage', '.vite', '.eslintcache'].map((p) => rm(p, { recursive: true, force: true })))\""
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@positive/config": "workspace:*",
+    "@types/node": "22.20.1",
+    "eslint": "10.9.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.68.0"
+  }
+}

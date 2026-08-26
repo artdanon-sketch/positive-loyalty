@@ -1,0 +1,18 @@
+node_modules
+dist
+build
+coverage
+.vite
+.wrangler
+pnpm-lock.yaml
+
+# ТЗ и заметки форматируем руками: prettier переносит русские таблицы и ломает вёрстку документов
+docs/
+**/*.md
+
+# tsconfig-пресеты содержат комментарии (JSONC) — prettier к ним не зовём
+packages/config/tsconfig/
+**/tsconfig*.json
+
+# сгенерированное
+**/*.tsbuildinfo
