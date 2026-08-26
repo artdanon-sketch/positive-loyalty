@@ -9,6 +9,7 @@ import { RolesGuard } from './common/tenant/roles.guard'
 import { TenantGuard } from './common/tenant/tenant.guard'
 import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
+import { PosModule } from './pos/pos.module'
 
 /**
  * Корневой модуль. Сейчас в нём конфигурация, health-check, ядро (Prisma + ledger)
@@ -30,6 +31,7 @@ import { HealthModule } from './health/health.module'
     HealthModule,
     AuthModule,
     AdminModule,
+    PosModule,
   ],
   providers: [
     {
