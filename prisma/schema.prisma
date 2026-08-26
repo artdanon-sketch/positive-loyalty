@@ -1,0 +1,222 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// POSitive Loyalty — схема базы данных.
+//
+// Задача 2 дорожной карты (docs/06, раздел 8): четыре модели ledger-контура —
+// Tenant, Guest, Membership, LedgerEntry. Поля взяты дословно из
+// docs/01_Архитектура_и_данные.md, разделы 4.1, 4.2, 4.4.
+//
+// Location, GuestChannel, Consent, Device, Staff, Offer, PosLink, WebhookEvent,
+// AuditLog, Broadcast, Certificate, Review появятся в следующих задачах.
+// Их связи здесь намеренно вырезаны, а не закомментированы: схема должна
+// валидироваться целиком, а не «почти».
+//
+// Железные правила, которые эта схема обслуживает (CLAUDE.md):
+//   • баллы меняются только через LedgerService — таблица LedgerEntry append-only,
+//     запрет UPDATE/DELETE прибит в миграции двумя механизмами (см. prisma/README.md);
+//   • деньги и баллы — целые в минорных единицах (Int, сатанги и баллы), без float;
+//   • каждая финансовая запись несёт idempotencyKey с UNIQUE — повтор ловится базой,
+//     а не только приложением;
+//   • отмена операции — новая запись REVERSAL со ссылкой reversalOfId,
+//     исходная строка не правится никогда.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../apps/api/src/generated/prisma"
+
+  // apps/api — CommonJS (NestJS 10 держится на legacy-декораторах).
+  // Prisma 7 по умолчанию генерирует ESM, поэтому формат задан явно.
+  moduleFormat = "cjs"
+  runtime      = "nodejs"
+}
+
+// Prisma 7 больше не принимает url в блоке datasource: строка подключения живёт
+// в prisma.config.ts (для CLI) и в driver adapter (для рантайма клиента).
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Перечисления ────────────────────────────────────────────────────────────
+
+enum Vertical {
+  RESTAURANT
+  SPA
+  RENTAL
+  RETAIL
+  OTHER
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  PAUSED
+  CHURNED
+}
+
+enum Plan {
+  FREE
+  PRO
+  NETWORK
+}
+
+enum GuestMode {
+  TOURIST
+  RESIDENT
+}
+
+enum AcquisitionSource {
+  ORGANIC
+  CATALOG
+  REFERRAL
+  STAFF
+  IMPORT
+}
+
+/// Тип ledger-записи. Знак amount задаётся типом операции, а не полем:
+/// EARN/GRANT/ADJUST(+) кладут плюс, REDEEM/EXPIRE — минус,
+/// REVERSAL — противоположный знак отменяемой записи.
+enum LedgerType {
+  EARN
+  REDEEM
+  EXPIRE
+  ADJUST
+  REVERSAL
+  GRANT
+}
+
+/// Откуда пришла операция. Нужен антифроду: STAFF_MANUAL и SIGNED_QR
+/// имеют принципиально разный уровень доверия.
+enum LedgerSource {
+  POS_WEBHOOK
+  POS_SYNC
+  SIGNED_QR
+  STAFF_MANUAL
+  PAYMENT
+  SYSTEM
+}
+
+enum ActorType {
+  SYSTEM
+  STAFF
+  OWNER
+  GUEST
+}
+
+// ─── Модели ──────────────────────────────────────────────────────────────────
+
+/// Мерчант. Корень мультитенантности: всё тенантное ссылается сюда,
+/// RLS-политики в Задаче 3 будут сравнивать tenantId с app.tenant_id.
+model Tenant {
+  id         String       @id @default(uuid())
+  brandName  String
+  legalName  String?
+  vertical   Vertical
+  currency   String       @default("THB")
+  timezone   String       @default("Asia/Bangkok")
+  locale     String       @default("th")
+  status     TenantStatus @default(TRIAL)
+  plan       Plan         @default(FREE)
+  seasonMode Boolean      @default(false) // льготный тариф низкого сезона
+  settings   Json // ProgramConfig, docs/01 раздел 4.3
+  createdAt  DateTime     @default(now())
+
+  memberships   Membership[]
+  ledgerEntries LedgerEntry[]
+}
+
+/// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
+/// участие в конкретной программе описывает Membership.
+model Guest {
+  id           String    @id @default(uuid())
+  phoneE164    String    @unique // первичный идентификатор
+  displayName  String?
+  locale       String    @default("ru") // ru | en | th | zh
+  mode         GuestMode @default(TOURIST) // вычисляемое по поведению
+  modeLockedBy String? // 'auto' | 'manual'
+  birthday     DateTime? // спрашиваем позже, не на входе
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime?
+
+  memberships   Membership[]
+  ledgerEntries LedgerEntry[]
+}
+
+/// Участие гостя в программе конкретного тенанта.
+///
+/// pointsBalance — денормализованный КЭШ. Источник истины — сумма LedgerEntry.amount.
+/// Пишется только внутри той же Serializable-транзакции, что и ledger-запись,
+/// и только из LedgerService. Ночной джоб reconcile сверяет кэш с суммой.
+model Membership {
+  id             String            @id @default(uuid())
+  guestId        String
+  tenantId       String
+  pointsBalance  Int               @default(0) // КЭШ. Источник истины — ledger
+  stampsCount    Int               @default(0)
+  tierId         String? // id статуса из Tenant.settings.tiers, не FK
+  firstVisitAt   DateTime?
+  lastVisitAt    DateTime?
+  visitsTotal    Int               @default(0)
+  spentTotal     Int               @default(0) // в минорных единицах (сатанги)
+  source         AcquisitionSource @default(ORGANIC)
+  referredById   String? // Membership, приведший этого гостя; FK появится вместе с рефералкой
+  isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
+
+  guest         Guest         @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerEntries LedgerEntry[]
+
+  @@unique([guestId, tenantId])
+  @@index([tenantId, lastVisitAt])
+}
+
+/// Журнал операций с баллами. Append-only: единственная разрешённая операция — INSERT.
+///
+/// Запрет UPDATE/DELETE живёт в миграции и продублирован двумя независимыми
+/// механизмами (REVOKE + BEFORE-триггер), потому что каждый по отдельности обходится.
+/// Подробности — в prisma/README.md и в комментариях migration.sql.
+model LedgerEntry {
+  id           String @id @default(uuid())
+  tenantId     String
+  guestId      String
+  membershipId String
+
+  type         LedgerType
+  amount       Int // ЗНАКОВОЕ: +начисление, −списание. Баллы целые.
+  balanceAfter Int // снапшот для быстрых выписок
+
+  basisAmount Int? // сумма чека в минорных единицах (сатанги)
+  currency    String @default("THB")
+
+  source  LedgerSource
+  refType String? // receipt | offer_grant | referral | promo
+  refId   String?
+
+  /// Ключ идемпотентности. UNIQUE — последний рубеж: даже если приложение
+  /// проспит гонку, вторую запись не пустит база.
+  idempotencyKey String  @unique
+  /// Ссылка на отменяемую запись. UNIQUE — одну операцию нельзя отменить дважды.
+  reversalOfId   String? @unique
+  offerId        String? // Offer появится в Задаче по акциям, пока не FK
+
+  actorType  ActorType
+  actorId    String?
+  locationId String? // Location появится позже, пока не FK
+  deviceId   String?
+  ip         String?
+
+  createdAt DateTime @default(now())
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest      Guest      @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  // Самоссылка «отмена → исходная операция».
+  // Restrict с обеих сторон: SetNull по умолчанию означал бы UPDATE строки ledger,
+  // а UPDATE на этой таблице запрещён триггером — FK просто перестал бы работать.
+  reversalOf LedgerEntry? @relation("LedgerReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversedBy LedgerEntry? @relation("LedgerReversal")
+
+  @@index([tenantId, createdAt])
+  @@index([membershipId, createdAt])
+  @@index([guestId, createdAt])
+}

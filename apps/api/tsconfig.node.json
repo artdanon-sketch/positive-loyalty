@@ -19,5 +19,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["vitest.config.mts"]
+  "include": ["vitest.config.mts", "vitest.integration.config.mts"]
 }

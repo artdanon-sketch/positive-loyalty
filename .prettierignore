@@ -16,3 +16,5 @@ packages/config/tsconfig/
 
 # сгенерированное
 **/*.tsbuildinfo
+**/generated/prisma/
+prisma/migrations/

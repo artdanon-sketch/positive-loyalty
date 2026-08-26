@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+
+  // Скрипты из этой папки не входят ни в один пакет монорепо: их запускает сам node
+  // (`node --experimental-strip-types`), а не сборщик приложения. Без собственного
+  // tsconfig они остаются вне любого проекта, и типизированный линт спотыкается о них
+  // ровно так же, как о prisma.config.ts, — «not found by the project service».
+  //
+  // Здесь же включён allowImportingTsExtensions: seed и демо-скрипт импортируют
+  // соседние файлы с явным расширением `.ts`, потому что этого требует node в режиме
+  // стриппинга типов. Emit отсюда не происходит вообще (noEmit), так что расширения
+  // в готовый код не утекают.
+  "extends": "../packages/config/tsconfig/base.json",
+
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["ES2023"],
+    "types": ["node"],
+
+    // Типы `LedgerService` и `PrismaService` приезжают из исходников apps/api через
+    // `import type`. Файлы там размечены легаси-декораторами Nest — без этого флага
+    // TypeScript разбирал бы их как декораторы нового стандарта и ругался на сигнатуру.
+    "experimentalDecorators": true,
+
+    // Три послабления против packages/config/tsconfig/base.json. Все три — следствие
+    // одного факта: через `import type` в программу попадают исходники apps/api, а это
+    // CommonJS-пакет со своим, менее строгим tsconfig. Проверять чужие файлы своими
+    // правилами бессмысленно: ошибки будут не про этот код и чинить их здесь нечем.
+    //
+    //   verbatimModuleSyntax     — TS1295/TS1287 на каждой строке `import`/`export`
+    //                              в файлах apps/api: для него они CommonJS;
+    //   exactOptionalPropertyTypes — apps/api его не включает, и его собственные
+    //                              вызовы с `actorId?: string` под ним не проходят;
+    //   isolatedModules          — не нужен: отсюда ничего не собирается пофайлово.
+    //
+    // На сами скрипты в этой папке послабления влияют слабо: `import type` тут
+    // расставлен вручную, а необязательные поля никогда не передаются как undefined.
+    "verbatimModuleSyntax": false,
+    "exactOptionalPropertyTypes": false,
+    "isolatedModules": false,
+
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+
+  "include": ["*.ts"]
+}

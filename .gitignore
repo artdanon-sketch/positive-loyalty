@@ -40,6 +40,10 @@ pnpm-debug.log*
 prisma/*.db
 prisma/*.db-journal
 
+# клиент Prisma: собирается из prisma/schema.prisma на postinstall,
+# в репозитории не хранится — иначе каждый pnpm install даёт шумный дифф
+apps/api/src/generated/
+
 # ос и редакторы
 .DS_Store
 Thumbs.db
