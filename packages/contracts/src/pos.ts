@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { ReversalReason } from './ledger.js'
+
 /**
  * Контракты кассы. docs/02_API_контракты.md, раздел 3.
  *
@@ -121,3 +123,47 @@ export const CommitResult = z
   .strict()
 
 export type CommitResult = z.infer<typeof CommitResult>
+
+/**
+ * Отмена проведённого чека. docs/02, раздел 3.5.
+ *
+ * Причина — тот же перечень, что у компенсаций журнала: второй список
+ * «кассовых причин» разъехался бы с первым на первой же правке.
+ */
+export const PosVoidInput = z
+  .object({
+    reason: ReversalReason,
+    /**
+     * Комментарий. Для кассира в 15-минутном окне — по желанию; менеджеру и
+     * владельцу обязателен всегда: их отмена не ограничена окном, и без
+     * объяснения такая операция неотличима от заметания следов.
+     */
+    comment: z.string().trim().min(3).max(300).optional(),
+  })
+  .strict()
+
+export type PosVoidInput = z.infer<typeof PosVoidInput>
+
+export const PosVoidResult = z
+  .object({
+    transactionId: z.uuid(),
+    /** Компенсированные записи чека: исходная → созданная компенсация. */
+    reversals: z
+      .array(
+        z
+          .object({
+            entryId: z.uuid(),
+            reversalId: z.uuid(),
+            /** Знаковое изменение баллов компенсацией. */
+            amount: z.number().int(),
+          })
+          .strict(),
+      )
+      .min(1),
+    newBalance: z.number().int(),
+    /** true — этот чек уже отменяли: повтор вернул прежний результат. */
+    replayed: z.boolean(),
+  })
+  .strict()
+
+export type PosVoidResult = z.infer<typeof PosVoidResult>

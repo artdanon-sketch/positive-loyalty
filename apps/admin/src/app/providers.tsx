@@ -4,6 +4,7 @@ import type { Theme } from '@positive/ui'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
+import { AuthProvider } from '../shared/auth/auth-provider'
 import { LanguageProvider } from '../shared/i18n'
 import { ThemeContext } from './theme-context'
 import type { ThemeContextValue } from './theme-context'
@@ -56,7 +57,9 @@ export function Providers({ children }: { children: ReactNode }): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )

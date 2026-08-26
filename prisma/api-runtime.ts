@@ -44,6 +44,7 @@ const API_PACKAGE_JSON = new URL('../apps/api/package.json', import.meta.url)
 
 const PRISMA_SERVICE_MODULE = new URL('core/prisma.service.js', DIST_ROOT)
 const LEDGER_SERVICE_MODULE = new URL('core/ledger.service.js', DIST_ROOT)
+const PIN_MODULE = new URL('auth/pin.js', DIST_ROOT)
 
 const BUILD_COMMAND = 'pnpm --filter @positive/api run build'
 
@@ -54,6 +55,11 @@ interface PrismaServiceModule {
 
 interface LedgerServiceModule {
   readonly LedgerService: new (prisma: PrismaService) => LedgerService
+}
+
+/** Хеширование PIN — та же реализация, что проверяет вход. Второй быть не должно. */
+interface PinModule {
+  readonly hashPin: (pin: string) => Promise<string>
 }
 
 /**
@@ -70,12 +76,14 @@ export interface ApiRuntime {
   readonly prisma: PrismaService
   /** Единственная точка изменения баллов в системе. */
   readonly ledger: LedgerService
+  /** Хеш PIN тем же scrypt, которым API проверяет вход. */
+  readonly hashPin: (pin: string) => Promise<string>
   /** Закрыть пул соединений. Без этого процесс висит после последнего запроса. */
   readonly close: () => Promise<void>
 }
 
 const assertBuilt = (): void => {
-  const missing = [PRISMA_SERVICE_MODULE, LEDGER_SERVICE_MODULE].filter(
+  const missing = [PRISMA_SERVICE_MODULE, LEDGER_SERVICE_MODULE, PIN_MODULE].filter(
     (module) => !existsSync(fileURLToPath(module)),
   )
 
@@ -124,6 +132,7 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
 
   const prismaModule = (await import(PRISMA_SERVICE_MODULE.href)) as PrismaServiceModule
   const ledgerModule = (await import(LEDGER_SERVICE_MODULE.href)) as LedgerServiceModule
+  const pinModule = (await import(PIN_MODULE.href)) as PinModule
 
   const prisma = new prismaModule.PrismaService()
   const ledger = new ledgerModule.LedgerService(prisma)
@@ -131,6 +140,7 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
   return {
     prisma,
     ledger,
+    hashPin: pinModule.hashPin,
     close: async () => {
       await prisma.$disconnect()
     },
