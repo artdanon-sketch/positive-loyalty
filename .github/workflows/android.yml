@@ -20,6 +20,16 @@ on:
         description: 'Адрес API по умолчанию (можно поменять в самом приложении)'
         required: false
         default: 'http://127.0.0.1:3000/v1'
+  # На pull request — только когда мобильная часть и правда менялась.
+  # Полная сборка Android тяжёлая, и гонять её на каждый коммит в API незачем;
+  # но менять упаковку вслепую и узнавать о поломке после слияния — хуже.
+  pull_request:
+    paths:
+      - 'apps/mobile/**'
+      - 'apps/admin/src/**'
+      - 'apps/guest/src/**'
+      - '.github/workflows/android.yml'
+
   push:
     tags:
       - 'v*'
