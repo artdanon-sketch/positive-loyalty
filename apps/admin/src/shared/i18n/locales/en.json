@@ -146,5 +146,10 @@
   "pos.queue.failed": "No connection and the receipt could not be queued. Retry or write it down.",
   "pos.queued.sent": "Receipt sent",
   "pos.queued.sentHint": "Connection is back, the points have been credited.",
-  "pos.queued.stuck": "The receipt did not go through — show it to a manager. The reason is listed above."
+  "pos.queued.stuck": "The receipt did not go through — show it to a manager. The reason is listed above.",
+  "overview.feed.title": "Happening now",
+  "overview.feed.live": "live",
+  "overview.feed.reconnecting": "reconnecting",
+  "overview.feed.waiting": "Waiting for today's first earn",
+  "overview.feed.anonymous": "Guest"
 }

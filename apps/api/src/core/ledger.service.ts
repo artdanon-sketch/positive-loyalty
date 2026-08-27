@@ -14,6 +14,7 @@ import { Prisma } from '../generated/prisma/client'
 import type { LedgerEntry } from '../generated/prisma/client'
 
 import { reconcileMembershipBalance, type BalanceReconciliation } from './balance'
+import { LedgerEventsService } from './ledger-events.service'
 import {
   AlreadyReversedError,
   BalanceOverflowError,
@@ -450,7 +451,10 @@ const resolveOccurredAt = (raw: string | undefined, now: Date): Date | null => {
 export class LedgerService {
   private readonly logger = new Logger(LedgerService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: LedgerEventsService,
+  ) {}
 
   /**
    * Начисление баллов.
@@ -735,6 +739,11 @@ export class LedgerService {
       if (replayed) {
         this.logReplay(params.operation, row.id)
       } else {
+        // Живая лента узнаёт об операции ТОЛЬКО после успешной транзакции
+        // и только если операция новая: повтор — не событие, и показывать
+        // одну продажу на экране в зале дважды нельзя.
+        this.events.publishEarned(row)
+
         this.logger.debug(
           `${params.operation}: записана операция ${row.id}, ` +
             `участие ${row.membershipId}, ${row.amount} баллов, баланс ${row.balanceAfter}`,

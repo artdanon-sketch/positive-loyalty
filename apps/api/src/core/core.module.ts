@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 
+import { LedgerEventsService } from './ledger-events.service'
 import { LedgerService } from './ledger.service'
 import { PrismaService } from './prisma.service'
 
@@ -14,10 +15,15 @@ import { PrismaService } from './prisma.service'
  *
  * `LedgerService` экспортируется отсюда и только отсюда: он единственная точка, через
  * которую в системе меняются баллы (CLAUDE.md, железное правило 1).
+ *
+ * `LedgerEventsService` живёт здесь же, а не в модуле бэк-офиса, ради направления
+ * зависимостей: журнал публикует событие, бэк-офис на него подписывается. Если бы
+ * издатель лежал в `admin`, ядро зависело бы от прикладного модуля — и подписаться
+ * на журнал из кассы или из воркера стало бы нельзя, не потащив за собой бэк-офис.
  */
 @Global()
 @Module({
-  providers: [PrismaService, LedgerService],
-  exports: [PrismaService, LedgerService],
+  providers: [PrismaService, LedgerService, LedgerEventsService],
+  exports: [PrismaService, LedgerService, LedgerEventsService],
 })
 export class CoreModule {}

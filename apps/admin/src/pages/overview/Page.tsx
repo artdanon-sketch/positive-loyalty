@@ -8,9 +8,11 @@ import { DaysChart } from './components/days-chart'
 import { EmptyState } from './components/empty-state'
 import { ErrorState } from './components/error-state'
 import { HoursChart } from './components/hours-chart'
+import { LiveFeed } from './components/live-feed'
 import { LoadingState } from './components/loading-state'
 import { StatTiles } from './components/stat-tiles'
 import { PERIODS, useDashboard } from './hooks'
+import { useLiveFeed } from './use-live-feed'
 
 /**
  * Экран «Обзор» — `/` (docs/03, раздел 2).
@@ -20,13 +22,16 @@ import { PERIODS, useDashboard } from './hooks'
  * сначала плитки с ответами, сразу за ними — советы, и только потом графики,
  * которые объясняют, откуда взялись и то, и другое.
  *
- * Живая лента через SSE (`GET /v1/admin/stream`) приедет отдельно: поток
- * с переподключением — своя инфраструктура, и делать её походя нельзя.
+ * Живая лента идёт выше графиков: она отвечает на вопрос «что происходит
+ * прямо сейчас», а графики — на «что происходило».
  */
 export function OverviewPage(): ReactElement {
   const t = useT()
   const [period, setPeriod] = useState<DashboardPeriod>('7d')
   const query = useDashboard(period)
+  // Поток открывается только когда есть что показывать рядом: на заведении
+  // первого дня лента висела бы пустой над онбординг-чеклистом и мешала.
+  const feed = useLiveFeed(query.data !== undefined && !query.data.isEmpty)
 
   return (
     <section className="page">
@@ -68,6 +73,9 @@ export function OverviewPage(): ReactElement {
         <>
           <StatTiles data={query.data} />
           <AdviceList advice={query.data.advice} />
+          {/* Лента выше графиков: она отвечает на вопрос «что происходит
+              прямо сейчас», а графики — на «что происходило». */}
+          <LiveFeed events={feed.events} isConnected={feed.isConnected} />
           <DaysChart days={query.data.series} isPartial={query.data.isPartialPeriod} />
           <HoursChart hourly={query.data.hourly} advice={query.data.advice} />
         </>

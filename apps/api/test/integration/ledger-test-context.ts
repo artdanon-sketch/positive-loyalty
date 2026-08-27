@@ -38,6 +38,7 @@ import type { ActorType, LedgerSource } from '@positive/contracts'
 import { expect } from 'vitest'
 
 import { isLedgerError, type LedgerError, type LedgerErrorCode } from '../../src/core/ledger.errors'
+import { LedgerEventsService } from '../../src/core/ledger-events.service'
 import { LedgerService, type TenantScope } from '../../src/core/ledger.service'
 import { PrismaService } from '../../src/core/prisma.service'
 import { TEST_DATABASE_HOWTO } from './setup-integration-env'
@@ -109,7 +110,10 @@ const assertSchemaReady = async (prisma: PrismaService): Promise<void> => {
  */
 export const createLedgerTestContext = async (): Promise<LedgerTestContext> => {
   const moduleRef: TestingModule = await Test.createTestingModule({
-    providers: [PrismaService, LedgerService],
+    // `LedgerEventsService` здесь не декорация: журнал публикует в него
+    // событие живой ленты после каждой новой операции. Без него не собирается
+    // сам `LedgerService` — и это правильно, зависимость настоящая.
+    providers: [PrismaService, LedgerService, LedgerEventsService],
   }).compile()
 
   await moduleRef.init()
