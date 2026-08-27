@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod'
 
-import { env } from '../config/env'
+import { getApiUrl } from '../config/api-url'
 
 /**
  * Ошибка ответа API в форме единого конверта docs/02, раздел 0:
@@ -61,7 +61,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { method = 'GET', body, token, signal } = options
 
-  const response = await fetch(`${env.VITE_API_URL}${path}`, {
+  const response = await fetch(`${getApiUrl()}${path}`, {
     method,
     headers: {
       Accept: 'application/json',

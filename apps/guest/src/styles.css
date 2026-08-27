@@ -1,0 +1,65 @@
+/* ── Адрес сервера: настройка мобильного приложения ────────────────────────
+   В вебе этого блока нет вовсе: там адрес известен из сборки и совпадает с тем,
+   откуда открыта страница. В приложении без него телефон не найдёт сервер.
+   ------------------------------------------------------------------------- */
+
+.server-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.server-setting__toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tx-3);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.server-setting__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.server-setting__hint {
+  margin: 0;
+  color: var(--tx-3);
+  font-size: 12px;
+}
+
+.server-setting__error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.field__input {
+  font: inherit;
+  color: var(--tx);
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+}

@@ -4,11 +4,31 @@ import react from '@vitejs/plugin-react'
 // vite.config.ts, из-за чего плагины и алиасы молча не доезжают до тестов.
 import { defineConfig } from 'vitest/config'
 
-export default defineConfig({
+/**
+ * Режимы сборки: `owner` и `cashier` — два мобильных приложения из одного
+ * исходника, `production` — обычный веб бэк-офиса.
+ *
+ * Различие вынесено в РЕЖИМ, а не в файлы окружения: `.env.*` в этом
+ * репозитории под игнором (там живут секреты), и флаги сборки, спрятанные
+ * в неотслеживаемом файле, воспроизводятся только на машине автора.
+ *
+ * Третьей кодовой базы при этом не появляется — ТЗ (docs/03, раздел 10)
+ * прямо против неё. Появляется вторая упаковка того же приложения.
+ */
+const NATIVE_MODES = new Set(['owner', 'cashier'])
+
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: { port: 5173, strictPort: true },
   preview: { port: 5173, strictPort: true },
-  build: { outDir: 'dist', sourcemap: true },
+  build: {
+    outDir: NATIVE_MODES.has(mode) ? `dist-${mode}` : 'dist',
+    sourcemap: true,
+  },
+  define: {
+    'import.meta.env.VITE_NATIVE': JSON.stringify(String(NATIVE_MODES.has(mode))),
+    'import.meta.env.VITE_APP_ROLE': JSON.stringify(mode === 'cashier' ? 'cashier' : 'owner'),
+  },
   test: {
     environment: 'jsdom',
     // Тесты не должны зависеть от .env на машине: локально он есть (gitignore),
@@ -24,4 +44,4 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
     },
   },
-})
+}))

@@ -1,0 +1,10 @@
+# Собранная веб-часть: приезжает из apps/ при сборке, в репозитории ей не место.
+www/
+
+# Артефакты Gradle. Сам проект android/ отслеживается — в нём наши права
+# и настройки, которые нельзя терять при пересоздании.
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/

@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../../shared/api/http'
 import { useAuth } from '../../shared/auth/auth-context'
+import { ServerSetting } from '../../shared/config/server-setting'
 import { useT } from '../../shared/i18n'
 import { ThemeToggle } from '../../shared/ui/theme-toggle'
 
@@ -102,6 +103,11 @@ export function LoginPage(): ReactElement {
         <button className="button button--primary login__submit" type="submit" disabled={pending}>
           {pending ? t('login.pending') : t('login.submit')}
         </button>
+
+        {/* Адрес сервера — только в приложении на телефоне. Место выбрано
+            намеренно: именно здесь человек оказывается, когда вход не идёт,
+            и именно отсюда он должен дотянуться до настройки сети. */}
+        <ServerSetting />
       </form>
     </div>
   )

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">POSitive Карта</string>
+    <string name="title_activity_main">POSitive Карта</string>
+    <string name="package_name">app.positive.loyalty.guest</string>
+    <string name="custom_url_scheme">app.positive.loyalty.guest</string>
+</resources>

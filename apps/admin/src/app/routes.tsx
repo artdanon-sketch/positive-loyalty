@@ -6,6 +6,7 @@ import { LoginPage } from '../pages/login/Page'
 import { OperationsPage } from '../pages/operations/Page'
 import { OverviewPage } from '../pages/overview/Page'
 import { PosPage } from '../pages/pos/Page'
+import { isCashierApp } from '../shared/config/product'
 import { useAuth } from '../shared/auth/auth-context'
 import { useT } from '../shared/i18n'
 import { AppShell } from './app-shell'
@@ -43,6 +44,12 @@ function RequireAuth({ children }: { children: ReactNode }): ReactElement {
  */
 function RoleHome(): ReactElement {
   const auth = useAuth()
+
+  // В приложении кассира отчёты не показываются никому: иконка с названием
+  // «Касса» обещает кассу, и открывать под ней выручку — сломанное обещание.
+  if (isCashierApp()) {
+    return <PosPage />
+  }
 
   return auth.session?.subject.role === 'CASHIER' ? <PosPage /> : <OverviewPage />
 }

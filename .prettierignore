@@ -1,5 +1,7 @@
 node_modules
 dist
+# Мобильные сборки: dist-owner, dist-cashier, dist-native
+dist-*
 build
 coverage
 .vite
@@ -18,3 +20,7 @@ packages/config/tsconfig/
 **/*.tsbuildinfo
 **/generated/prisma/
 prisma/migrations/
+
+# Нативные проекты Android и скопированная веб-часть: чужие шаблоны и артефакты
+apps/mobile/*/android/
+apps/mobile/*/www/

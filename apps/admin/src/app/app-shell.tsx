@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { useAuth } from '../shared/auth/auth-context'
+import { isCashierApp } from '../shared/config/product'
 import { useT } from '../shared/i18n'
 import type { TranslationKey } from '../shared/i18n'
 import { ThemeToggle } from '../shared/ui/theme-toggle'
@@ -35,7 +36,9 @@ export function AppShell(): ReactElement {
     isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'
 
   const roleKey = subject === null ? null : (ROLE_LABELS[subject.role] ?? null)
-  const isCashier = subject?.role === 'CASHIER'
+  // Либо человек кассир, либо это приложение кассира — в обоих случаях
+  // бэк-офиса на экране нет.
+  const isCashier = subject?.role === 'CASHIER' || isCashierApp()
 
   return (
     <div className="app-shell">

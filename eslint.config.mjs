@@ -27,6 +27,10 @@ const TOOLING_FILES = [
   // Конфиг Prisma CLI лежит в корне и ни в один tsconfig не входит:
   // типизированный линт на нём падает с «not found by the project service».
   'prisma.config.ts',
+  // Конфигурации Capacitor лежат в пакетах-оболочках без своего tsconfig:
+  // это описание сборки, а не код приложения. Типизированный линт спотыкался
+  // бы о них ровно так же, как о prisma.config.ts.
+  'apps/mobile/*/capacitor.config.ts',
 ]
 
 /** Тесты: и юнит, и e2e, и файлы подготовки окружения. */
@@ -45,6 +49,9 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      // Мобильные сборки кладутся в dist-owner, dist-cashier, dist-native:
+      // тот же собранный код, только под другим именем каталога.
+      '**/dist-*/**',
       '**/build/**',
       '**/coverage/**',
       '**/.vite/**',
@@ -55,6 +62,11 @@ export default tseslint.config(
       // Файлы помечены @ts-nocheck и eslint-disable самим генератором;
       // линтить их — тратить время CI на чужой код.
       '**/generated/prisma/**',
+      // Нативные проекты Android создаёт Capacitor: Java, Gradle и его же
+      // шаблоны. Наш там только AndroidManifest, и правила JS к нему не
+      // относятся. Собранная веб-часть в www/ — копия dist, её уже проверили.
+      'apps/mobile/*/android/**',
+      'apps/mobile/*/www/**',
     ],
   },
 
@@ -122,6 +134,11 @@ export default tseslint.config(
   // ── 5. Окружения ───────────────────────────────────────────────────────────
   {
     files: ['apps/api/**/*.ts', 'apps/worker/**/*.ts', 'packages/contracts/**/*.ts'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // Скрипты сборки мобильных оболочек: обычный node, а не браузер.
+    files: ['apps/mobile/*/scripts/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {

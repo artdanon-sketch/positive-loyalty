@@ -151,5 +151,11 @@
   "overview.feed.live": "live",
   "overview.feed.reconnecting": "reconnecting",
   "overview.feed.waiting": "Waiting for today's first earn",
-  "overview.feed.anonymous": "Guest"
+  "overview.feed.anonymous": "Guest",
+  "server.title": "Server address",
+  "server.label": "Server address",
+  "server.hint": "For example http://192.168.1.10:3000/v1 — the address of the computer running the server, on the same Wi-Fi.",
+  "server.invalid": "The address must start with http:// or https:// and contain a host name",
+  "server.saved": "Saved, reloading",
+  "server.save": "Save"
 }
