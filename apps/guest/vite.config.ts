@@ -16,6 +16,10 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Тесты не зависят от .env на машине: локально он есть (gitignore),
+    // в CI — нет, и без этой строки прогон падает на импорте env.ts.
+    // Адрес фиктивный: сеть в тестах подменена на уровне fetch.
+    env: { VITE_API_URL: 'http://localhost:3000/v1' },
     setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
