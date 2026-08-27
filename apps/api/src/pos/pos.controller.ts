@@ -10,9 +10,15 @@ import {
   Post,
   Query,
 } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
 import { CommitInput, PosGuestQuery, PosVoidInput, PreviewInput } from '@positive/contracts'
-import type { CommitResult, PosGuest, PosVoidResult, PreviewResult } from '@positive/contracts'
+import type {
+  CommitResult,
+  PosConfig,
+  PosGuest,
+  PosVoidResult,
+  PreviewResult,
+} from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -29,6 +35,13 @@ import { PosService } from './pos.service'
 @Roles('CASHIER', 'MANAGER', 'OWNER')
 export class PosController {
   constructor(private readonly posService: PosService) {}
+
+  @Get('config')
+  @ApiOperation({ summary: 'Правила кассы заведения' })
+  @ApiOkResponse({ description: 'Что касса обязана знать до ввода суммы' })
+  async config(): Promise<PosConfig> {
+    return this.posService.config()
+  }
 
   @Get('guest')
   @ApiOperation({

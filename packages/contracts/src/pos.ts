@@ -30,6 +30,31 @@ export type GuestMode = z.infer<typeof GuestMode>
  * Ручной ввод разрешён только при `cashierRules.allowManualEntry` — иначе
  * кассир оформляет гостей по чужим номерам и собирает награду за «новых».
  */
+/**
+ * Правила кассы этого заведения. `GET /v1/pos/config`.
+ *
+ * Экран кассы обязан знать их ДО того, как кассир нажмёт «посчитать».
+ * Иначе выходит так: поле номера чека подписано «необязательно», кассир его
+ * пропускает, сервер отвечает `RECEIPT_REQUIRED` — и всё это при госте,
+ * который стоит у стойки. Отказывать за то, что мы и так знали, нельзя.
+ *
+ * Поля повторяют `ProgramConfig.cashierRules` (docs/01, раздел 4.3), но живут
+ * отдельным контрактом: кассе незачем видеть ставки начисления, лестницу
+ * статусов и мотивацию персонала — это данные бэк-офиса.
+ */
+export const PosConfig = z
+  .object({
+    /** Без номера чека операцию не с чем сверить при разборе. */
+    requireReceiptNumber: z.boolean(),
+    /** Потолок суммы ручного ввода в минорных единицах. null — без потолка. */
+    maxManualAmount: z.number().int().positive().nullable(),
+    /** Разрешён ли ручной ввод суммы вообще. */
+    allowManualEntry: z.boolean(),
+  })
+  .strict()
+
+export type PosConfig = z.infer<typeof PosConfig>
+
 export const PosGuestQuery = z
   .object({
     token: z.string().min(8).max(512).optional(),

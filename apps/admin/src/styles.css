@@ -941,3 +941,207 @@ body {
   padding: 0 14px;
   text-decoration: none;
 }
+
+/* ── Касса ─────────────────────────────────────────────────────────────────
+   docs/03, раздел 10: «от нажатия „сканировать“ до подтверждения — не больше
+   двух тапов и трёх секунд». Отсюда крупные цели нажатия и один столбец:
+   планшет стоит на стойке, кассир работает одной рукой, глядя на гостя.
+   ------------------------------------------------------------------------- */
+
+.pos {
+  max-width: 520px;
+}
+
+.pos__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.pos__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.pos__actions {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.pos__actions .button {
+  flex: 1;
+  /* Крупнее обычной кнопки: попасть надо с первого раза и не глядя. */
+  min-height: 52px;
+  font-size: 16px;
+}
+
+.pos__summary {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.pos__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.pos__row dt {
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+.pos__row dd {
+  margin: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Начисление — главное число экрана: его кассир зачитывает вслух. */
+.pos__row--accent dd {
+  color: var(--mint);
+  font-size: 22px;
+}
+
+.pos__notice {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--tint);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--r-sm);
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+.pos__error {
+  margin: 0;
+  color: var(--bad);
+  font-size: var(--fs-secondary-lg);
+}
+
+.pos__done {
+  margin: 0;
+  font-size: 20px;
+}
+
+.pos__earned {
+  color: var(--mint);
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.guest-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.guest-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guest-card__name {
+  font-size: 17px;
+}
+
+.guest-card__meta {
+  color: var(--tx-2);
+  font-size: 13px;
+}
+
+/* Поле ввода общего вида. Экран входа держит свои `.login__*` — они появились
+   раньше и живут по своим правилам плотности; сводить их в один класс стоит
+   отдельной правкой, а не мимоходом внутри задачи про кассу. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.field__input {
+  font: inherit;
+  color: var(--tx);
+  background: var(--surf-2);
+  border: 1px solid var(--line-2, var(--line));
+  border-radius: var(--r-sm-lg);
+  /* Выше обычного поля: планшет, палец, полутёмный зал. */
+  min-height: 48px;
+  padding: 10px 12px;
+  transition: border-color 0.3s var(--ease);
+}
+
+.field__input:focus-visible {
+  outline: none;
+  border-color: var(--mint);
+}
+
+/* ── Сканер ────────────────────────────────────────────────────────────── */
+
+.scanner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.scanner__video {
+  width: 100%;
+  /* Квадрат: код на экране гостя квадратный, а высокий кадр только сбивает
+     наводку и заставляет искать рамку. */
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: var(--surf-3);
+  border-radius: var(--r-card-lg);
+}
+
+.scanner__frame {
+  position: absolute;
+  inset: 12% 12% auto 12%;
+  aspect-ratio: 1;
+  border: 2px dashed var(--mint);
+  border-radius: var(--r-card);
+  pointer-events: none;
+}
+
+.scanner__hint {
+  margin: 0;
+  color: var(--tx-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.scanner__hint--error {
+  color: var(--bad);
+}
+
+/* Сумма чека набирается не глядя — самое крупное поле ввода в продукте. */
+.field__input--amount {
+  font-size: 30px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
