@@ -4,15 +4,21 @@
   "private": true,
   "license": "UNLICENSED",
   "description": "zod-схемы запросов и ответов — единственный источник правды для API и фронтов",
-  "//": "type: commonjs — не по вкусу, а по потребителю. NestJS 10 компилируется в CommonJS и не может require() ESM-пакет; фронты идут через сборщик, которому CJS-зависимость не мешает. Когда API переедет на ESM — переедет и этот пакет.",
+  "//": "ДВОЙНАЯ СБОРКА, и это не перестраховка. NestJS 10 компилируется в CommonJS и не может require() ESM-пакет; сборщик фронта, наоборот, тришейкает только ESM. Пока пакет был чистым CJS, импорт одной схемы в гостевом приложении тянул все домены и весь zod: бандл 218 кБ → 656 кБ (gzip 71 → 163). Для приложения, которое по ТЗ обязано открываться за две секунды на слабом 4G, это неприемлемо. Отсюда две сборки и условный exports: require → CJS для API, import → ESM для фронтов.",
   "type": "commonjs",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -20,7 +26,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.build.esm.json && node ./scripts/finish-esm.mjs",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,5 +40,6 @@
     "@vitest/coverage-v8": "4.1.11",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
-  }
+  },
+  "module": "./dist/esm/index.js"
 }

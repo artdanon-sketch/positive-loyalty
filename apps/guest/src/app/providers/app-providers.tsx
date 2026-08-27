@@ -1,6 +1,7 @@
 import { BrowserRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
 
+import { SessionProvider } from '../../shared/session/session-provider'
 import { I18nProvider } from './i18n-provider'
 import { QueryProvider } from './query-provider'
 import { ThemeProvider } from './theme-provider'
@@ -15,7 +16,9 @@ export function AppProviders({ children }: AppProvidersProps) {
     <ThemeProvider>
       <I18nProvider>
         <QueryProvider>
-          <BrowserRouter>{children}</BrowserRouter>
+          <SessionProvider>
+            <BrowserRouter>{children}</BrowserRouter>
+          </SessionProvider>
         </QueryProvider>
       </I18nProvider>
     </ThemeProvider>
