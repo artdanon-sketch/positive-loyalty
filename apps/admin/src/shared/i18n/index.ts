@@ -5,8 +5,11 @@
  * (`overview.empty.title`), тип ключей выводится из ru.json — забытый перевод
  * в en.json ловит компилятор, а не тестировщик.
  *
- * Плюрализация через ICU появится вместе с первым числом в интерфейсе
- * (docs/04_Дизайн-система.md, раздел 7). Пока чисел нет — нет и зависимости.
+ * Плюрализация — на `Intl.PluralRules`, который есть в каждом браузере
+ * (docs/04, раздел 7: «в русском три формы, в тайском одна»). Библиотеку ICU
+ * не тянем: она весит больше пятидесяти килобайт, а нужна здесь ровно одна
+ * её возможность — выбрать форму слова по числу. Правила языков живут
+ * в самом движке и обновляются вместе с ним.
  */
 import { createContext, createElement, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
@@ -70,6 +73,30 @@ export function useLocale(): Locale {
 /** Смена языка интерфейса, с запоминанием выбора. */
 export function useSetLocale(): (locale: Locale) => void {
   return useLanguage().setLocale
+}
+
+/**
+ * Форма ключа для числа: `guests` → `guests.one` | `.few` | `.many` | `.other`.
+ *
+ * Категории берутся у `Intl.PluralRules`, поэтому русские три формы и тайская
+ * одна получаются сами. Если нужной формы в словаре нет, откатываемся на
+ * `.other`: недостающий перевод обязан показать текст, а не пустоту.
+ */
+export function pluralKey(base: string, count: number, locale: Locale): TranslationKey {
+  const category = new Intl.PluralRules(locale).select(count)
+  const exact = `${base}.${category}` as TranslationKey
+  const fallback = `${base}.other` as TranslationKey
+
+  return exact in dictionaries[locale] ? exact : fallback
+}
+
+/** Хук перевода с выбором формы по числу: `tp('advice.sleeping', 21)`. */
+export function useTPlural(): (base: string, count: number) => string {
+  const locale = useLocale()
+  return useCallback(
+    (base: string, count: number) => dictionaries[locale][pluralKey(base, count, locale)],
+    [locale],
+  )
 }
 
 /** Хук перевода: `const t = useT()` → `t('overview.title')`. */

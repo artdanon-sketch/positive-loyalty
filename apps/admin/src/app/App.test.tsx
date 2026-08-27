@@ -208,7 +208,8 @@ describe('Обзор', () => {
 
     await fillAndSubmitLogin()
 
-    expect(await screen.findByText(`26 ${t('overview.advice.sleeping.text')}`)).toBeInTheDocument()
+    // 26 по-русски — форма «many»: «26 гостей не заходили».
+    expect(await screen.findByText(`26 ${t('overview.advice.sleeping.many')}`)).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: t('overview.advice.sleeping.action') }),
     ).toBeInTheDocument()
@@ -258,5 +259,30 @@ describe('Обзор', () => {
       )
       expect(asked).toBe(true)
     })
+  })
+})
+
+describe('Формы слова по числу', () => {
+  // docs/04, раздел 7: в русском три формы. Одна строка на все числа даёт
+  // «21 гостей не заходили» — это не опечатка, а ошибка языка, и владелец
+  // её замечает. Формы выбирает Intl.PluralRules, библиотеку ICU не тянем.
+  it.each([
+    [1, 'one'],
+    [21, 'one'],
+    [3, 'few'],
+    [22, 'few'],
+    [5, 'many'],
+    [26, 'many'],
+  ] as const)('%i гостей — форма %s', async (guests, form) => {
+    stubApi({
+      '/v1/admin/dashboard': () =>
+        json({ ...DASHBOARD, advice: [{ kind: 'SLEEPING_GUESTS', guests }] }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const expected = `${guests} ${t(`overview.advice.sleeping.${form}`)}`
+    expect(await screen.findByText(expected)).toBeInTheDocument()
   })
 })

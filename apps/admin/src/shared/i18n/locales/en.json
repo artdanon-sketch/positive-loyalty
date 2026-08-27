@@ -98,10 +98,13 @@
   "overview.hours.empty": "No visits in this period",
   "overview.hours.alt": "Bar chart of load by hour",
   "overview.advice.title": "What to do today",
-  "overview.advice.sleeping.text": "guests have not visited in over a month",
   "overview.advice.sleeping.action": "View sleeping guests",
   "overview.advice.quiet.text": "The room is empty",
   "overview.advice.quiet.action": "View operations",
   "overview.advice.manual.text": "Many earns are entered by hand:",
-  "overview.advice.manual.action": "Check operations"
+  "overview.advice.manual.action": "Check operations",
+  "overview.advice.sleeping.one": "guest has not visited in over a month",
+  "overview.advice.sleeping.few": "guests have not visited in over a month",
+  "overview.advice.sleeping.many": "guests have not visited in over a month",
+  "overview.advice.sleeping.other": "guests have not visited in over a month"
 }
