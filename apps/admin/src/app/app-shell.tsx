@@ -9,9 +9,15 @@ import { ThemeToggle } from '../shared/ui/theme-toggle'
 /**
  * Каркас бэк-офиса: шапка с навигацией и область экрана.
  *
- * Пунктов три — ровно по числу существующих экранов Среза 1. Остальные пять
- * из docs/03, раздел 1 добавляются вместе со своими экранами, а не заранее:
- * меню из мёртвых ссылок хуже короткого.
+ * Пункты — ровно по числу существующих экранов Среза 1. Остальные из docs/03,
+ * раздел 1 добавляются вместе со своими экранами, а не заранее: меню из мёртвых
+ * ссылок хуже короткого.
+ *
+ * НАБОР ПУНКТОВ ЗАВИСИТ ОТ РОЛИ. Кассиру видна только касса: «финансы
+ * и настройки скрыты не только в интерфейсе, но и на уровне API» (docs/03,
+ * раздел 10). Скрытие здесь — вежливость, а не защита: настоящий запрет стоит
+ * на `AdminController`, и кассир получит 404 даже по прямой ссылке. Показывать
+ * ему пункты, которые ответят отказом, — значит учить не доверять интерфейсу.
  */
 
 const ROLE_LABELS: Readonly<Record<string, TranslationKey>> = {
@@ -29,6 +35,7 @@ export function AppShell(): ReactElement {
     isActive ? 'app-nav__link app-nav__link--active' : 'app-nav__link'
 
   const roleKey = subject === null ? null : (ROLE_LABELS[subject.role] ?? null)
+  const isCashier = subject?.role === 'CASHIER'
 
   return (
     <div className="app-shell">
@@ -44,14 +51,23 @@ export function AppShell(): ReactElement {
         </div>
 
         <nav className="app-nav" aria-label={t('nav.label')}>
-          <NavLink className={navClass} to="/" end>
-            {t('nav.overview')}
-          </NavLink>
-          <NavLink className={navClass} to="/operations">
-            {t('nav.operations')}
-          </NavLink>
-          <NavLink className={navClass} to="/guests">
-            {t('nav.guests')}
+          {isCashier ? null : (
+            <>
+              <NavLink className={navClass} to="/" end>
+                {t('nav.overview')}
+              </NavLink>
+              <NavLink className={navClass} to="/operations">
+                {t('nav.operations')}
+              </NavLink>
+              <NavLink className={navClass} to="/guests">
+                {t('nav.guests')}
+              </NavLink>
+            </>
+          )}
+          {/* Касса доступна всем: у владельца в мобильной версии это
+              центральная кнопка сканера (docs/03, раздел 10). */}
+          <NavLink className={navClass} to="/pos">
+            {t('nav.pos')}
           </NavLink>
         </nav>
 

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import type {
   CommitResult,
+  PosConfig,
   PosGuest,
   PosVoidResult,
   PreviewResult,
@@ -616,6 +617,28 @@ export class PosService {
    * но если первый вызов оборвался посередине, отмена не считается завершённой
    * и повтор идёт обычным путём, дописывая недостающие компенсации.
    */
+  /**
+   * Правила кассы этого заведения.
+   *
+   * Экран кассы обязан знать их до ввода: иначе поле номера чека подписано
+   * «необязательно», кассир его пропускает, а сервер отвечает отказом —
+   * при госте, который стоит у стойки.
+   *
+   * Наружу уходят ТОЛЬКО правила кассира. Ставки начисления, лестница статусов
+   * и мотивация персонала остаются в бэк-офисе: касса ими не распоряжается,
+   * а лишние поля в ответе — лишняя поверхность.
+   */
+  async config(): Promise<PosConfig> {
+    const { tenantId } = TenantContext.getOrThrow()
+    const { cashierRules } = await this.loadConfig(tenantId)
+
+    return {
+      requireReceiptNumber: cashierRules.requireReceiptNumber,
+      maxManualAmount: cashierRules.maxManualAmount,
+      allowManualEntry: cashierRules.allowManualEntry,
+    }
+  }
+
   private async findCompletedReversal(
     tenantId: string,
     transactionId: string,
