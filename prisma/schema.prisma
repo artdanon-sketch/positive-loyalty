@@ -215,7 +215,19 @@ model LedgerEntry {
   deviceId   String?
   ip         String?
 
+  /// Когда мы об операции УЗНАЛИ.
   createdAt DateTime @default(now())
+
+  /// Когда операция ПРОИЗОШЛА, если это не момент записи. NULL — совпадает.
+  ///
+  /// Чек от кассы приходит вебхуком, и вебхук опаздывает: связь рвётся, касса
+  /// работает офлайн и досылает смену вечером. Без этого поля вечерняя выгрузка
+  /// легла бы одним столбцом отчёта, а «загрузка по часам» показала бы девять
+  /// вечера вместо обеда — и владелец поставил бы акцию не на тот час.
+  ///
+  /// Аналитика читает coalesce(occurredAt, createdAt); createdAt при этом
+  /// остаётся неизменяемым и отвечает на другой вопрос — когда узнали.
+  occurredAt DateTime?
 
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   guest      Guest      @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -228,6 +240,9 @@ model LedgerEntry {
   reversedBy LedgerEntry? @relation("LedgerReversal")
 
   @@index([tenantId, createdAt])
+  // Аналитика группирует по времени СОБЫТИЯ, а не записи: без этого индекса
+  // дашборд заведения за 90 дней уходит в последовательный скан журнала.
+  @@index([tenantId, occurredAt])
   @@index([membershipId, createdAt])
   @@index([guestId, createdAt])
 }

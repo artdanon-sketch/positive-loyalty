@@ -71,6 +71,9 @@ const validRecord = {
   deviceId: null,
   ip: null,
   createdAt: '2026-08-18T12:45:00.000Z',
+  // null — «событие и запись совпадают». Отдельная проверка на непустое
+  // значение ниже: у опоздавшего вебхука эти два времени расходятся.
+  occurredAt: null,
 } as const
 
 /** Пути полей, к которым претензии у валидатора — удобно сравнивать в ожиданиях. */
@@ -331,5 +334,24 @@ describe('LedgerOperationResult', () => {
         balance: 34_000,
       }),
     ).toBe(true)
+  })
+})
+
+describe('Время события в записи журнала', () => {
+  it('принимает время события, отличное от времени записи', () => {
+    // Чек, приехавший вебхуком через шесть часов после закрытия смены.
+    const record = LedgerEntryRecord.parse({
+      ...validRecord,
+      occurredAt: '2026-08-18T06:15:00.000Z',
+    })
+
+    expect(record.occurredAt).toBe('2026-08-18T06:15:00.000Z')
+    expect(record.createdAt).toBe(validRecord.createdAt)
+  })
+
+  it('различает null и мусор: поле обязано быть либо датой, либо null', () => {
+    expect(issuePaths(LedgerEntryRecord, { ...validRecord, occurredAt: '18.08.2026' })).toContain(
+      'occurredAt',
+    )
   })
 })

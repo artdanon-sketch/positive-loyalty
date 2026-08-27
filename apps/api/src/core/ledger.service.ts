@@ -21,6 +21,7 @@ import {
   IdempotencyKeyReusedError,
   InsufficientBalanceError,
   LedgerEntryNotFoundError,
+  LedgerFutureEventError,
   LedgerInputInvalidError,
   LedgerWriteConflictError,
   MembershipNotFoundError,
@@ -362,6 +363,9 @@ const MEMBERSHIP_SELECT = {
   visitsTotal: true,
   spentTotal: true,
   firstVisitAt: true,
+  // Нужен, чтобы догрузка опоздавшей смены не откатывала дату последнего
+  // визита назад: гость, побывавший позже, не должен становиться «спящим».
+  lastVisitAt: true,
   tenant: { select: { currency: true } },
 } as const
 
@@ -393,9 +397,54 @@ const loadMembership = async (
 /** Приводит строку журнала к контракту `LedgerOperationResult` из packages/contracts. */
 const buildResult = (row: LedgerEntry, replayed: boolean): LedgerOperationResult =>
   LedgerOperationResult.parse({
-    entry: { ...row, createdAt: row.createdAt.toISOString() },
+    entry: {
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+      occurredAt: row.occurredAt === null ? null : row.occurredAt.toISOString(),
+    },
     replayed,
   })
+
+/**
+ * Время события, если оно отличается от времени записи.
+ *
+ * Сервис проверяет ровно один запрет — БУДУЩЕЕ. Чек не может произойти позже,
+ * чем о нём узнали: это либо сбитые часы кассы, либо попытка занести покупку
+ * в акцию, которая ещё не началась. И то и другое лечится отказом, а не
+ * молчаливым сдвигом.
+ *
+ * Насколько далеко назад разрешено датировать — вопрос ГРАНИЦЫ, а не журнала:
+ * величина окна опоздания зависит от интеграции, и проверяет её контракт того
+ * эндпоинта, который принимает вебхук. Интерфейсу кассира это поле не даётся
+ * вовсе — возможность датировать чек задним числом в руках кассира означает
+ * возможность занести покупку в окно закончившейся акции.
+ *
+ * Небольшой допуск вперёд оставлен намеренно: часы кассы и часы сервера
+ * расходятся на секунды, и отказывать из-за этого — значит терять чеки.
+ */
+const FUTURE_TOLERANCE_MS = 60_000
+
+/** Раньше из двух; если первой нет — вторая. Для `firstVisitAt`. */
+const earliest = (current: Date | null, candidate: Date): Date =>
+  current === null || candidate < current ? candidate : current
+
+/** Позже из двух. Для `lastVisitAt`: догрузка старой смены не откатывает её назад. */
+const latest = (current: Date | null, candidate: Date): Date =>
+  current === null || candidate > current ? candidate : current
+
+const resolveOccurredAt = (raw: string | undefined, now: Date): Date | null => {
+  if (raw === undefined) {
+    return null
+  }
+
+  const occurredAt = new Date(raw)
+
+  if (occurredAt.getTime() > now.getTime() + FUTURE_TOLERANCE_MS) {
+    throw new LedgerFutureEventError(occurredAt, now)
+  }
+
+  return occurredAt
+}
 
 @Injectable()
 export class LedgerService {
@@ -423,6 +472,9 @@ export class LedgerService {
         const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
         const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
         const now = new Date()
+        const occurredAt = resolveOccurredAt(parsed.occurredAt, now)
+        // Время визита — событие, если оно названо, иначе момент записи.
+        const visitedAt = occurredAt ?? now
 
         const row = await tx.ledgerEntry.create({
           data: {
@@ -439,6 +491,7 @@ export class LedgerService {
             refId: parsed.refId ?? null,
             idempotencyKey: parsed.idempotencyKey,
             offerId: parsed.offerId ?? null,
+            occurredAt,
             ...originColumns(parsed),
           },
         })
@@ -451,8 +504,12 @@ export class LedgerService {
             pointsBalance: balanceAfter,
             visitsTotal: { increment: 1 },
             spentTotal: { increment: parsed.basisAmount ?? 0 },
-            firstVisitAt: membership.firstVisitAt ?? now,
-            lastVisitAt: now,
+            // Даты визитов — про СОБЫТИЕ, а не про запись: опоздавший вебхук
+            // не должен делать вчерашний обед сегодняшним визитом.
+            firstVisitAt: earliest(membership.firstVisitAt, visitedAt),
+            // lastVisitAt не откатываем назад: догрузка старой смены не делает
+            // гостя «давно не заходившим», если после неё он уже был.
+            lastVisitAt: latest(membership.lastVisitAt, visitedAt),
           },
         })
 
@@ -504,6 +561,7 @@ export class LedgerService {
             refId: parsed.refId ?? null,
             idempotencyKey: parsed.idempotencyKey,
             offerId: parsed.offerId ?? null,
+            occurredAt: resolveOccurredAt(parsed.occurredAt, new Date()),
             ...originColumns(parsed),
           },
         })

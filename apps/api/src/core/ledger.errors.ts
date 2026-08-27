@@ -43,6 +43,7 @@ export const LEDGER_ERROR_CODES = [
   'BALANCE_OVERFLOW',
   'LEDGER_WRITE_CONFLICT',
   'BALANCE_DRIFT_DETECTED',
+  'LEDGER_FUTURE_EVENT',
 ] as const
 
 export type LedgerErrorCode = (typeof LEDGER_ERROR_CODES)[number]
@@ -103,6 +104,26 @@ export class LedgerEntryNotFoundError extends LedgerError {
 
   constructor(entryId: string) {
     super('Запись журнала не найдена', { entryId })
+  }
+}
+
+/**
+ * Операцию датировали будущим.
+ *
+ * Чек не может произойти позже, чем о нём узнали. Такое приходит либо от кассы
+ * со сбитыми часами, либо от того, кто хочет занести покупку в акцию, которая
+ * ещё не началась. Оба случая лечатся отказом: молчаливый сдвиг даты превратил
+ * бы вторую ситуацию в успешную.
+ */
+export class LedgerFutureEventError extends LedgerError {
+  override readonly code = 'LEDGER_FUTURE_EVENT'
+  override readonly status = STATUS.UNPROCESSABLE
+
+  constructor(occurredAt: Date, now: Date) {
+    super('Операция датирована будущим', {
+      occurredAt: occurredAt.toISOString(),
+      now: now.toISOString(),
+    })
   }
 }
 

@@ -43,6 +43,12 @@ import { PrismaService } from '../core/prisma.service'
  * сегодняшнего дня попадали во вчерашний столбец графика.
  *
  * `now()` дополнительного объявления не требует: он и так `timestamptz`.
+ *
+ * И вторая тонкость того же рода: аналитика читает `coalesce(occurredAt,
+ * createdAt)`, а не `createdAt`. Чек, приехавший вебхуком вечером за обеденную
+ * смену, обязан лечь в обеденный час — иначе «загрузка по часам» покажет
+ * девять вечера, и владелец поставит акцию не на тот час. `createdAt` при этом
+ * остаётся неизменяемым и отвечает на другой вопрос — когда мы узнали.
  */
 
 /** Длина периода в днях. Ключи — значения `DashboardPeriod`. */
@@ -63,19 +69,51 @@ const MANUAL_ENTRY_ADVICE_FROM = 40
  */
 const INCREMENTAL_MIN_CONTROL = 30
 
-/** Провалом считается час, где гостей меньше этой доли от среднего по дню. */
+/** Провалом считается час, где гостей меньше этой доли от среднего по рабочему дню. */
 const QUIET_HOUR_SHARE = 0.5
+
+/**
+ * Граница рабочего дня: часы тише этой доли от пика в расчёт среднего не идут.
+ *
+ * Без неё шесть утра и полночь с единичными визитами тянут среднее вниз, порог
+ * опускается, и настоящий послеобеденный провал перестаёт быть провалом. Совет
+ * ведь и означает «в рабочее время зал пустой», а не «ночью мало народу».
+ */
+const WORKDAY_MIN_SHARE = 0.25
 
 /** Совет про тихие часы выдаём только для провала в три часа и длиннее. */
 const QUIET_HOURS_MIN_RUN = 3
 
-/** Постгрес отдаёт count/sum как bigint — Prisma превращает их в BigInt. */
-const toNumber = (value: unknown): number =>
-  typeof value === 'bigint' ? Number(value) : typeof value === 'number' ? value : 0
+/**
+ * Число из сырого запроса.
+ *
+ * Постгрес отдаёт `count`/`sum` как bigint, и Prisma превращает их в BigInt.
+ * А `extract` и `avg` возвращают `numeric`, который приезжает СТРОКОЙ или
+ * Decimal-объектом. Ветки для них здесь не для красоты: без них `numeric`
+ * молча превращался в ноль — «данных пока мало» горело на заведении
+ * с трёхмесячной историей.
+ */
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return value
+  }
+
+  if (typeof value === 'bigint') {
+    return Number(value)
+  }
+
+  // Строка от numeric и объект Decimal с собственным toString.
+  const parsed = Number(
+    typeof value === 'string' ? value : typeof value === 'object' && value !== null ? value : NaN,
+  )
+
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 interface SummaryRow {
   guestsNow: unknown
   guestsPrev: unknown
+  historyDays: unknown
   newGuests: unknown
   everGuests: unknown
   liabilityNow: unknown
@@ -111,7 +149,7 @@ export class DashboardService {
     const days = PERIOD_DAYS[period]
 
     const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true, createdAt: true } }),
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } }),
     )
 
     if (tenant === null) {
@@ -135,10 +173,11 @@ export class DashboardService {
     const totalEarns = toNumber(summary.totalEarns)
     const manualShare = totalEarns === 0 ? 0 : (toNumber(summary.manualEarns) / totalEarns) * 100
 
-    // Заведение моложе периода: дельту показывать не с чем, и график
-    // подписывается «данных пока мало» (docs/03, раздел 2).
-    const ageMs = Date.now() - tenant.createdAt.getTime()
-    const isPartialPeriod = ageMs < days * 24 * 60 * 60 * 1000
+    // «Данных меньше, чем длина периода» (docs/03, раздел 2) — про ГЛУБИНУ
+    // ИСТОРИИ, а не про дату строки заведения. Заведение могло быть заведено
+    // вчера и сразу выгрузить в систему три месяца чеков из старой кассы:
+    // данные за период есть, и прятать от владельца дельту не за что.
+    const isPartialPeriod = toNumber(summary.historyDays) < days
 
     return {
       period,
@@ -199,14 +238,14 @@ export class DashboardService {
             l."membershipId",
             l.amount,
             l.source,
-            (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
+            (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
           FROM "LedgerEntry" l
           WHERE l."tenantId" = ${tenantId}::text
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
         ),
         moves AS (
-          SELECT l.amount, (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
+          SELECT l.amount, (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
           FROM "LedgerEntry" l
           WHERE l."tenantId" = ${tenantId}::text
         )
@@ -227,6 +266,11 @@ export class DashboardService {
           (SELECT count(*) FROM "Membership" m
             WHERE m."tenantId" = ${tenantId}::text
               AND m."firstVisitAt" IS NOT NULL)                               AS "everGuests",
+          (SELECT coalesce(
+              extract(day FROM now() - min(coalesce(l."occurredAt", l."createdAt")
+                                            AT TIME ZONE 'UTC')), 0)
+            FROM "LedgerEntry" l
+            WHERE l."tenantId" = ${tenantId}::text)                           AS "historyDays",
           (SELECT count(*) FROM "Membership" m
             WHERE m."tenantId" = ${tenantId}::text
               AND m."lastVisitAt" IS NOT NULL
@@ -244,6 +288,7 @@ export class DashboardService {
       rows[0] ?? {
         guestsNow: 0,
         guestsPrev: 0,
+        historyDays: 0,
         newGuests: 0,
         everGuests: 0,
         liabilityNow: 0,
@@ -280,7 +325,7 @@ export class DashboardService {
         visits AS (
           SELECT DISTINCT
             l."membershipId",
-            (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})::date AS day,
+            (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone})::date AS day,
             (m."firstVisitAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})::date AS first_day
           FROM "LedgerEntry" l
           JOIN "Membership" m ON m.id = l."membershipId" AND m."tenantId" = ${tenantId}::text
@@ -336,14 +381,14 @@ export class DashboardService {
           WHERE extract(isodow FROM d) < 6
         ),
         visits AS (
-          SELECT extract(hour FROM (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}))::int AS hour
+          SELECT extract(hour FROM (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}))::int AS hour
           FROM "LedgerEntry" l, bounds b
           WHERE l."tenantId" = ${tenantId}::text
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
-            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
-            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
-            AND extract(isodow FROM (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})) < 6
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+            AND extract(isodow FROM (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone})) < 6
         )
         SELECT
           h.hour AS "hour",
@@ -395,8 +440,8 @@ export class DashboardService {
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
             AND l."basisAmount" IS NOT NULL
-            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
-            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
         )
         SELECT
           coalesce(round(avg("basisAmount") FILTER (WHERE NOT "isControlGroup")), 0) AS "programAvg",
@@ -476,15 +521,23 @@ function buildAdvice(input: {
  * считаются часы от первого до последнего, где за период был хоть один гость.
  */
 function findQuietRun(hourly: readonly DashboardHour[]): { from: number; to: number } | null {
-  const active = hourly.filter((point) => point.guests > 0)
+  const peak = Math.max(0, ...hourly.map((point) => point.guests))
 
-  if (active.length === 0) {
+  if (peak === 0) {
     return null
   }
 
-  const openFrom = Math.min(...active.map((point) => point.hour))
-  const openTo = Math.max(...active.map((point) => point.hour))
+  // Рабочий день — от первого до последнего заметного часа. Заметный значит
+  // не меньше четверти пика: единичный ночной чек рабочим часом не делает.
+  const busy = hourly.filter((point) => point.guests >= peak * WORKDAY_MIN_SHARE)
+  const openFrom = Math.min(...busy.map((point) => point.hour))
+  const openTo = Math.max(...busy.map((point) => point.hour))
   const workday = hourly.filter((point) => point.hour >= openFrom && point.hour <= openTo)
+
+  if (workday.length === 0) {
+    return null
+  }
+
   const average = workday.reduce((sum, point) => sum + point.guests, 0) / workday.length
   const threshold = average * QUIET_HOUR_SHARE
 
