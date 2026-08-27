@@ -5,7 +5,7 @@ import type { NextFunction, Request, Response } from 'express'
 
 import { getEnv } from '../config/env'
 
-import { readBearerToken, verifyAccessToken } from './access-token'
+import { readBearerToken, verifyAccessToken, verifyGuestToken } from './access-token'
 import { TenantContext } from './tenant-context'
 import { AccessTokenInvalidError } from './tenant.errors'
 
@@ -54,9 +54,12 @@ export class TenantContextMiddleware implements NestMiddleware {
 
     if (token === null) {
       // Контекста тенанта нет — это нормально для публичных маршрутов.
-      TenantContext.run({ tenantId: '', actorId: null, role: null, requestId }, () => {
-        next()
-      })
+      TenantContext.run(
+        { tenantId: '', actorId: null, role: null, guestId: null, requestId },
+        () => {
+          next()
+        },
+      )
       return
     }
 
@@ -67,8 +70,26 @@ export class TenantContextMiddleware implements NestMiddleware {
           tenantId: claims.tenantId,
           actorId: claims.actorId,
           role: claims.role,
+          guestId: null,
           requestId,
         },
+        () => {
+          next()
+        },
+      )
+      return
+    } catch (staffError) {
+      if (!(staffError instanceof AccessTokenInvalidError)) {
+        throw staffError
+      }
+      // Не сотрудник — возможно, гость: у гостевого токена нет tenantId,
+      // и staff-проверка честно его отвергает. Пробуем вторую форму.
+    }
+
+    try {
+      const guest = verifyGuestToken(token, this.secret)
+      TenantContext.run(
+        { tenantId: '', actorId: null, role: null, guestId: guest.guestId, requestId },
         () => {
           next()
         },
@@ -78,11 +99,14 @@ export class TenantContextMiddleware implements NestMiddleware {
         throw error
       }
 
-      // Токен есть, но негодный: идём дальше БЕЗ тенанта. Гвард ответит 401.
-      // Причину наружу не отдаём — она отличает «просрочен» от «подпись не сошлась».
-      TenantContext.run({ tenantId: '', actorId: null, role: null, requestId }, () => {
-        next()
-      })
+      // Токен есть, но не подошёл ни одной форме: идём дальше без субъекта.
+      // 401 отдаст гвард; причину наружу не отдаём.
+      TenantContext.run(
+        { tenantId: '', actorId: null, role: null, guestId: null, requestId },
+        () => {
+          next()
+        },
+      )
     }
   }
 }

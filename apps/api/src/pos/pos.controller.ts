@@ -51,14 +51,7 @@ export class PosController {
     }
 
     if (parsed.data.token !== undefined) {
-      // Токен с экрана гостя выпускается гостевой аутентификацией, а она ждёт
-      // выбора SMS-провайдера. Возвращаем честный отказ, а не пустого гостя.
-      throw new BadRequestException({
-        error: {
-          code: 'NOT_IMPLEMENTED',
-          message: 'Поиск по токену появится вместе с гостевой аутентификацией',
-        },
-      })
+      return this.posService.findGuestByQrToken(parsed.data.token)
     }
 
     return this.posService.findGuestByPhone(parsed.data.phone as string)

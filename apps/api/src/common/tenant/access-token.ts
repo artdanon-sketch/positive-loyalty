@@ -94,3 +94,73 @@ export function readBearerToken(header: string | undefined): string | null {
   const match = /^Bearer\s+(.+)$/i.exec(header.trim())
   return match?.[1]?.trim() ?? null
 }
+
+/**
+ * Гостевые токены. Отдельные функции, а не третье поле в staff-токене:
+ * у гостя нет ни tenantId, ни роли, и смешение двух форм в одном verify
+ * закончилось бы токеном «и того и другого» после первого рефакторинга.
+ * `kind` внутри полезной нагрузки не даёт подсунуть гостевой токен туда,
+ * где ждут сотрудника, и наоборот.
+ */
+
+export interface GuestTokenClaims {
+  readonly guestId: string
+}
+
+const GUEST_KIND = 'guest'
+const GUEST_QR_KIND = 'guest-qr'
+
+const verifyKind = (token: string, secret: string, kind: string): GuestTokenClaims => {
+  let payload: unknown
+  try {
+    payload = jwt.verify(token, secret, { algorithms: ALLOWED_ALGORITHMS })
+  } catch (error) {
+    throw new AccessTokenInvalidError(error instanceof Error ? error.message : 'разбор не удался')
+  }
+
+  const raw = (typeof payload === 'object' && payload !== null ? payload : {}) as Record<
+    string,
+    unknown
+  >
+
+  if (raw['kind'] !== kind || !isNonEmptyString(raw['guestId'])) {
+    throw new AccessTokenInvalidError('не гостевой токен нужного вида')
+  }
+
+  return { guestId: raw['guestId'] }
+}
+
+/** Access-токен гостя. TTL 15 минут (docs/05, раздел 2). */
+export function signGuestToken(
+  claims: GuestTokenClaims,
+  secret: string,
+  expiresInSeconds = 900,
+): string {
+  return jwt.sign({ kind: GUEST_KIND, ...claims }, secret, {
+    algorithm: 'HS256',
+    expiresIn: expiresInSeconds,
+  })
+}
+
+export function verifyGuestToken(token: string, secret: string): GuestTokenClaims {
+  return verifyKind(token, secret, GUEST_KIND)
+}
+
+/**
+ * Токен «мой QR» — то, что гость показывает кассе. Короткоживущий и отдельного
+ * вида: перехваченный с экрана код не годится ни для входа, ни для API гостя.
+ */
+export function signGuestQrToken(
+  claims: GuestTokenClaims,
+  secret: string,
+  expiresInSeconds = 300,
+): string {
+  return jwt.sign({ kind: GUEST_QR_KIND, ...claims }, secret, {
+    algorithm: 'HS256',
+    expiresIn: expiresInSeconds,
+  })
+}
+
+export function verifyGuestQrToken(token: string, secret: string): GuestTokenClaims {
+  return verifyKind(token, secret, GUEST_QR_KIND)
+}

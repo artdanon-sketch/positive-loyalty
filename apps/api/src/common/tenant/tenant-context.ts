@@ -17,6 +17,8 @@ export interface TenantContextValue {
   readonly actorId: string | null
   /** Роль из токена. Проверку прав по ролям делает отдельный гвард. */
   readonly role: string | null
+  /** Гость из гостевого токена. Взаимоисключим с tenantId: субъект один. */
+  readonly guestId: string | null
   /** Сквозная трассировка: тот же идентификатор уходит в логи и в X-Request-Id. */
   readonly requestId: string
 }
