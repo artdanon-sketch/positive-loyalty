@@ -186,6 +186,9 @@ const replayVisits = async (visits: readonly VisitSeed[]): Promise<LedgerTally> 
         currency: CURRENCY,
         refType: 'receipt',
         refId: visit.receiptId,
+        // Время СОБЫТИЯ. Без него вся история легла бы моментом запуска seed,
+        // и график «Гости по дням» превратился бы в один столбец.
+        occurredAt: visit.occurredAt.toISOString(),
         source: 'POS_SYNC',
         actorType: 'SYSTEM',
       },
@@ -346,7 +349,7 @@ const renderStaffLogins = (): string => {
 const seed = async (): Promise<void> => {
   const guests = buildGuests()
   const memberships = buildMemberships(guests)
-  const visits = buildVisits(memberships)
+  const visits = buildVisits(memberships, guests)
 
   out(heading(`POSitive Loyalty — наполнение демо-полигона (набор ${SEED_VERSION})`))
   out('Данные синтетические: телефоны из свободного диапазона, имена придуманы.')

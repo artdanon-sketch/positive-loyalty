@@ -84,37 +84,49 @@ export function DaysChart({
         </div>
       ) : (
         <div className="bars" role="img" aria-label={t('overview.days.alt')}>
-          {days.map((day) => {
-            const total = day.new + day.returning
-
-            return (
-              <span
-                className="bars__col"
-                key={day.date}
-                // Подсказка по наведению — нативный title: своя всплывашка
-                // потребовала бы позиционирования, фокуса и escape, а пользы
-                // против нативной не добавляет.
-                title={`${formatDay(day.date)} · ${t('overview.days.new')} ${day.new} · ${t('overview.days.returning')} ${day.returning}`}
-              >
-                <span className="bars__stack">
-                  <span
-                    className="bars__seg bars__seg--returning"
-                    style={{ height: `${(day.returning / max) * 100}%` }}
-                  />
-                  <span
-                    className="bars__seg bars__seg--new"
-                    style={{ height: `${(day.new / max) * 100}%` }}
-                  />
-                </span>
-                <span className="bars__tick">{total > 0 ? total : ''}</span>
+          {days.map((day, index) => (
+            <span
+              className="bars__col"
+              key={day.date}
+              // Подсказка по наведению — нативный title: своя всплывашка
+              // потребовала бы позиционирования, фокуса и escape, а пользы
+              // против нативной не добавляет. Здесь же лежат сами числа —
+              // на оси им места нет, а знать их иногда нужно.
+              title={`${formatDay(day.date)} · ${t('overview.days.new')} ${day.new} · ${t('overview.days.returning')} ${day.returning}`}
+            >
+              <span className="bars__stack">
+                <span
+                  className="bars__seg bars__seg--returning"
+                  style={{ height: `${(day.returning / max) * 100}%` }}
+                />
+                <span
+                  className="bars__seg bars__seg--new"
+                  style={{ height: `${(day.new / max) * 100}%` }}
+                />
               </span>
-            )
-          })}
+              {/* Под столбцом ДАТА, а не сумма: график без оси абсцисс
+                  не читается — по нему видно форму, но не видно, когда.
+                  На длинных периодах подписи прореживаются, иначе они
+                  сливаются в серую полосу. */}
+              <span className="bars__tick">
+                {index % tickStep(days.length) === 0 ? formatDay(day.date) : ''}
+              </span>
+            </span>
+          ))}
         </div>
       )}
     </section>
   )
 }
+
+/**
+ * Через сколько столбцов подписывать дату.
+ *
+ * Семь дней подписываются все, тридцать — каждый третий, девяносто — каждый
+ * десятый. Числа подобраны так, чтобы подписи не наезжали друг на друга
+ * на узком экране: бэк-офис открывают и с телефона.
+ */
+const tickStep = (length: number): number => (length <= 10 ? 1 : length <= 31 ? 3 : 10)
 
 /** `2026-08-27` → `27.08`. Год в подписи столбца не нужен: период короче года. */
 function formatDay(iso: string): string {

@@ -98,10 +98,13 @@
   "overview.hours.empty": "За период визитов не было",
   "overview.hours.alt": "Столбчатый график загрузки по часам",
   "overview.advice.title": "Что стоит сделать сегодня",
-  "overview.advice.sleeping.text": "гостей не заходили больше месяца",
   "overview.advice.sleeping.action": "Посмотреть спящих",
   "overview.advice.quiet.text": "Зал пустует",
   "overview.advice.quiet.action": "Посмотреть операции",
   "overview.advice.manual.text": "Много начислений вводится руками:",
-  "overview.advice.manual.action": "Проверить операции"
+  "overview.advice.manual.action": "Проверить операции",
+  "overview.advice.sleeping.one": "гость не заходил больше месяца",
+  "overview.advice.sleeping.few": "гостя не заходили больше месяца",
+  "overview.advice.sleeping.many": "гостей не заходили больше месяца",
+  "overview.advice.sleeping.other": "гостей не заходили больше месяца"
 }

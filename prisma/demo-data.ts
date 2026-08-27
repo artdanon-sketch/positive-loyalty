@@ -11,6 +11,12 @@
  * Случайность в файле есть, но вся она проходит через `createRandom` с фиксированным
  * зерном. `Math.random()` в этом файле нет и быть не должно.
  *
+ * ОДНО ИСКЛЮЧЕНИЕ ИЗ ДЕТЕРМИНИЗМА — даты истории визитов. Они отсчитываются
+ * от дня запуска, потому что дашборд показывает последние 7, 30 и 90 дней
+ * от сегодня: история, прибитая к фиксированной дате, через месяц уехала бы
+ * за окно, и демо снова стало бы пустым. Суммы, идентификаторы, число визитов
+ * и профиль дня от даты не зависят — на скриншотах пляшут только даты.
+ *
  * Данные синтетические: телефоны выданы из заведомо свободного диапазона, имена
  * придуманы. Реальных персональных данных здесь нет и не появится.
  */
@@ -21,10 +27,18 @@ import { ProgramConfig, type Tier, type TierCondition } from '@positive/contract
 const RANDOM_SEED = 0x504f5349
 
 /** Версия набора. Входит в ключи идемпотентности seed: другой набор — другие ключи. */
-export const SEED_VERSION = 'v1'
+export const SEED_VERSION = 'v2'
 
-/** Сколько гостей заводим. Десятки, а не двести: полигон дорастёт вместе со схемой. */
-const GUEST_COUNT = 40
+/**
+ * Сколько гостей заводим. Двести — как в CLAUDE.md.
+ *
+ * Раньше здесь стояло сорок с оговоркой «полигон дорастёт вместе со схемой».
+ * Схема доросла: у журнала появилось время события, и девяностодневная история
+ * из того же CLAUDE.md стала выполнима. На сорока гостях график по дням выходил
+ * решётом из пустых столбцов — по такому демо нельзя понять, как экран работает
+ * на живом заведении.
+ */
+const GUEST_COUNT = 200
 
 /** Доля туристов из CLAUDE.md: 60% туристы, 40% резиденты. */
 const TOURIST_SHARE = 0.6
@@ -49,8 +63,56 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 /** Шаг округления суммы чека: 5 бат. Чек «318,47» в тайской кассе не встречается. */
 const RECEIPT_STEP_MINOR = 500
 
-/** Максимум визитов, которые seed кладёт в журнал одному участию. */
-const MAX_SEEDED_VISITS = 3
+/**
+ * Глубина истории. CLAUDE.md: «90 дней истории операций с реалистичной
+ * сезонностью и провалом 14–17».
+ *
+ * Раньше эта строка была невыполнима: `LedgerService` не принимал дату события,
+ * и вся история ложилась моментом запуска seed. Теперь у журнала есть
+ * `occurredAt` — время СОБЫТИЯ отдельно от времени записи, — и девяносто дней
+ * получаются честно, через ту же самую запись через сервис.
+ */
+const HISTORY_DAYS = 90
+
+/**
+ * Сколько визитов кладём одному участию.
+ *
+ * У туриста их мало по определению: он уезжает. Резидент ходит регулярно —
+ * на нём и держится и график по дням, и «постоянный» статус в лестнице.
+ */
+const TOURIST_VISITS = [1, 3] as const
+const RESIDENT_VISITS = [3, 10] as const
+
+/**
+ * Часовой профиль дня, доля визитов на каждый час 0–23.
+ *
+ * Провал 14–17 из CLAUDE.md сделан настоящим: после обеда зал пустеет,
+ * вечером наполняется снова. Именно на этом профиле дашборд обязан выдать
+ * совет «зал пустует с 14 до 17» — если совет не появится, значит либо
+ * профиль, либо правило сломаны, и это видно глазами на демо.
+ */
+const HOUR_WEIGHTS = [
+  0, 0, 0, 0, 0, 0, 1, 3, 6, 7, 9, 16, 18, 12, 3, 2, 3, 9, 16, 18, 14, 8, 3, 1,
+] as const
+
+/**
+ * Недельная сезонность, множитель по дням недели с понедельника.
+ *
+ * Пятница и суббота на Пхукете заметно плотнее буднего вторника. Без этого
+ * график по дням выходит ровной гребёнкой, по которой ничего не решишь.
+ */
+const WEEKDAY_WEIGHTS = [0.8, 0.75, 0.85, 1.0, 1.35, 1.5, 1.1] as const
+
+/**
+ * Смещение часового пояса заведений, часы.
+ *
+ * Все демо-заведения на Пхукете, `Tenant.timezone` у них по умолчанию
+ * `Asia/Bangkok`. В Таиланде нет перехода на летнее время, поэтому смещение
+ * постоянное и его можно держать числом, не таща в seed библиотеку поясов.
+ * Нужно оно затем, что часы визита задаются МЕСТНЫЕ: обед в полдень должен
+ * быть полднем у владельца, а не в UTC.
+ */
+const VENUE_UTC_OFFSET_HOURS = 7
 
 // ─── Генератор ───────────────────────────────────────────────────────────────
 
@@ -401,6 +463,13 @@ export interface VisitSeed {
   readonly receiptId: string
   /** Ключ идемпотентности: стабилен между прогонами, поэтому seed повторяем. */
   readonly idempotencyKey: string
+  /**
+   * Когда визит ПРОИЗОШЁЛ. Уходит в `LedgerEntry.occurredAt`.
+   *
+   * Именно это поле делает историю историей: время записи у всех строк будет
+   * одним — моментом прогона seed, — а время события растянуто на девяносто дней.
+   */
+  readonly occurredAt: Date
 }
 
 /**
@@ -416,17 +485,79 @@ const pointsForReceipt = (basisAmountMinor: number, earnRatePercent: number): nu
   Math.floor((basisAmountMinor * earnRatePercent) / 100)
 
 /**
+ * Выбор по весам: индекс выпадает тем чаще, чем больше его вес.
+ *
+ * Нужен и для часа дня, и для дня недели. Равномерный выбор дал бы ровную
+ * гребёнку, на которой не видно ни обеденного пика, ни послеобеденного провала,
+ * ради которых график и рисуется.
+ */
+const weightedIndex = (random: () => number, weights: readonly number[]): number => {
+  const total = weights.reduce((sum, weight) => sum + weight, 0)
+  let point = random() * total
+
+  for (let index = 0; index < weights.length; index += 1) {
+    point -= weights[index] ?? 0
+
+    if (point <= 0) {
+      return index
+    }
+  }
+
+  return weights.length - 1
+}
+
+/**
+ * Полночь сегодняшнего дня ПО ЧАСАМ ЗАВЕДЕНИЯ, выраженная как момент времени.
+ *
+ * От неё отсчитывается вся история. Дальше `Date.UTC` сам разбирается
+ * с переносами через полночь и через месяц при отрицательных днях и часах.
+ */
+const venueMidnightToday = (): { year: number; month: number; day: number } => {
+  const venueNow = new Date(Date.now() + VENUE_UTC_OFFSET_HOURS * 60 * 60 * 1000)
+
+  return {
+    year: venueNow.getUTCFullYear(),
+    month: venueNow.getUTCMonth(),
+    day: venueNow.getUTCDate(),
+  }
+}
+
+/**
+ * Отодвигает визит на сутки назад, если он попал в будущее.
+ *
+ * Так выходит у визитов «сегодня»: день выбран нулевым, а час взят из профиля
+ * дня и может оказаться позже текущего — ужин в девять вечера, когда сейчас
+ * пять. `LedgerService` такие записи отвергает, и правильно делает: чек не может
+ * произойти позже, чем о нём узнали. На этом seed и упал в первый прогон.
+ *
+ * Сдвигаем на сутки, а не подрезаем час: подрезка сплющила бы все сегодняшние
+ * визиты в один текущий час и оставила бы на графике по часам ложный пик.
+ */
+const notInFuture = (moment: Date): Date =>
+  moment.getTime() > Date.now() ? new Date(moment.getTime() - MS_PER_DAY) : moment
+
+/**
  * История покупок, которую seed проводит через `LedgerService`.
  *
- * Важное ограничение, о котором лучше знать заранее: даты у этих операций будут
- * сегодняшними. `LedgerService` не принимает `createdAt` — и правильно делает, задним
- * числом журнал не пишут. Девяностодневная история с сезонностью из CLAUDE.md требует
- * либо этой возможности, либо отдельного пути записи в обход сервиса; второе прямо
- * нарушает железное правило 1, поэтому история здесь короткая и «свежая».
+ * Девяносто дней из CLAUDE.md здесь настоящие: у журнала есть `occurredAt` —
+ * время события отдельно от времени записи, — и seed заполняет именно его,
+ * продолжая писать через сервис. Обхода железного правила 1 не появилось:
+ * баланс по-прежнему считает `LedgerService`, а не этот файл.
+ *
+ * ДАТЫ ЗАВИСЯТ ОТ ДНЯ ЗАПУСКА, и это осознанный размен. Дашборд показывает
+ * последние 7, 30 и 90 дней от сегодня; история, прибитая к фиксированной дате,
+ * через месяц уехала бы за окно, и демо снова стало бы пустым. Всё остальное
+ * осталось детерминированным: идентификаторы, суммы, число визитов и профиль
+ * дня зависят только от зерна, поэтому цифры на скриншотах не пляшут.
  */
-export const buildVisits = (memberships: readonly MembershipSeed[]): readonly VisitSeed[] => {
+export const buildVisits = (
+  memberships: readonly MembershipSeed[],
+  guests: readonly GuestSeed[],
+): readonly VisitSeed[] => {
   const random = createRandom(RANDOM_SEED + 1)
   const visits: VisitSeed[] = []
+  const modeOf = new Map(guests.map((guest) => [guest.id, guest.mode]))
+  const anchor = venueMidnightToday()
 
   for (const membership of memberships) {
     const tenant = findTenant(membership.tenantId)
@@ -435,16 +566,37 @@ export const buildVisits = (memberships: readonly MembershipSeed[]): readonly Vi
       throw new Error(`Участие ${membership.id} ссылается на неизвестного тенанта`)
     }
 
-    const [minReceipt, maxReceipt] = tenant.receiptRangeMinor
-    const visitCount = intBetween(random, 0, MAX_SEEDED_VISITS)
+    const [minVisits, maxVisits] =
+      modeOf.get(membership.guestId) === 'RESIDENT' ? RESIDENT_VISITS : TOURIST_VISITS
+    const visitCount = intBetween(random, minVisits, maxVisits)
 
-    for (let ordinal = 1; ordinal <= visitCount; ordinal += 1) {
+    // Сначала выбираем дни, потом сортируем: порядковый номер визита обязан
+    // совпадать с хронологией, иначе «второй визит» окажется раньше первого.
+    const days = Array.from({ length: visitCount }, () => {
+      const daysAgo = intBetween(random, 0, HISTORY_DAYS - 1)
+      const weekday = new Date(
+        Date.UTC(anchor.year, anchor.month, anchor.day - daysAgo),
+      ).getUTCDay()
+      // getUTCDay: воскресенье — 0. Таблица весов начинается с понедельника.
+      const weight = WEEKDAY_WEIGHTS[(weekday + 6) % 7] ?? 1
+
+      // Повторный бросок с вероятностью, обратной весу дня: так будни
+      // прореживаются, а пятница с субботой остаются плотными.
+      return random() > weight / Math.max(...WEEKDAY_WEIGHTS)
+        ? intBetween(random, 0, HISTORY_DAYS - 1)
+        : daysAgo
+    }).sort((left, right) => right - left)
+
+    for (const [index, daysAgo] of days.entries()) {
+      const ordinal = index + 1
       const steps = intBetween(
         random,
-        Math.ceil(minReceipt / RECEIPT_STEP_MINOR),
-        Math.floor(maxReceipt / RECEIPT_STEP_MINOR),
+        Math.ceil(tenant.receiptRangeMinor[0] / RECEIPT_STEP_MINOR),
+        Math.floor(tenant.receiptRangeMinor[1] / RECEIPT_STEP_MINOR),
       )
       const basisAmountMinor = steps * RECEIPT_STEP_MINOR
+      const hour = weightedIndex(random, HOUR_WEIGHTS)
+      const minute = intBetween(random, 0, 59)
 
       visits.push({
         membershipId: membership.id,
@@ -456,6 +608,18 @@ export const buildVisits = (memberships: readonly MembershipSeed[]): readonly Vi
           : pointsForReceipt(basisAmountMinor, tenant.settings.baseEarnRate),
         receiptId: `SEED-${membership.id.slice(-6)}-${ordinal}`,
         idempotencyKey: `seed:${SEED_VERSION}:${membership.id}:${ordinal}`,
+        // Час МЕСТНЫЙ, поэтому из него вычитается смещение заведения.
+        occurredAt: notInFuture(
+          new Date(
+            Date.UTC(
+              anchor.year,
+              anchor.month,
+              anchor.day - daysAgo,
+              hour - VENUE_UTC_OFFSET_HOURS,
+              minute,
+            ),
+          ),
+        ),
       })
     }
   }
