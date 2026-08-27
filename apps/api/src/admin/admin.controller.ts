@@ -1,7 +1,14 @@
 import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common'
-import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { AdminListQuery } from '@positive/contracts'
+import {
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger'
+import { AdminListQuery, DashboardQuery } from '@positive/contracts'
 import type {
+  AdminDashboard,
   AdminGuestsList,
   AdminLedgerEntry,
   AdminLedgerList,
@@ -11,6 +18,7 @@ import type {
 import { Roles } from '../common/tenant/roles.decorator'
 
 import { AdminService } from './admin.service'
+import { DashboardService } from './dashboard.service'
 
 /**
  * API бэк-офиса заведения.
@@ -27,7 +35,30 @@ import { AdminService } from './admin.service'
 // Кассиру бэк-офис не положен: он работает на кассе, а не смотрит выручку.
 @Roles('MANAGER', 'OWNER')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly dashboardService: DashboardService,
+  ) {}
+
+  @Get('dashboard')
+  @ApiOperation({ summary: 'Дашборд заведения' })
+  @ApiOkResponse({ description: 'Плитки, графики и советы за выбранный период' })
+  @ApiBadRequestResponse({ description: 'Неизвестный период' })
+  async dashboard(@Query() query: Record<string, unknown>): Promise<AdminDashboard> {
+    const parsed = DashboardQuery.safeParse(query)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректные параметры запроса',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.dashboardService.dashboard(parsed.data.period)
+  }
 
   @Get('ledger')
   @ApiOperation({ summary: 'Операции заведения' })
