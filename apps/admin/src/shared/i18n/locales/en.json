@@ -134,5 +134,17 @@
   "pos.done.next": "Next guest",
   "pos.done.voided": "Operation undone, points returned",
   "pos.receipt.required": "Receipt number",
-  "pos.amount.overCap": "Amount is above the manual-entry cap — call a manager. Cap:"
+  "pos.amount.overCap": "Amount is above the manual-entry cap — call a manager. Cap:",
+  "pos.queue.offline": "No connection — receipts are queued",
+  "pos.queue.sending": "Sending queued receipts",
+  "pos.queue.pending": "queued:",
+  "pos.queue.stuck": "stuck:",
+  "pos.queued.title": "Receipt accepted",
+  "pos.queued.hint": "No connection. Tell the guest: points will arrive within a few minutes.",
+  "pos.offline.blind": "no connection — points will be calculated later",
+  "pos.offline.accept": "Accept receipt",
+  "pos.queue.failed": "No connection and the receipt could not be queued. Retry or write it down.",
+  "pos.queued.sent": "Receipt sent",
+  "pos.queued.sentHint": "Connection is back, the points have been credited.",
+  "pos.queued.stuck": "The receipt did not go through — show it to a manager. The reason is listed above."
 }
