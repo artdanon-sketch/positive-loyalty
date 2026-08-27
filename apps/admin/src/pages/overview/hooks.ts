@@ -1,28 +1,24 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { UseQueryResult } from '@tanstack/react-query'
+import type { AdminDashboard, DashboardPeriod } from '@positive/contracts'
+
+import { useAuth } from '../../shared/auth/auth-context'
 
 /**
- * Сводка экрана «Обзор».
+ * Сводка экрана «Обзор». `GET /v1/admin/dashboard` (docs/03, раздел 2).
  *
- * По ТЗ данные приходят из `GET /v1/admin/dashboard?period=7d`
- * (docs/03_Бэк-офис_экраны.md, раздел 2). В задаче 1 эндпоинта ещё нет,
- * поэтому источник честно отдаёт пустую сводку: ветки «загрузка», «пусто»
- * и «ошибка» на экране настоящие и переключаются состоянием запроса,
- * а не флагом для демонстрации.
+ * `keepPreviousData`: при переключении периода старые цифры остаются на месте,
+ * пока едут новые. Иначе экран схлопывается в скелетоны на каждый клик, и
+ * владелец теряет то, с чем сравнивал.
  */
-export interface OverviewSummary {
-  /** Есть ли за период хоть один оформленный гость. */
-  readonly hasData: boolean
-}
+export const PERIODS: readonly DashboardPeriod[] = ['7d', '30d', '90d']
 
-export const OVERVIEW_QUERY_KEY = ['admin', 'overview'] as const
+export function useDashboard(period: DashboardPeriod): UseQueryResult<AdminDashboard, Error> {
+  const { authFetch } = useAuth()
 
-// Не `async`: ждать здесь нечего, а пустой `async` обещает асинхронность,
-// которой нет. Когда появится GET /v1/admin/dashboard, здесь будет настоящий fetch.
-function fetchOverview(): Promise<OverviewSummary> {
-  return Promise.resolve({ hasData: false })
-}
-
-export function useOverview(): UseQueryResult<OverviewSummary, Error> {
-  return useQuery({ queryKey: OVERVIEW_QUERY_KEY, queryFn: fetchOverview })
+  return useQuery({
+    queryKey: ['admin', 'dashboard', period],
+    queryFn: () => authFetch<AdminDashboard>(`/admin/dashboard?period=${period}`),
+    placeholderData: keepPreviousData,
+  })
 }

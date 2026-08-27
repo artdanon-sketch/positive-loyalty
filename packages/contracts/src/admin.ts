@@ -107,3 +107,161 @@ export const AdminGuestsList = z
   .strict()
 
 export type AdminGuestsList = z.infer<typeof AdminGuestsList>
+
+// ─── Дашборд ─────────────────────────────────────────────────────────────────
+
+/**
+ * Период дашборда. docs/02, раздел 5.1.
+ *
+ * Дельта всегда считается к ПРЕДЫДУЩЕМУ отрезку той же длины: «за 7 дней»
+ * сравнивается с семью днями до них, а не с прошлой неделей календаря.
+ * Так владелец видит движение, а не эффект от того, в какой день он зашёл.
+ */
+export const DashboardPeriod = z.enum(['7d', '30d', '90d'])
+export type DashboardPeriod = z.infer<typeof DashboardPeriod>
+
+export const DashboardQuery = z
+  .object({
+    period: DashboardPeriod.default('7d'),
+  })
+  .strict()
+
+export type DashboardQuery = z.infer<typeof DashboardQuery>
+
+/** Плитка «Пришло по программе». */
+export const DashboardGuests = z
+  .object({
+    value: z.number().int().nonnegative(),
+    prev: z.number().int().nonnegative(),
+    /**
+     * Изменение в процентах. `null`, когда сравнивать не с чем: в прошлом
+     * периоде нуль, и любая цифра роста была бы делением на ноль,
+     * приукрашенным до «+100%».
+     */
+    changePct: z.number().nullable(),
+    /** Из них пришли впервые. */
+    newGuests: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type DashboardGuests = z.infer<typeof DashboardGuests>
+
+/**
+ * Плитка «Я должен баллами» — обязательство перед гостями в минорных единицах.
+ *
+ * Формулировка в интерфейсе задана ТЗ дословно (docs/03, раздел 2):
+ * «обязательство перед гостями, не расход».
+ */
+export const DashboardLiability = z
+  .object({
+    value: z.number().int(),
+    /** Сколько было на начало периода. */
+    prev: z.number().int(),
+  })
+  .strict()
+
+export type DashboardLiability = z.infer<typeof DashboardLiability>
+
+/** Столбец графика «Гости по дням»: дата в местном времени заведения. */
+export const DashboardDay = z
+  .object({
+    /** `YYYY-MM-DD` в часовом поясе заведения, а не в UTC. */
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    /** Пришли в это заведение впервые. */
+    new: z.number().int().nonnegative(),
+    returning: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type DashboardDay = z.infer<typeof DashboardDay>
+
+/** Точка графика «Загрузка по часам»: средний будний день. */
+export const DashboardHour = z
+  .object({
+    hour: z.number().int().min(0).max(23),
+    /** Среднее число гостей в этот час за будние дни периода. */
+    guests: z.number().nonnegative(),
+  })
+  .strict()
+
+export type DashboardHour = z.infer<typeof DashboardHour>
+
+/**
+ * Инкрементальность по контрольной группе. docs/02, раздел 5.1.
+ *
+ * Поле НЕОБЯЗАТЕЛЬНОЕ и осознанно отсутствует, когда контрольная группа меньше
+ * тридцати человек: «статистики нет, и врать нельзя». Это не заглушка на потом,
+ * а поведение по ТЗ — показать uplift по трём гостям значит продать заведению
+ * шум под видом эффекта.
+ */
+export const DashboardIncremental = z
+  .object({
+    /** Средний чек участника программы, минорные единицы. */
+    programAvgCheck: z.number().int().nonnegative(),
+    /** Средний чек гостя из контрольной группы. */
+    controlAvgCheck: z.number().int().nonnegative(),
+    upliftPct: z.number(),
+    controlSize: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type DashboardIncremental = z.infer<typeof DashboardIncremental>
+
+/**
+ * Совет из блока «Что стоит сделать сегодня». docs/03, раздел 2.
+ *
+ * СЕРВЕР ОТДАЁТ ПОВОД И ЧИСЛА, А НЕ ГОТОВЫЙ ТЕКСТ. Продукт четырёхъязычный
+ * (docs/04, раздел «Локализация»), строки живут в JSON фронта, и русская
+ * фраза, собранная на сервере, приехала бы тайскому владельцу как есть.
+ * Здесь же остаётся правило: пороги — бизнес-логика, ей не место в компоненте.
+ *
+ * Два повода из таблицы ТЗ пока не выдаются: «точка без напечатанного QR»
+ * требует сущности Location, «акция кончается» — сущности Offer. Ни той,
+ * ни другой ещё нет; выдумывать для них данные хуже, чем не выдавать совет.
+ */
+export const DashboardAdvice = z.discriminatedUnion('kind', [
+  /** Спящих гостей — не заходили больше месяца — набралось двадцать и больше. */
+  z.object({ kind: z.literal('SLEEPING_GUESTS'), guests: z.number().int().nonnegative() }).strict(),
+  /** Провал загрузки: три часа подряд и дольше заметно ниже среднего. */
+  z
+    .object({
+      kind: z.literal('QUIET_HOURS'),
+      fromHour: z.number().int().min(0).max(23),
+      /** Включительно: 14–16 значит, что пустуют часы 14, 15 и 16. */
+      toHour: z.number().int().min(0).max(23),
+    })
+    .strict(),
+  /** Доля начислений, введённых кассиром руками, выше 40%. */
+  z.object({ kind: z.literal('MANUAL_ENTRY'), sharePct: z.number() }).strict(),
+])
+
+export type DashboardAdvice = z.infer<typeof DashboardAdvice>
+
+/**
+ * Ответ дашборда. docs/02, раздел 5.1.
+ *
+ * `topOffer` из ТЗ здесь пока нет: акций в схеме ещё не существует, а плитка
+ * с придуманной акцией — худшее, что можно показать владельцу на главной.
+ * Появится вместе с движком акций.
+ */
+export const AdminDashboard = z
+  .object({
+    period: DashboardPeriod,
+    guestsViaProgram: DashboardGuests,
+    pointsLiability: DashboardLiability,
+    series: z.array(DashboardDay),
+    hourly: z.array(DashboardHour),
+    incremental: DashboardIncremental.optional(),
+    advice: z.array(DashboardAdvice),
+    /**
+     * Данных меньше, чем длина периода: заведение работает первую неделю.
+     * Экран показывает график с пометкой «данных пока мало» и прячет дельты
+     * (docs/03, раздел 2, состояния).
+     */
+    isPartialPeriod: z.boolean(),
+    /** Ни одного оформленного гостя: вместо плиток — онбординг-чеклист. */
+    isEmpty: z.boolean(),
+  })
+  .strict()
+
+export type AdminDashboard = z.infer<typeof AdminDashboard>

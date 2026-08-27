@@ -25,6 +25,41 @@ const TOKENS_RESPONSE = {
 
 const EMPTY_LEDGER = { items: [], total: 0 }
 
+/**
+ * Дашборд с данными. Числа разные во всех полях намеренно: одинаковые
+ * значения прячут перепутанные местами поля — тест прошёл бы и на них.
+ */
+const DASHBOARD = {
+  period: '7d',
+  guestsViaProgram: { value: 147, prev: 124, changePct: 18.5, newGuests: 38 },
+  pointsLiability: { value: 1_240_000, prev: 1_198_000 },
+  series: [
+    { date: '2026-08-24', new: 3, returning: 14 },
+    { date: '2026-08-25', new: 5, returning: 21 },
+  ],
+  hourly: [
+    { hour: 12, guests: 8 },
+    { hour: 13, guests: 1 },
+    { hour: 14, guests: 0.5 },
+    { hour: 15, guests: 0.5 },
+    { hour: 16, guests: 9 },
+  ],
+  advice: [{ kind: 'SLEEPING_GUESTS', guests: 26 }],
+  isPartialPeriod: false,
+  isEmpty: false,
+}
+
+/** Заведение первого дня: плиток нет, вместо них онбординг-чеклист. */
+const DASHBOARD_EMPTY = {
+  ...DASHBOARD,
+  guestsViaProgram: { value: 0, prev: 0, changePct: null, newGuests: 0 },
+  pointsLiability: { value: 0, prev: 0 },
+  series: [],
+  hourly: [],
+  advice: [],
+  isEmpty: true,
+}
+
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
@@ -59,6 +94,9 @@ const stubApi = (
 
     if (path.startsWith('/v1/auth/staff/pin')) {
       return Promise.resolve(json(TOKENS_RESPONSE))
+    }
+    if (path.startsWith('/v1/admin/dashboard')) {
+      return Promise.resolve(json(DASHBOARD))
     }
     if (path.startsWith('/v1/admin/ledger')) {
       return Promise.resolve(json(EMPTY_LEDGER))
@@ -135,6 +173,90 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(document.documentElement.getAttribute('data-theme')).not.toBe(before)
+    })
+  })
+})
+
+describe('Обзор', () => {
+  it('показывает три ответа владельцу: гостей, обязательство и дельту', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText('147')).toBeInTheDocument()
+    // Обязательство хранится целым в сатангах, показывается в батах.
+    expect(screen.getByText('12 400,00 ฿')).toBeInTheDocument()
+    expect(screen.getByText('↑ +18.5%')).toBeInTheDocument()
+    // Формулировка задана ТЗ дословно — она и продаёт смысл цифры.
+    expect(screen.getByText(t('overview.tile.liabilityHint'))).toBeInTheDocument()
+  })
+
+  it('заведение первого дня видит онбординг вместо плиток', async () => {
+    stubApi({ '/v1/admin/dashboard': () => json(DASHBOARD_EMPTY) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText(t('overview.empty.title'))).toBeInTheDocument()
+    expect(screen.queryByText(t('overview.tile.liability'))).not.toBeInTheDocument()
+  })
+
+  it('совет показывается карточкой с одним действием', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText(`26 ${t('overview.advice.sleeping.text')}`)).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: t('overview.advice.sleeping.action') }),
+    ).toBeInTheDocument()
+  })
+
+  it('без советов блок скрывается целиком, а не хвалит', async () => {
+    // ТЗ прямо запрещает показывать «всё хорошо»: похвала вместо задачи
+    // обесценивает блок, и настоящий совет потом пройдёт мимо.
+    stubApi({ '/v1/admin/dashboard': () => json({ ...DASHBOARD, advice: [] }) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    await screen.findByText('147')
+    expect(screen.queryByText(t('overview.advice.title'))).not.toBeInTheDocument()
+  })
+
+  it('график переключается на таблицу и обратно', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.click(await screen.findByRole('button', { name: t('overview.days.asTable') }))
+
+    expect(
+      screen.getByRole('columnheader', { name: t('overview.days.col.date') }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('25.08')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('overview.days.asChart') }))
+    expect(screen.queryByRole('columnheader')).not.toBeInTheDocument()
+  })
+
+  it('смена периода запрашивает выбранный период у сервера', async () => {
+    const fetchMock = stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await screen.findByText('147')
+
+    fireEvent.click(screen.getByRole('button', { name: t('overview.period.30d') }))
+
+    await waitFor(() => {
+      const asked = fetchMock.mock.calls.some(([input]) =>
+        requestOf(input as RequestInfo | URL).includes('period=30d'),
+      )
+      expect(asked).toBe(true)
     })
   })
 })

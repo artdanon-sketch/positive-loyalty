@@ -623,3 +623,316 @@ body {
   justify-items: center;
   gap: 12px;
 }
+
+/* ── Обзор: дашборд ────────────────────────────────────────────────────────
+   Модификатор, а не правка `.page__head`: соседние экраны кладут в шапку
+   только заголовок с подзаголовком, и разворот в строку сложил бы их бок о бок.
+   ------------------------------------------------------------------------- */
+
+.page__head--split {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.period {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+}
+
+.period__option {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--tx-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.period__option--on {
+  background: var(--surf);
+  color: var(--tx);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+/* ── Плитки ─────────────────────────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--sp-4);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-lg);
+}
+
+.tile__label {
+  margin: 0;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+  font-weight: 600;
+}
+
+.tile__value {
+  font-size: 34px;
+  font-weight: 700;
+  /* Цифры в плитках и таблицах выравниваются по разрядам. */
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* Обязательство — амбер по ТЗ (docs/03, раздел 2). */
+.tile--liability .tile__value {
+  color: var(--amber);
+}
+
+.tile__meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.tile__hint {
+  color: var(--tx-3);
+  font-size: 13px;
+}
+
+.delta {
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Цвет здесь — вторая подсказка, а не единственная: рядом всегда стрелка
+   и знак числа (docs/04, раздел 2). */
+.delta--up {
+  color: var(--good);
+}
+
+.delta--down {
+  color: var(--bad);
+}
+
+/* ── Графики ────────────────────────────────────────────────────────────── */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-block);
+}
+
+.chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.chart__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.chart__side {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.chart__note,
+.chart__caption,
+.chart__empty {
+  margin: 0;
+  color: var(--tx-3);
+  font-size: 13px;
+}
+
+.chart__caption {
+  color: var(--tx-2);
+}
+
+.legend {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  color: var(--tx-2);
+  font-size: 13px;
+}
+
+.legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+/* Палитра серий — только валидированные токены, никогда не цвет бренда. */
+.legend__swatch--new {
+  background: var(--s2);
+}
+
+.legend__swatch--returning {
+  background: var(--s1);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 180px;
+  overflow-x: auto;
+}
+
+.bars__col {
+  flex: 1 1 0;
+  min-width: 14px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bars__stack {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  background: var(--track);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+
+.bars__seg {
+  flex: none;
+  width: 100%;
+}
+
+.bars__seg--new {
+  background: var(--s2);
+}
+
+.bars__seg--returning {
+  background: var(--s1);
+}
+
+.bars__tick,
+.hours__tick {
+  color: var(--tx-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hours {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+  overflow-x: auto;
+}
+
+.hours__col {
+  flex: 1 1 0;
+  min-width: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hours__bar {
+  width: 100%;
+  min-height: 2px;
+  margin-top: auto;
+  background: var(--s1);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+}
+
+/* Тихие часы: цвет, пунктир и подпись под графиком — три носителя смысла. */
+.hours__col--quiet .hours__bar {
+  background: var(--s3);
+  outline: 1px dashed var(--s3);
+  outline-offset: 2px;
+}
+
+/* ── Что стоит сделать сегодня ──────────────────────────────────────────── */
+
+.advice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.advice__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.advice__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--sp-3);
+}
+
+.advice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.advice-card__text {
+  margin: 0;
+  font-size: var(--fs-secondary-lg);
+}
+
+.button--ghost {
+  background: var(--surf);
+  border-color: var(--line-2);
+  color: var(--tx);
+  font-size: 13px;
+  min-height: 36px;
+  padding: 0 14px;
+  text-decoration: none;
+}
