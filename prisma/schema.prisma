@@ -120,14 +120,15 @@ model Tenant {
   settings   Json // ProgramConfig, docs/01 раздел 4.3
   createdAt  DateTime     @default(now())
 
-  memberships   Membership[]
-  ledgerEntries LedgerEntry[]
-  staff         Staff[]
-  staffDevices  StaffDevice[]
-  sessions      Session[]
-  previews      TransactionPreview[]
-  posLinks      PosLink[]
-  webhookEvents WebhookEvent[]
+  memberships       Membership[]
+  ledgerEntries     LedgerEntry[]
+  staff             Staff[]
+  staffDevices      StaffDevice[]
+  sessions          Session[]
+  previews          TransactionPreview[]
+  posLinks          PosLink[]
+  webhookEvents     WebhookEvent[]
+  webhookDeliveries WebhookDelivery[]
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -430,6 +431,12 @@ model PosLink {
   /// Точка, если их несколько.
   posLocationId String?
 
+  /// Куда слать наши события. NULL — касса их не принимает, и мы не шлём.
+  ///
+  /// Адрес приходит от кассы при подключении. Пока его нет, исходящие события
+  /// просто не создаются: копить недоставляемое в очереди бессмысленно.
+  callbackUrl String?
+
   /// Ключ HMAC для проверки подписи входящих вебхуков.
   ///
   /// Лежит в открытом виде намеренно: им нужно ВЫЧИСЛЯТЬ подпись, а не сверять
@@ -503,6 +510,73 @@ model WebhookEvent {
   @@index([tenantId, receivedAt])
   /// Под выборку необработанных: восстановление после падения идёт по ней.
   @@index([status, receivedAt])
+}
+
+/// Состояние исходящей доставки.
+enum DeliveryStatus {
+  /// Ждёт отправки или следующей попытки.
+  PENDING
+  /// Касса ответила 2xx.
+  DELIVERED
+  /// Попытки исчерпаны. Разбирает человек.
+  FAILED
+}
+
+/// Исходящее событие к кассе. Исходящий журнал (outbox).
+///
+/// СОБЫТИЕ ВЫВОДИТСЯ ИЗ ЖУРНАЛА, А НЕ ПИШЕТСЯ РЯДОМ С НИМ. Это главное решение
+/// таблицы, и оно не про удобство.
+///
+/// Очевидный ход — писать строку сюда в той же транзакции, что и операцию.
+/// Он даёт нужную гарантию, но требует, чтобы `LedgerService` знал про кассу:
+/// где взять адрес, какой ключ, слать ли вообще. Ядро начало бы зависеть
+/// от прикладного модуля, а такую зависимость потом не разорвать.
+///
+/// Journal уже append-only и долговечен. Поэтому разгребатель сам находит
+/// операции, о которых касса ещё не знает, и заводит им доставку. Гарантия
+/// ровно та же — операция есть, значит и событие о ней появится, — а ядро
+/// не трогается вовсе. Цена: событие уходит не мгновенно, а в ближайший
+/// проход. Для «касса показывает свежий баланс» это приемлемо.
+///
+/// Событие может уйти дважды, и это нормально: `eventId` в теле нужен затем,
+/// чтобы касса дедуплицировала у себя. «Ровно один раз» через сеть
+/// не гарантируется в принципе.
+model WebhookDelivery {
+  id String @id @default(uuid())
+
+  tenantId String
+
+  /// Операция журнала, о которой сообщаем.
+  ///
+  /// UNIQUE — здесь работает вместо ключа идемпотентности: два прохода
+  /// разгребателя, столкнувшись на одной операции, не заведут две доставки.
+  /// Вторая вставка упрётся в базу, а не в удачу.
+  ledgerEntryId String @unique
+
+  /// guest.balance_changed | offer.granted
+  eventType String
+  /// Тело события целиком, уже готовое к отправке.
+  payload   Json
+
+  /// Куда слали. Снимок на момент постановки: адрес мог смениться, а событие
+  /// принадлежит тому подключению, при котором возникло.
+  targetUrl String
+
+  status        DeliveryStatus @default(PENDING)
+  attempts      Int            @default(0)
+  /// Когда пробовать следующий раз. Пауза растёт: 1с, 5с, 30с, 5м, 30м.
+  nextAttemptAt DateTime       @default(now())
+  /// Причина последней неудачи. PII сюда не пишется.
+  lastError     String?
+
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// Под выборку «что пора отправить».
+  @@index([status, nextAttemptAt])
+  @@index([tenantId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

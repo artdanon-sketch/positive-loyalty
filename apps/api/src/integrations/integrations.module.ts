@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common'
 
 import { PosWebhookController } from './pos-webhook.controller'
 import { PosWebhookService } from './pos-webhook.service'
+import { WebhookOutboxService } from './webhook-outbox.service'
+import { WebhookOutboxSweeper } from './webhook-outbox.sweeper'
 
 /**
  * Интеграции с внешними системами. Пока одна — POSitive POS.
@@ -11,7 +13,7 @@ import { PosWebhookService } from './pos-webhook.service'
  */
 @Module({
   controllers: [PosWebhookController],
-  providers: [PosWebhookService],
-  exports: [PosWebhookService],
+  providers: [PosWebhookService, WebhookOutboxService, WebhookOutboxSweeper],
+  exports: [PosWebhookService, WebhookOutboxService],
 })
 export class IntegrationsModule {}
