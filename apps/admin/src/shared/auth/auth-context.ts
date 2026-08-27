@@ -26,6 +26,18 @@ export interface AuthContextValue {
    * сессию и повторяет. Второй 401 подряд означает, что сессия мертва.
    */
   readonly authFetch: <T>(path: string, init?: RequestInit) => Promise<T>
+  /**
+   * То же, но возвращает СЫРОЙ ответ, не разбирая тело.
+   *
+   * Нужен живой ленте: она читает `text/event-stream` кусками, а не одним
+   * JSON. Отдельным методом, а не флагом в `authFetch`: тот обещает разбор
+   * тела своей сигнатурой, и «иногда не разбирает» — худший вид сюрприза.
+   *
+   * Существует ещё и потому, что `EventSource` не умеет заголовки, а класть
+   * токен доступа в адрес нельзя: адреса попадают в логи прокси, в историю
+   * браузера и в `Referer`.
+   */
+  readonly authStream: (path: string, init?: RequestInit) => Promise<Response>
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)

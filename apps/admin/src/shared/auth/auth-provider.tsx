@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 import { ApiError, requestJson } from '../api/http'
+import { API_URL } from '../config/env'
 import { AuthContext } from './auth-context'
 import type { AuthContextValue, AuthStatus, Session } from './auth-context'
 
@@ -154,6 +155,53 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [dropSession, refreshSession],
   )
 
+  /**
+   * Поток от имени сессии. Та же логика обновления токена, что у `authFetch`,
+   * но ответ отдаётся целиком: тело читает вызывающий.
+   */
+  const authStream = useCallback(
+    async (path: string, init: RequestInit = {}): Promise<Response> => {
+      const withToken = (token: string): RequestInit => ({
+        ...init,
+        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}` },
+      })
+
+      const current = sessionRef.current
+
+      if (current === null) {
+        throw new ApiError(401, 'UNAUTHORIZED', 'Сессия не установлена')
+      }
+
+      const open = async (token: string): Promise<Response> => {
+        const response = await fetch(`${API_URL}${path}`, withToken(token))
+
+        if (!response.ok) {
+          throw new ApiError(response.status, 'STREAM_FAILED', `Поток ${path} не открылся`)
+        }
+
+        return response
+      }
+
+      try {
+        return await open(current.accessToken)
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+          throw error
+        }
+
+        const renewed = await refreshSession()
+
+        if (renewed === null) {
+          dropSession()
+          throw error
+        }
+
+        return open(renewed.accessToken)
+      }
+    },
+    [dropSession, refreshSession],
+  )
+
   const logout = useCallback(() => {
     // Отзыв цепочки на сервере приедет вместе с эндпоинтом logout;
     // пока честно забываем сессию на клиенте.
@@ -161,8 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [dropSession])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, session, login, logout, authFetch }),
-    [authFetch, login, logout, session, status],
+    () => ({ status, session, login, logout, authFetch, authStream }),
+    [authFetch, authStream, login, logout, session, status],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

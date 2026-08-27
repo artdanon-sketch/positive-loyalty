@@ -1,4 +1,13 @@
-import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common'
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  Sse,
+} from '@nestjs/common'
+import { Observable } from 'rxjs'
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
@@ -9,6 +18,7 @@ import {
 import { AdminListQuery, DashboardQuery } from '@positive/contracts'
 import type {
   AdminDashboard,
+  LiveFeedEvent,
   AdminGuestsList,
   AdminLedgerEntry,
   AdminLedgerList,
@@ -16,6 +26,9 @@ import type {
 } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
+
+import { LedgerEventsService } from '../core/ledger-events.service'
+import { TenantContext } from '../common/tenant/tenant-context'
 
 import { AdminService } from './admin.service'
 import { DashboardService } from './dashboard.service'
@@ -29,6 +42,9 @@ import { DashboardService } from './dashboard.service'
  *
  * Контроллер только маршрутизирует: бизнес-логика в сервисе (CLAUDE.md).
  */
+/** Интервал сердцебиения потока. Меньше типичного таймаута прокси в 30–60 секунд. */
+const HEARTBEAT_MS = 20_000
+
 @ApiTags('admin')
 @Controller('admin')
 // Матрица прав из docs/05, раздел 3: «Аналитика точки» — менеджер и владелец.
@@ -38,7 +54,44 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly dashboardService: DashboardService,
+    private readonly ledgerEvents: LedgerEventsService,
   ) {}
+
+  /**
+   * Живая лента начислений. docs/03, раздел 2.
+   *
+   * SSE, а не WebSocket: поток односторонний, переживает разрывы штатным
+   * переподключением и не требует своей инфраструктуры.
+   *
+   * `tenantId` СНИМАЕТСЯ ЗДЕСЬ, В МОМЕНТ ПОДПИСКИ, и замыкается на всё время
+   * жизни потока. Читать его из контекста внутри обработчика событий нельзя:
+   * AsyncLocalStorage живёт до конца ЗАПРОСА, а поток переживает запрос —
+   * к моменту первого события контекст будет уже чужой или пустой.
+   *
+   * Каждые двадцать секунд уходит комментарий-сердцебиение. Без него молчащий
+   * поток закрывают прокси и мобильные операторы, причём молча: страница
+   * продолжает считать, что подписана, и лента тихо замирает.
+   */
+  @Sse('stream')
+  @ApiOperation({ summary: 'Живая лента начислений' })
+  stream(): Observable<{ data: LiveFeedEvent } | { type: string; data: string }> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    return new Observable((subscriber) => {
+      const unsubscribe = this.ledgerEvents.subscribe(tenantId, (event) => {
+        subscriber.next({ data: event })
+      })
+
+      const heartbeat = setInterval(() => {
+        subscriber.next({ type: 'ping', data: '' })
+      }, HEARTBEAT_MS)
+
+      return () => {
+        clearInterval(heartbeat)
+        unsubscribe()
+      }
+    })
+  }
 
   @Get('dashboard')
   @ApiOperation({ summary: 'Дашборд заведения' })

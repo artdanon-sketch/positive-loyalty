@@ -119,6 +119,38 @@ afterEach(() => {
  */
 const OFFLINE = Symbol('offline')
 
+/**
+ * Ответ-поток в формате SSE.
+ *
+ * Живая лента читает `text/event-stream` кусками через `fetch`, а не
+ * `EventSource`: тот не умеет заголовки, и токен пришлось бы класть в адрес.
+ * Здесь поток отдаётся так же, как его отдаёт сервер, — событиями, разделёнными
+ * пустой строкой, — чтобы проверялся настоящий разбор, а не его имитация.
+ */
+const sseResponse = (chunks: readonly string[]): Response => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder()
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk))
+      }
+      // Поток НЕ закрываем: живой он и есть открытый. Закрытие тут выглядело
+      // бы как обрыв связи, и лента ушла бы в переподключение.
+    },
+  })
+
+  return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+const FEED_EVENT = {
+  id: '99999999-9999-4999-8999-999999999999',
+  kind: 'ledger.earned',
+  masked: 'А***',
+  amount: 6_250,
+  basis: 125_000,
+  at: '2026-08-27T13:28:26.597Z',
+}
+
 const stubApi = (
   overrides: Partial<Record<string, (init?: RequestInit) => Response | typeof OFFLINE>> = {},
 ): ReturnType<typeof vi.fn> => {
@@ -656,5 +688,68 @@ describe('Судьба отложенного чека на экране', () =>
 
     expect(await screen.findByText(t('pos.queued.sent'))).toBeInTheDocument()
     expect(screen.queryByText(t('pos.queued.hint'))).not.toBeInTheDocument()
+  })
+})
+
+describe('Живая лента', () => {
+  it('показывает начисление, пришедшее потоком', async () => {
+    stubApi({
+      '/v1/admin/stream': () =>
+        sseResponse([
+          // Сердцебиение и событие в одном куске: разбор обязан пережить
+          // и то, что событий несколько, и то, что среди них есть служебные.
+          ': ping\n\n',
+          `data: ${JSON.stringify(FEED_EVENT)}\n\n`,
+        ]),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText('А***')).toBeInTheDocument()
+    expect(screen.getByText('+62,50 ฿')).toBeInTheDocument()
+  })
+
+  it('событие, разорванное на два куска, собирается обратно', async () => {
+    // Сеть режет поток где придётся. Половина события в буфере — норма,
+    // и разбор обязан дождаться второй половины, а не выбросить первую.
+    const payload = `data: ${JSON.stringify(FEED_EVENT)}\n\n`
+    const cut = Math.floor(payload.length / 2)
+
+    stubApi({
+      '/v1/admin/stream': () => sseResponse([payload.slice(0, cut), payload.slice(cut)]),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText('А***')).toBeInTheDocument()
+  })
+
+  it('незнакомое событие не роняет ленту', async () => {
+    // На сервере появится второй вид события раньше, чем этот экран о нём
+    // узнает. Пропустить незнакомое правильнее, чем упасть.
+    stubApi({
+      '/v1/admin/stream': () =>
+        sseResponse([
+          'data: {"kind":"ledger.something.new","чего":"не знаем"}\n\n',
+          `data: ${JSON.stringify(FEED_EVENT)}\n\n`,
+        ]),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByText('А***')).toBeInTheDocument()
+  })
+
+  it('пока событий нет, лента говорит, что ждёт, а не молчит', async () => {
+    stubApi({ '/v1/admin/stream': () => sseResponse([]) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    // Молчащая и сломанная лента иначе выглядели бы одинаково.
+    expect(await screen.findByText(t('overview.feed.waiting'))).toBeInTheDocument()
   })
 })

@@ -1166,3 +1166,94 @@ body {
   border-left-color: var(--amber);
   color: var(--tx);
 }
+
+/* ── Живая лента ───────────────────────────────────────────────────────────
+   Висит на экране в зале, и её видят посторонние: ни телефонов, ни балансов,
+   ни номеров чеков здесь нет — только имя до первой буквы и сумма.
+   ------------------------------------------------------------------------- */
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-block);
+}
+
+.feed__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.feed__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.feed__state {
+  color: var(--tx-3);
+  font-size: 12px;
+}
+
+/* Состояние потока — точкой и словом, не одним цветом: «в эфире» должно
+   читаться и на чёрно-белом экране, и дальтоником. */
+.feed__state--live::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  vertical-align: middle;
+}
+
+.feed__empty {
+  margin: 0;
+  color: var(--tx-3);
+  font-size: var(--fs-secondary-lg);
+}
+
+.feed__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.feed__item {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.feed__item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.feed__who {
+  font-weight: 600;
+}
+
+.feed__amount {
+  color: var(--mint);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed__basis,
+.feed__at {
+  color: var(--tx-3);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
