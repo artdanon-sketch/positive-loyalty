@@ -10,6 +10,7 @@ import { TenantGuard } from './common/tenant/tenant.guard'
 import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
 import { IdentityModule } from './identity/identity.module'
+import { IntegrationsModule } from './integrations/integrations.module'
 import { PosModule } from './pos/pos.module'
 
 /**
@@ -34,6 +35,7 @@ import { PosModule } from './pos/pos.module'
     IdentityModule,
     AdminModule,
     PosModule,
+    IntegrationsModule,
   ],
   providers: [
     {
