@@ -137,10 +137,25 @@ const upsertPosLinks = async (tenants: readonly TenantSeed[]): Promise<void> => 
         tenantId: tenant.id,
         posMerchantId,
         webhookSecret: demoWebhookSecret(tenant.id),
+        // Адрес обратного вызова берём из окружения: у демо-кассы его нет,
+        // и без адреса исходящие просто не создаются. Задать его локально —
+        // способ увидеть, как касса узнаёт об изменении баланса.
+        callbackUrl: process.env['DEMO_POS_CALLBACK_URL'] ?? null,
       },
       // Ключ переписываем: он выводится из идентификатора и меняться не должен,
       // но если формула изменилась, seed обязан привести базу к новой.
-      update: { webhookSecret: demoWebhookSecret(tenant.id), isActive: true, revokedAt: null },
+      update: {
+        webhookSecret: demoWebhookSecret(tenant.id),
+        callbackUrl: process.env['DEMO_POS_CALLBACK_URL'] ?? null,
+        isActive: true,
+        revokedAt: null,
+        // Момент подключения двигаем на СЕЙЧАС при каждом пересеве.
+        //
+        // Исходящие события не отправляются про операции старше подключения.
+        // Оставь мы здесь прежнюю дату — повторный seed заново выгрузил бы
+        // кассе всю историю, накопленную с прошлого раза.
+        linkedAt: new Date(),
+      },
     })
   }
 }
@@ -386,7 +401,6 @@ const seed = async (): Promise<void> => {
   out('Данные синтетические: телефоны из свободного диапазона, имена придуманы.')
 
   await upsertTenants(TENANTS)
-  await upsertPosLinks(TENANTS)
   out(`\nТенантов записано: ${TENANTS.length}`)
 
   await upsertGuests(guests)
@@ -403,6 +417,13 @@ const seed = async (): Promise<void> => {
     `Операций в журнале: создано ${tally.created}, ` +
       `повторов по ключу идемпотентности ${tally.replayed}`,
   )
+
+  // Связь с кассой заводится ПОСЛЕ истории — так же, как в жизни: кассу
+  // подключают к работающему заведению. Порядок здесь не косметика: исходящие
+  // события не отправляются про операции старше подключения, и заведи мы связь
+  // раньше, демо-касса получила бы всю историю разом — ровно это и случилось
+  // на первом живом прогоне.
+  await upsertPosLinks(TENANTS)
 
   out(heading('Полигон по тенантам'))
   out(renderTenantSummary(memberships, visits))
