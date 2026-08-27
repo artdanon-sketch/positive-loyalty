@@ -114,6 +114,37 @@ const upsertTenants = async (tenants: readonly TenantSeed[]): Promise<void> => {
   }
 }
 
+/**
+ * Связь каждого заведения с его же заведением в кассе.
+ *
+ * Ключ подписи ВЫВОДИТСЯ из идентификатора заведения, а не записан строкой.
+ * Причина простая: строковый секрет в репозитории — это секрет в репозитории,
+ * даже когда он «ненастоящий». Через месяц его скопируют в боевую настройку,
+ * потому что он «уже был». Выведенное значение скопировать некуда.
+ *
+ * Ценность связи для демо: по ней можно послать вебхук на локальный API
+ * и увидеть, как чек из кассы начисляет баллы сам. Команда — в README.
+ */
+const demoWebhookSecret = (tenantId: string): string => `whsec-local-demo-${tenantId.slice(-12)}`
+
+const upsertPosLinks = async (tenants: readonly TenantSeed[]): Promise<void> => {
+  for (const tenant of tenants) {
+    const posMerchantId = `pm-demo-${tenant.id.slice(-8)}`
+
+    await prisma.posLink.upsert({
+      where: { posMerchantId },
+      create: {
+        tenantId: tenant.id,
+        posMerchantId,
+        webhookSecret: demoWebhookSecret(tenant.id),
+      },
+      // Ключ переписываем: он выводится из идентификатора и меняться не должен,
+      // но если формула изменилась, seed обязан привести базу к новой.
+      update: { webhookSecret: demoWebhookSecret(tenant.id), isActive: true, revokedAt: null },
+    })
+  }
+}
+
 const upsertGuests = async (guests: readonly GuestSeed[]): Promise<void> => {
   for (const guest of guests) {
     await prisma.guest.upsert({
@@ -355,6 +386,7 @@ const seed = async (): Promise<void> => {
   out('Данные синтетические: телефоны из свободного диапазона, имена придуманы.')
 
   await upsertTenants(TENANTS)
+  await upsertPosLinks(TENANTS)
   out(`\nТенантов записано: ${TENANTS.length}`)
 
   await upsertGuests(guests)

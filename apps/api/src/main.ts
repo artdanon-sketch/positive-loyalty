@@ -13,7 +13,10 @@ const HEALTH_ROUTE = 'health'
 const GLOBAL_PREFIX = 'v1'
 
 const bootstrap = async (): Promise<void> => {
-  const app = await NestFactory.create(AppModule)
+  // `rawBody` — ради подписи вебхуков от кассы. Она считается по СЫРЫМ БАЙТАМ
+  // тела: разобранный и снова собранный JSON даёт другой порядок ключей
+  // и другие пробелы, и хеш не сходится (docs/02, раздел 4.1).
+  const app = await NestFactory.create(AppModule, { rawBody: true })
 
   // ConfigModule уже подтянул .env в process.env, поэтому разбор окружения — здесь.
   // Некорректная конфигурация роняет процесс до того, как порт начнёт слушаться.
