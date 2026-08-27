@@ -1145,3 +1145,24 @@ body {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* Полоса очереди — она же индикатор связи. Место у неё над всем экраном:
+   кассир должен видеть «связи нет» до того, как начнёт пробивать, а не после. */
+
+.pos__banner {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--tint);
+  border-left: 3px solid var(--mint);
+  border-radius: var(--r-sm);
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+/* Амбер, а не красный: связи нет — это не сбой, чеки принимаются и уйдут.
+   Красным здесь мы бы пугали кассира ровно тогда, когда он должен спокойно
+   продолжать работать. */
+.pos__banner--offline {
+  border-left-color: var(--amber);
+  color: var(--tx);
+}

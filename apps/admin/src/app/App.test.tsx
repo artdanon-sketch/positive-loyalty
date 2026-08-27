@@ -113,8 +113,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/**
+ * Обрыв сети, а не ответ сервера. Ровно так ведёт себя fetch, когда планшет
+ * потерял связь, — и по этому различию касса решает, класть ли чек в очередь.
+ */
+const OFFLINE = Symbol('offline')
+
 const stubApi = (
-  overrides: Partial<Record<string, (init?: RequestInit) => Response>> = {},
+  overrides: Partial<Record<string, (init?: RequestInit) => Response | typeof OFFLINE>> = {},
 ): ReturnType<typeof vi.fn> => {
   const handler = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = requestOf(input)
@@ -122,7 +128,10 @@ const stubApi = (
 
     for (const [prefix, respond] of Object.entries(overrides)) {
       if (path.startsWith(prefix) && respond !== undefined) {
-        return Promise.resolve(respond(init))
+        const outcome = respond(init)
+        return outcome === OFFLINE
+          ? Promise.reject(new TypeError('Failed to fetch'))
+          : Promise.resolve(outcome)
       }
     }
 
@@ -503,5 +512,149 @@ describe('Правила кассы приезжают с сервера', () =>
 
     expect(await screen.findByText(/3 000,00 ฿/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t('pos.amount.next') })).toBeDisabled()
+  })
+})
+
+describe('Касса при пропавшей сети', () => {
+  it('обрыв на проведении принимает чек в очередь, а не отказывает', async () => {
+    // Гость стоит у стойки. Отказать ему потому, что на острове моргнул
+    // интернет, нельзя — чек принимается и досылается (docs/03, раздел 10).
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/commit': () => OFFLINE,
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    fireEvent.change(await screen.findByLabelText(t('pos.amount.label')), {
+      target: { value: '1250' },
+    })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'B-1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('pos.confirm.submit') }))
+
+    expect(await screen.findByText(t('pos.queued.title'))).toBeInTheDocument()
+    // Сумму НЕ называем: её считает сервер, назвать сейчас можно только угадав.
+    expect(screen.getByText(t('pos.queued.hint'))).toBeInTheDocument()
+    expect(screen.queryByText('+62,50 ฿')).not.toBeInTheDocument()
+  })
+
+  it('отложенный чек сохраняет номер, которого требует заведение', async () => {
+    // Баг, найденный вживую: при откладывании на шаге проведения номер чека
+    // терялся, и повтор падал на RECEIPT_REQUIRED — чек застревал навсегда,
+    // а кассиру уже сказали «принят».
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/commit': () => OFFLINE,
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    fireEvent.change(await screen.findByLabelText(t('pos.amount.label')), {
+      target: { value: '1250' },
+    })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'C-77' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('pos.confirm.submit') }))
+
+    await screen.findByText(t('pos.queued.title'))
+
+    const queued = JSON.parse(window.localStorage.getItem('positive.pos.queue') ?? '[]') as Array<{
+      receiptNumber?: string
+    }>
+    expect(queued[0]?.receiptNumber).toBe('C-77')
+  })
+
+  it('обрыв на поиске гостя даёт принять чек по телефону вслепую', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/guest': () => OFFLINE,
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+
+    // Ни имени, ни баланса показать нечем — и экран об этом честно говорит.
+    expect(await screen.findByText(t('pos.offline.blind'))).toBeInTheDocument()
+
+    fireEvent.change(await screen.findByLabelText(t('pos.amount.label')), {
+      target: { value: '900' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.offline.accept') }))
+
+    expect(await screen.findByText(t('pos.queued.title'))).toBeInTheDocument()
+  })
+
+  it('отказ сервера в очередь не попадает — его показывают кассиру', async () => {
+    // Иначе чек крутился бы в фоне вечно и никогда не прошёл.
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/guest': () =>
+        json({ error: { code: 'NOT_FOUND', message: 'Гость не найден' } }, 404),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66800000000' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Гость не найден')
+    expect(screen.queryByText(t('pos.offline.blind'))).not.toBeInTheDocument()
+  })
+})
+
+describe('Судьба отложенного чека на экране', () => {
+  it('когда чек ушёл, экран перестаёт говорить «связи нет»', async () => {
+    // Связь на острове возвращается через секунды. Застывшее «связи нет»
+    // на экране, с которого чек уже ушёл, заставит кассира обещать гостю
+    // ожидание того, что уже случилось.
+    let offline = true
+
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/commit': () => (offline ? OFFLINE : json(POS_COMMIT)),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    fireEvent.change(await screen.findByLabelText(t('pos.amount.label')), {
+      target: { value: '1250' },
+    })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'D-9' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('pos.confirm.submit') }))
+
+    expect(await screen.findByText(t('pos.queued.hint'))).toBeInTheDocument()
+
+    // Связь вернулась — очередь уходит сама, без действий кассира.
+    offline = false
+    fireEvent(window, new Event('online'))
+
+    expect(await screen.findByText(t('pos.queued.sent'))).toBeInTheDocument()
+    expect(screen.queryByText(t('pos.queued.hint'))).not.toBeInTheDocument()
   })
 })
