@@ -219,6 +219,45 @@ describe('Отмена чека', () => {
     expect(JSON.stringify(response.body)).toMatch(/VOID_WINDOW_EXPIRED/)
   })
 
+  it('повтор отмены после окна возвращает результат, а не VOID_WINDOW_EXPIRED', async () => {
+    // Кассир отменил чек внутри своего окна, но у планшета оборвалась связь,
+    // и повтор ушёл уже за пятнадцатой минутой. Отмена к этому моменту
+    // проведена целиком: отказывать за уже сделанную работу нельзя — касса
+    // решит, что баллы не вернулись, и позовёт менеджера отменять повторно.
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+    const committed = await ringUp(fixture.membershipId, 100_000)
+
+    const first = await request(server())
+      .post(`/v1/pos/transactions/${committed.transactionId}/void`)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ reason: 'WRONG_AMOUNT' })
+      .expect(200)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(Date.now() + 16 * 60_000)
+
+    const second = await request(server())
+      .post(`/v1/pos/transactions/${committed.transactionId}/void`)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ reason: 'WRONG_AMOUNT' })
+      .expect(200)
+
+    const firstBody = first.body as VoidBody
+    const secondBody = second.body as VoidBody
+
+    expect(secondBody.replayed).toBe(true)
+    expect(secondBody.transactionId).toBe(firstBody.transactionId)
+    expect(secondBody.newBalance).toBe(firstBody.newBalance)
+    expect(secondBody.reversals[0]!.reversalId).toBe(firstBody.reversals[0]!.reversalId)
+
+    const reversalCount = await prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.count({
+        where: { tenantId, membershipId: fixture.membershipId, type: 'REVERSAL' },
+      }),
+    )
+    expect(reversalCount).toBe(1)
+  })
+
   it('менеджер после окна отменяет, но только с комментарием', async () => {
     const fixture = await createMembershipFixture(prisma, { tenantId })
     const committed = await ringUp(fixture.membershipId, 100_000)

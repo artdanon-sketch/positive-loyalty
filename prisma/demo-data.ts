@@ -15,6 +15,8 @@
  * придуманы. Реальных персональных данных здесь нет и не появится.
  */
 
+import { ProgramConfig, type Tier, type TierCondition } from '@positive/contracts'
+
 /** Зерно генератора. Меняете его — меняются все скриншоты. */
 const RANDOM_SEED = 0x504f5349
 
@@ -86,53 +88,20 @@ const uuidFromIndex = (group: string, index: number): string =>
 // ─── Тенанты ─────────────────────────────────────────────────────────────────
 
 /**
- * ProgramConfig из docs/01, раздел 4.3.
+ * Настройки заведений берут тип и проверку из `@positive/contracts` — второй
+ * декларации ProgramConfig в репозитории нет.
  *
- * Объявлено через `type`, а не `interface`, и это не вкусовщина: у типа-алиаса
- * TypeScript выводит неявную индексную сигнатуру, и объект проходит в поле `Json`
- * Prisma без приведения. У интерфейса такой сигнатуры нет, и `settings` пришлось бы
- * кастовать — а каст в этом репозитории повод объясняться.
+ * Раньше здесь лежала своя копия типа, слово в слово повторяющая docs/01, раздел 4.3.
+ * Копия разошлась с контрактом: seed писал `staffReward` и `ordering`, схема их
+ * не знала, а `.strict()` отвергала — и касса отдавала 500 на предрасчёте вместо
+ * начисления. Компилятор смолчать был обязан: два независимых объявления связать
+ * нечем. Теперь объявление одно.
+ *
+ * `programConfig` ниже прогоняет литерал через саму схему на загрузке модуля:
+ * типа мало, потому что в базу настройки едут как JSON, а из базы возвращаются
+ * как `unknown`. Проверка на входе гарантирует, что записанное приложение прочитает.
  */
-type TierCondition =
-  | { readonly type: 'SPENT_TOTAL'; readonly gt: number }
-  | { readonly type: 'VISITS_TOTAL'; readonly gt: number }
-
-type Tier = {
-  readonly id: string
-  readonly name: string
-  readonly earnRate: number
-  readonly redeemRate: number
-  readonly hidden: boolean
-  readonly conditions: readonly TierCondition[]
-}
-
-type ProgramConfig = {
-  readonly mode: 'CASHBACK' | 'DISCOUNT'
-  readonly baseEarnRate: number
-  readonly baseRedeemRate: number
-  readonly pointsExpireDays: number | null
-  readonly welcomeBonus: {
-    readonly enabled: boolean
-    readonly amount: number
-    readonly trigger: 'ON_JOIN' | 'ON_FIRST_PURCHASE'
-  }
-  readonly tiers: readonly Tier[]
-  readonly cashierRules: {
-    readonly requireReceiptNumber: boolean
-    readonly maxManualAmount: number | null
-    readonly allowManualEntry: boolean
-  }
-  readonly staffReward: {
-    readonly enabled: boolean
-    readonly basis: 'PER_NEW_GUEST' | 'PCT_OF_POINTS' | 'PCT_OF_REVENUE'
-    readonly value: number
-    readonly vesting: 'IMMEDIATE' | 'ON_SECOND_VISIT'
-    readonly shiftCap: number
-  }
-  readonly ordering: {
-    readonly mode: 'OFF' | 'EXTERNAL_LINK' | 'BUILTIN' | 'AGGREGATOR'
-  }
-}
+const programConfig = (settings: ProgramConfig): ProgramConfig => ProgramConfig.parse(settings)
 
 export interface TenantSeed {
   readonly id: string
@@ -153,7 +122,7 @@ const tier = (
   name: string,
   earnRate: number,
   redeemRate: number,
-  conditions: readonly TierCondition[],
+  conditions: TierCondition[],
 ): Tier => ({ id, name, earnRate, redeemRate, hidden: false, conditions })
 
 export const TENANTS: readonly TenantSeed[] = [
@@ -167,7 +136,7 @@ export const TENANTS: readonly TenantSeed[] = [
     plan: 'PRO',
     seasonMode: false,
     receiptRangeMinor: [25_000, 180_000],
-    settings: {
+    settings: programConfig({
       mode: 'CASHBACK',
       baseEarnRate: 5,
       baseRedeemRate: 30,
@@ -191,7 +160,7 @@ export const TENANTS: readonly TenantSeed[] = [
         shiftCap: 15,
       },
       ordering: { mode: 'EXTERNAL_LINK' },
-    },
+    }),
   },
   {
     id: uuidFromIndex('10000000', 2),
@@ -203,7 +172,7 @@ export const TENANTS: readonly TenantSeed[] = [
     plan: 'FREE',
     seasonMode: true,
     receiptRangeMinor: [80_000, 350_000],
-    settings: {
+    settings: programConfig({
       mode: 'CASHBACK',
       baseEarnRate: 8,
       baseRedeemRate: 25,
@@ -226,7 +195,7 @@ export const TENANTS: readonly TenantSeed[] = [
         shiftCap: 10,
       },
       ordering: { mode: 'OFF' },
-    },
+    }),
   },
   {
     id: uuidFromIndex('10000000', 3),
@@ -238,7 +207,7 @@ export const TENANTS: readonly TenantSeed[] = [
     plan: 'FREE',
     seasonMode: false,
     receiptRangeMinor: [30_000, 120_000],
-    settings: {
+    settings: programConfig({
       mode: 'DISCOUNT',
       baseEarnRate: 4,
       baseRedeemRate: 20,
@@ -258,7 +227,7 @@ export const TENANTS: readonly TenantSeed[] = [
         shiftCap: 15,
       },
       ordering: { mode: 'OFF' },
-    },
+    }),
   },
 ]
 

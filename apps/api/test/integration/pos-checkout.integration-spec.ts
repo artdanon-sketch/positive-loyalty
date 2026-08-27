@@ -251,6 +251,53 @@ describe('Проведение чека', () => {
     expect(entries).toHaveLength(1)
   })
 
+  it('повтор ТОГО ЖЕ запроса возвращает первый ответ, а не BALANCE_CHANGED', async () => {
+    // Самый частый повтор на кассе: у планшета отвалилась сеть уже после того,
+    // как сервер провёл чек, и он шлёт ровно тот же запрос ещё раз — с тем же
+    // предрасчётом. Соседний тест повторяет чек с НОВЫМ предрасчётом, и там
+    // баланс в предрасчёте уже свежий; здесь предрасчёт помнит баланс ДО чека,
+    // и наивная проверка «баланс изменился» отвергала повтор, требуя пересчёта
+    // того, что уже начислено.
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+    const receiptId = `rcpt-same-request-${Date.now()}`
+
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set(...auth())
+      .send({ membershipId: fixture.membershipId, amount: 300_000 })
+      .expect(200)
+
+    const payload = { previewId: (preview.body as PreviewBody).previewId, receiptId }
+
+    const first = await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send(payload)
+      .expect(200)
+
+    const second = await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send(payload)
+      .expect(200)
+
+    const firstBody = first.body as CommitBody
+    const secondBody = second.body as CommitBody
+
+    // Ответ обязан совпасть с первым во всём, кроме признака повтора.
+    expect(secondBody.transactionId).toBe(firstBody.transactionId)
+    expect(secondBody.earned).toBe(firstBody.earned)
+    expect(secondBody.redeemed).toBe(firstBody.redeemed)
+    expect(secondBody.newBalance).toBe(firstBody.newBalance)
+    expect(firstBody.replayed).toBe(false)
+    expect(secondBody.replayed).toBe(true)
+
+    const entries = await prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({ where: { tenantId, refId: receiptId } }),
+    )
+    expect(entries).toHaveLength(1)
+  })
+
   it('устаревший предрасчёт отклоняется с PREVIEW_EXPIRED', async () => {
     const fixture = await createMembershipFixture(prisma, { tenantId })
 

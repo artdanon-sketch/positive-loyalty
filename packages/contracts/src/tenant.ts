@@ -23,6 +23,8 @@ export const TierCondition = z.discriminatedUnion('type', [
   z.object({ type: z.literal('REFERRALS'), gt: z.number().int().nonnegative() }).strict(),
 ])
 
+export type TierCondition = z.infer<typeof TierCondition>
+
 export const Tier = z
   .object({
     id: z.string().min(1),
@@ -34,6 +36,8 @@ export const Tier = z
     conditions: z.array(TierCondition).default([]),
   })
   .strict()
+
+export type Tier = z.infer<typeof Tier>
 
 export const CashierRules = z
   .object({
@@ -55,6 +59,41 @@ export const WelcomeBonus = z
   })
   .strict()
 
+export type WelcomeBonus = z.infer<typeof WelcomeBonus>
+
+/**
+ * Мотивация персонала. docs/01, раздел 4.6.
+ *
+ * Схема объявлена целиком, хотя движок наград приедет со Срезом 5: заведения
+ * настраиваются по ТЗ уже сейчас, и `.strict()` обязан принимать документ,
+ * а не подмножество, удобное текущему коду. Ровно на этом касса и упала —
+ * seed писал настройки по ТЗ, схема их отвергала, предрасчёт отдавал 500.
+ */
+export const StaffRewardConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    basis: z.enum(['PER_NEW_GUEST', 'PCT_OF_POINTS', 'PCT_OF_REVENUE']).default('PER_NEW_GUEST'),
+    /** Сумма в минорных единицах либо процент — смысл задаёт basis. */
+    value: z.number().nonnegative().default(0),
+    /** Дозревание: платить сразу или после второго визита (docs/00, пять решений). */
+    vesting: z.enum(['IMMEDIATE', 'ON_SECOND_VISIT']).default('ON_SECOND_VISIT'),
+    /** Потолок наград за смену — защита от накрутки. */
+    shiftCap: z.number().int().nonnegative().default(15),
+  })
+  .strict()
+
+export type StaffRewardConfig = z.infer<typeof StaffRewardConfig>
+
+/** Приём заказов. docs/01, раздел 4.3. */
+export const OrderingConfig = z
+  .object({
+    mode: z.enum(['OFF', 'EXTERNAL_LINK', 'BUILTIN', 'AGGREGATOR']).default('OFF'),
+    url: z.url().optional(),
+  })
+  .strict()
+
+export type OrderingConfig = z.infer<typeof OrderingConfig>
+
 export const ProgramConfig = z
   .object({
     mode: ProgramMode.default('CASHBACK'),
@@ -71,6 +110,8 @@ export const ProgramConfig = z
     welcomeBonus: WelcomeBonus.default(WelcomeBonus.parse({})),
     tiers: z.array(Tier).default([]),
     cashierRules: CashierRules.default(CashierRules.parse({})),
+    staffReward: StaffRewardConfig.default(StaffRewardConfig.parse({})),
+    ordering: OrderingConfig.default(OrderingConfig.parse({})),
   })
   .strict()
 
