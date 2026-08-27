@@ -28,8 +28,21 @@ import { PrismaService } from '../core/prisma.service'
  * ни строки, и дашборд обнулится вместо утечки.
  *
  * ВРЕМЯ ВЕЗДЕ МЕСТНОЕ. «С 14 до 17 зал пустой» — это два часа дня по Пхукету,
- * а не по UTC. Все границы суток и часы считаются в `Tenant.timezone`, поэтому
- * в запросах повсюду `AT TIME ZONE`.
+ * а не по UTC. Все границы суток и часы считаются в `Tenant.timezone`.
+ *
+ * Отсюда двойной `AT TIME ZONE 'UTC' AT TIME ZONE ${zone}` во всех запросах,
+ * и это не суеверие. Prisma объявляет `DateTime` как `timestamp(3)` БЕЗ зоны
+ * и кладёт туда UTC. Одиночный `AT TIME ZONE ${zone}` над такой колонкой
+ * делает обратное тому, что нужно: трактует хранимое значение как местное
+ * время и переводит его в момент времени. Дальше сравнение `timestamp`
+ * с `timestamptz` доигрывается по сессионной зоне соединения — и результат
+ * начинает зависеть от настройки сервера, а не от заведения.
+ *
+ * Первый `AT TIME ZONE 'UTC'` объявляет: в колонке лежит UTC. Второй переводит
+ * этот момент в часы заведения. Ошибка стоила ровно суток сдвига: визиты
+ * сегодняшнего дня попадали во вчерашний столбец графика.
+ *
+ * `now()` дополнительного объявления не требует: он и так `timestamptz`.
  */
 
 /** Длина периода в днях. Ключи — значения `DashboardPeriod`. */
@@ -186,14 +199,14 @@ export class DashboardService {
             l."membershipId",
             l.amount,
             l.source,
-            (l."createdAt" AT TIME ZONE ${zone}) AS local_at
+            (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
           FROM "LedgerEntry" l
           WHERE l."tenantId" = ${tenantId}::text
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
         ),
         moves AS (
-          SELECT l.amount, (l."createdAt" AT TIME ZONE ${zone}) AS local_at
+          SELECT l.amount, (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) AS local_at
           FROM "LedgerEntry" l
           WHERE l."tenantId" = ${tenantId}::text
         )
@@ -205,8 +218,8 @@ export class DashboardService {
           (SELECT count(*) FROM "Membership" m, bounds b
             WHERE m."tenantId" = ${tenantId}::text
               AND m."firstVisitAt" IS NOT NULL
-              AND (m."firstVisitAt" AT TIME ZONE ${zone}) >= b.cur_start
-              AND (m."firstVisitAt" AT TIME ZONE ${zone}) < b.cur_end)       AS "newGuests",
+              AND (m."firstVisitAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+              AND (m."firstVisitAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end)       AS "newGuests",
           (SELECT coalesce(sum(m."pointsBalance"), 0) FROM "Membership" m
             WHERE m."tenantId" = ${tenantId}::text)                          AS "liabilityNow",
           (SELECT coalesce(sum(mv.amount), 0) FROM moves mv, bounds b
@@ -217,7 +230,7 @@ export class DashboardService {
           (SELECT count(*) FROM "Membership" m
             WHERE m."tenantId" = ${tenantId}::text
               AND m."lastVisitAt" IS NOT NULL
-              AND m."lastVisitAt" < now() - make_interval(days => ${SLEEPING_AFTER_DAYS}::int))
+              AND (m."lastVisitAt" AT TIME ZONE 'UTC') < now() - make_interval(days => ${SLEEPING_AFTER_DAYS}::int))
                                                                              AS "sleeping",
           (SELECT count(*) FROM receipts r, bounds b
             WHERE r.local_at >= b.cur_start AND r.local_at < b.cur_end
@@ -267,8 +280,8 @@ export class DashboardService {
         visits AS (
           SELECT DISTINCT
             l."membershipId",
-            (l."createdAt" AT TIME ZONE ${zone})::date AS day,
-            (m."firstVisitAt" AT TIME ZONE ${zone})::date AS first_day
+            (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})::date AS day,
+            (m."firstVisitAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})::date AS first_day
           FROM "LedgerEntry" l
           JOIN "Membership" m ON m.id = l."membershipId" AND m."tenantId" = ${tenantId}::text
           WHERE l."tenantId" = ${tenantId}::text
@@ -323,14 +336,14 @@ export class DashboardService {
           WHERE extract(isodow FROM d) < 6
         ),
         visits AS (
-          SELECT extract(hour FROM (l."createdAt" AT TIME ZONE ${zone}))::int AS hour
+          SELECT extract(hour FROM (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}))::int AS hour
           FROM "LedgerEntry" l, bounds b
           WHERE l."tenantId" = ${tenantId}::text
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
-            AND (l."createdAt" AT TIME ZONE ${zone}) >= b.cur_start
-            AND (l."createdAt" AT TIME ZONE ${zone}) < b.cur_end
-            AND extract(isodow FROM (l."createdAt" AT TIME ZONE ${zone})) < 6
+            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+            AND extract(isodow FROM (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone})) < 6
         )
         SELECT
           h.hour AS "hour",
@@ -382,8 +395,8 @@ export class DashboardService {
             AND l."refType" = 'receipt'
             AND l.type = 'EARN'
             AND l."basisAmount" IS NOT NULL
-            AND (l."createdAt" AT TIME ZONE ${zone}) >= b.cur_start
-            AND (l."createdAt" AT TIME ZONE ${zone}) < b.cur_end
+            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (l."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
         )
         SELECT
           coalesce(round(avg("basisAmount") FILTER (WHERE NOT "isControlGroup")), 0) AS "programAvg",

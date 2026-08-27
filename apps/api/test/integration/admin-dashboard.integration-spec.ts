@@ -30,6 +30,15 @@ let tenantId: string
 let managerToken: string
 let cashierToken: string
 let emptyTenantToken: string
+let farZoneToken: string
+let farZoneMembershipId: string
+
+/**
+ * Пояс для проверки перевода времени. Катманду выбран намеренно: +05:45,
+ * то есть смещение НЕ кратно часу. Ошибка в переводе на таком поясе видна
+ * сразу, а на любом целочасовом может совпасть со сдвигом сессии соединения.
+ */
+const FAR_ZONE = 'Asia/Kathmandu'
 
 const server = (): Server => app.getHttpServer() as Server
 
@@ -110,10 +119,29 @@ beforeAll(async () => {
   // Третье заведение вообще без операций — состояние «первый день».
   const empty = await createMembershipFixture(prisma)
 
+  // Четвёртое — со своим часовым поясом: на нём проверяется перевод времени.
+  const farZone = await createMembershipFixture(prisma)
+  farZoneMembershipId = farZone.membershipId
+  await prisma.tenant.update({ where: { id: farZone.tenantId }, data: { timezone: FAR_ZONE } })
+
+  await ledger.earn(
+    {
+      membershipId: farZone.membershipId,
+      amount: 1_000,
+      basisAmount: 20_000,
+      idempotencyKey: idempotencyKey('dashboard-zone'),
+      refType: 'receipt',
+      refId: 'dash-zone',
+      ...POS_ORIGIN,
+    },
+    farZone.scope,
+  )
+
   const sign = (tenant: string, role: string): string =>
     signAccessToken({ tenantId: tenant, actorId: null, role }, SECRET)
 
   managerToken = sign(tenantId, 'MANAGER')
+  farZoneToken = sign(farZone.tenantId, 'MANAGER')
   cashierToken = sign(tenantId, 'CASHIER')
   emptyTenantToken = sign(empty.tenantId, 'MANAGER')
 }, 120_000)
@@ -205,6 +233,35 @@ describe('Дашборд', () => {
     const body = await load(managerToken, '?period=7d')
 
     expect(body.isEmpty).toBe(false)
+  })
+
+  it('часы и дни считаются в поясе заведения, а не сервера', async () => {
+    // Колонки времени объявлены как timestamp БЕЗ зоны, и в них лежит UTC.
+    // Одиночный `AT TIME ZONE` над такой колонкой делает обратный перевод,
+    // после чего результат начинает зависеть от настройки соединения. Здесь
+    // ожидание считается тем же способом, что видит владелец, — часами его
+    // заведения, — и не зависит от того, в каком поясе запущен прогон.
+    const body = await load(farZoneToken)
+
+    const localHour = Number(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: FAR_ZONE,
+        hour: '2-digit',
+        hour12: false,
+      }).format(new Date()),
+    )
+    const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: FAR_ZONE }).format(new Date())
+
+    // Визит один, и он обязан лежать ровно в текущем часе Катманду.
+    const busy = body.hourly.filter((point) => point.guests > 0)
+    expect(busy).toHaveLength(1)
+    expect(busy[0]?.hour).toBe(localHour)
+
+    // И в сегодняшнем дне по календарю заведения.
+    const today = body.series.find((day) => day.date === localDate)
+    expect(today).toBeDefined()
+    expect(today?.new).toBe(1)
+    expect(farZoneMembershipId).not.toBe('')
   })
 
   it('период меняет длину ряда', async () => {
