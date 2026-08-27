@@ -40,6 +40,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@positive/config": "workspace:*",
+    "@positive/contracts": "workspace:*",
     "@types/node": "22.20.1",
     "eslint": "10.9.1",
     "eslint-config-prettier": "10.1.8",

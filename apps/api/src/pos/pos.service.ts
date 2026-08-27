@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common'
@@ -283,6 +284,19 @@ export class PosService {
    * связь, часто шлёт повтор с НОВЫМ ключом — а чек тот же. Ключом в журнале
    * становится идентификатор чека: он один и тот же у любых повторов
    * (docs/01, раздел 4.4, пункт 4).
+   *
+   * ПОВТОР ПРОВЕРЯЕТСЯ ПЕРВЫМ, ДО ЕДИНОЙ ПРОВЕРКИ СОСТОЯНИЯ. Иначе выходит
+   * так: касса потеряла связь уже после того, как сервер провёл чек, и шлёт
+   * повтор. Баланс к этому моменту изменился — самим же этим чеком, — и
+   * проверка `BALANCE_CHANGED` отвергала повтор с требованием пересчитать
+   * предрасчёт. Кассир при госте пересчитывал уже начисленное. То же самое
+   * с `PREVIEW_EXPIRED`: чек проведён, а повтор через одиннадцать минут
+   * получал отказ по устаревшему предрасчёту.
+   *
+   * Общее правило, из которого это следует: путь повтора не имеет права
+   * заново проверять состояние, которое изменил первый вызов. Железное
+   * правило 3 (CLAUDE.md) требует вернуть ПЕРВЫЙ ОТВЕТ, а не пересогласовать
+   * операцию заново.
    */
   async commit(input: {
     previewId: string
@@ -290,6 +304,12 @@ export class PosService {
     paidBy?: string | undefined
   }): Promise<CommitResult> {
     const { tenantId, actorId } = TenantContext.getOrThrow()
+
+    const alreadyCommitted = await this.findCommittedReceipt(tenantId, input.receiptId)
+
+    if (alreadyCommitted !== null) {
+      return alreadyCommitted
+    }
 
     const preview = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.transactionPreview.findFirst({ where: { id: input.previewId, tenantId } }),
@@ -487,6 +507,18 @@ export class PosService {
       })
     }
 
+    // ПОВТОР ОТМЕНЫ — ДО ПРОВЕРОК ПРАВ И ОКНА, по той же причине, что и в commit:
+    // путь повтора не переспрашивает состояние, которое изменил первый вызов.
+    // Кассир отменил чек на четырнадцатой минуте, связь оборвалась, планшет
+    // повторил на шестнадцатой — и получал `VOID_WINDOW_EXPIRED` за работу,
+    // которая уже сделана. Отмена целиком проведена, значит повтор обязан
+    // вернуть её результат.
+    const alreadyVoided = await this.findCompletedReversal(tenantId, transactionId, legs)
+
+    if (alreadyVoided !== null) {
+      return alreadyVoided
+    }
+
     const ageMs = Date.now() - (legs[0]?.createdAt.getTime() ?? 0)
     const isCashier = role === 'CASHIER'
 
@@ -577,6 +609,115 @@ export class PosService {
     return { transactionId, reversals, newBalance: balanceNow, replayed }
   }
 
+  /**
+   * Отмена, доведённая до конца: у каждой ноги чека уже есть своя компенсация.
+   *
+   * Частичной отмены здесь быть не должно — все ноги гасятся в одном проходе, —
+   * но если первый вызов оборвался посередине, отмена не считается завершённой
+   * и повтор идёт обычным путём, дописывая недостающие компенсации.
+   */
+  private async findCompletedReversal(
+    tenantId: string,
+    transactionId: string,
+    legs: readonly { id: string; membershipId: string }[],
+  ): Promise<PosVoidResult | null> {
+    const reversalEntries = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({
+        where: { tenantId, reversalOfId: { in: legs.map((leg) => leg.id) } },
+        select: { id: true, amount: true, reversalOfId: true },
+      }),
+    )
+
+    const first = legs[0]
+
+    // Пустой список сюда не приходит — выше он уже отсеян, — но проверяем
+    // явно: `undefined` в `where` у Prisma значит «фильтр не применять», и
+    // поиск участия ниже вернул бы ПРОИЗВОЛЬНОЕ участие заведения вместе
+    // с чужим балансом. Ошибка молчаливая, поэтому дверь закрыта заранее.
+    if (first === undefined || reversalEntries.length < legs.length) {
+      return null
+    }
+
+    const byLeg = new Map(reversalEntries.map((entry) => [entry.reversalOfId, entry]))
+    const reversals: Array<{ entryId: string; reversalId: string; amount: number }> = []
+
+    for (const leg of legs) {
+      const reversal = byLeg.get(leg.id)
+
+      if (reversal === undefined) {
+        return null
+      }
+
+      reversals.push({ entryId: leg.id, reversalId: reversal.id, amount: reversal.amount })
+    }
+
+    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: first.membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+      return membership?.pointsBalance ?? 0
+    })
+
+    // `transactionId` отдаём тот же, что пришёл в запросе, — ровно как на
+    // прямом пути: касса повторяет свой запрос и должна узнать свой ответ.
+    return { transactionId, reversals, newBalance: balanceNow, replayed: true }
+  }
+
+  /**
+   * Ищет уже проведённый чек и восстанавливает ответ, отданный в первый раз.
+   *
+   * Источник истины — сам журнал, а не предрасчёт: повтор может приехать
+   * с другим `previewId` (касса пересчитала и отправила заново), и тогда суммы
+   * из свежего предрасчёта разошлись бы с тем, что реально записано.
+   *
+   * Отмены (`REVERSAL`) намеренно не учитываются: у них тот же `refId`, но
+   * отменённый чек — это по-прежнему проведённый чек, и повтор его проведения
+   * обязан вернуть тот самый первый ответ. Отмена — отдельная операция со
+   * своим ответом.
+   */
+  private async findCommittedReceipt(
+    tenantId: string,
+    receiptId: string,
+  ): Promise<CommitResult | null> {
+    const entries = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({
+        where: {
+          tenantId,
+          refType: 'receipt',
+          refId: receiptId,
+          type: { in: ['EARN', 'REDEEM'] },
+        },
+        select: { id: true, type: true, amount: true, balanceAfter: true },
+      }),
+    )
+
+    const earn = entries.find((entry) => entry.type === 'EARN')
+
+    if (earn === undefined) {
+      // Записей нет вовсе — чек новый. Либо есть списание без начисления:
+      // первый вызов оборвался между двумя ногами чека. Второе — не повтор
+      // завершённого чека, а недоведённый чек, и отдавать по нему готовый
+      // ответ нельзя: начисление так и осталось бы ненаписанным. Пропускаем
+      // на обычный путь — он допишет начисление, а списание там повторно
+      // не создастся, ключ идемпотентности у него тот же.
+      return null
+    }
+
+    const redeem = entries.find((entry) => entry.type === 'REDEEM')
+
+    return {
+      // Тот же порядок, что и на прямом пути: идентификатором операции служит
+      // первая созданная строка — списание, если оно было, иначе начисление.
+      transactionId: redeem?.id ?? earn.id,
+      // В журнале списание хранится со знаком минус, наружу отдаётся модуль.
+      redeemed: redeem === undefined ? 0 : Math.abs(redeem.amount),
+      earned: earn.amount,
+      newBalance: earn.balanceAfter,
+      replayed: true,
+    }
+  }
+
   private async loadConfig(tenantId: string): Promise<ReturnType<typeof parseProgramConfig>> {
     const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
@@ -588,6 +729,29 @@ export class PosService {
       })
     }
 
-    return parseProgramConfig(tenant.settings)
+    try {
+      return parseProgramConfig(tenant.settings)
+    } catch (error) {
+      // Настройки заведения не разбираются схемой. Это не вина кассира и не
+      // ошибка запроса: в базе лежит конфигурация, которую приложение прочитать
+      // не может. Без этой ветки ZodError уходил в обработчик Nest по умолчанию
+      // и превращался в «Internal server error» без кода и без подробностей —
+      // касса вставала, а причина была видна только в логе сервера.
+      //
+      // Подробности пишем в лог (там их прочитает поддержка), наружу отдаём код,
+      // по которому видно, куда идти чинить. Сами настройки в ответ не кладём:
+      // это конфигурация заведения, а отвечаем мы устройству кассы.
+      this.logger.error(
+        `Настройки заведения ${tenantId} не проходят проверку контракта`,
+        error instanceof Error ? error.stack : String(error),
+      )
+
+      throw new InternalServerErrorException({
+        error: {
+          code: 'TENANT_MISCONFIGURED',
+          message: 'Настройки программы лояльности заведения повреждены. Обратитесь в поддержку.',
+        },
+      })
+    }
   }
 }
