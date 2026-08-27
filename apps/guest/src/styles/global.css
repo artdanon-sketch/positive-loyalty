@@ -62,3 +62,363 @@ output {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Вход по коду ────────────────────────────────────────────────────────── */
+
+.signin {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  position: relative;
+}
+
+.signin__theme {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.signin__card {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 28px 22px;
+}
+
+.signin__mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--grad);
+}
+
+.signin__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.signin__hint {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--tx-2);
+}
+
+.signin__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.signin__label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.signin__input {
+  font: inherit;
+  color: var(--tx);
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  /* 16px — минимум, при котором iOS не зумит страницу на фокусе поля. */
+  font-size: 16px;
+  padding: 12px 14px;
+  transition: border-color 0.3s var(--ease);
+}
+
+.signin__input:focus-visible {
+  outline: none;
+  border-color: var(--mint);
+}
+
+.signin__input--code {
+  font-size: 26px;
+  letter-spacing: 0.32em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.signin__dev {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--tx-3);
+  padding: 8px 12px;
+  border: 1px dashed var(--line-2, var(--line));
+  border-radius: 12px;
+}
+
+.signin__error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bad);
+}
+
+.signin__back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--tx-2);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.signin__submit {
+  font: inherit;
+  font-weight: 700;
+  color: #06231b;
+  background: var(--grad);
+  border: none;
+  border-radius: var(--r-pill, 99px);
+  /* 48px — палец, а не курсор: минимальная зона нажатия из дизайн-системы. */
+  min-height: 48px;
+  cursor: pointer;
+  transition: transform 0.3s var(--spring);
+}
+
+.signin__submit:active {
+  transform: scale(0.97);
+}
+
+.signin__submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ── Карта гостя ─────────────────────────────────────────────────────────── */
+
+.card {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card__brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.card__mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: var(--grad);
+}
+
+.card__brandName {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.card__headSide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card__signout {
+  font: inherit;
+  font-size: 13px;
+  color: var(--tx-2);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill, 99px);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.card__points {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 20px;
+  border-radius: 22px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+}
+
+.card__pointsLabel {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.card__pointsValue {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.card__pointsHint {
+  font-size: 12.5px;
+  color: var(--tx-2);
+}
+
+.card__sectionTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.card__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+}
+
+.qr {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 16px;
+  line-height: 0;
+}
+
+.card__qrHint {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--tx-2);
+  text-align: center;
+}
+
+.card__qrHint--error {
+  color: var(--bad);
+}
+
+.venue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.venue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+}
+
+.venue__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.venue__name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.venue__meta {
+  font-size: 12.5px;
+  color: var(--tx-2);
+}
+
+.venue__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex: none;
+}
+
+.venue__points {
+  font-size: 16px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.venue__badge {
+  font-size: 11px;
+  color: var(--tx-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill, 99px);
+  padding: 2px 8px;
+}
+
+.card__state {
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.card__state--error {
+  border-color: color-mix(in srgb, var(--bad) 34%, var(--line));
+}
+
+.card__stateTitle {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.card__stateHint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-2);
+}
+
+.card__retry {
+  margin-top: 14px;
+  font: inherit;
+  font-weight: 700;
+  color: #06231b;
+  background: var(--grad);
+  border: none;
+  border-radius: var(--r-pill, 99px);
+  min-height: 44px;
+  padding: 0 22px;
+  cursor: pointer;
+}
+
+.splash {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+}

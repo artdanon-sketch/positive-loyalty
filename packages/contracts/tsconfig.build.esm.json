@@ -1,0 +1,12 @@
+{
+  "//": "ESM-половина двойной сборки. Нужна фронтам: сборщик тришейкает только ESM, а CommonJS тянет весь пакет целиком — измерено, см. комментарий в package.json.",
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": false,
+    "outDir": "dist/esm",
+    "declaration": true,
+    "declarationMap": true
+  }
+}

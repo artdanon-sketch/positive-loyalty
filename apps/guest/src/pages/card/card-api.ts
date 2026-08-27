@@ -1,21 +1,22 @@
+import { GuestQrToken, GuestWallet } from '@positive/contracts'
+import type { ZodType } from 'zod'
+
 /**
- * Источник данных карты гостя.
+ * Источник данных карты.
  *
- * По ТЗ карта приходит из `GET /v1/guest/card` (docs/02_API_контракты.md).
- * В задаче 1 эндпоинта ещё нет, поэтому источник честно отдаёт пустую карту:
- * ветки «загрузка», «пусто» и «ошибка» на экране настоящие и переключаются
- * состоянием запроса, а не флагом для демонстрации.
- *
- * Отдельный модуль, а не функция внутри `hooks.ts`, ровно по одной причине:
- * тест должен уметь подменить queryFn (отказ сети, вечная загрузка), не трогая
- * ни адресную строку, ни разметку экрана. Сюда же приедет настоящий `apiGet`.
+ * Отдельный модуль, а не функции внутри `hooks.ts`, ровно по одной причине:
+ * тест должен уметь подменить запрос (отказ сети, вечная загрузка), не трогая
+ * ни адресную строку, ни разметку экрана.
  */
-export interface GuestCard {
-  /** Есть ли на карте хоть один балл. */
-  readonly hasPoints: boolean
+
+type AuthGet = <T>(path: string, schema: ZodType<T>) => Promise<T>
+
+/** Кошелёк: баллы по всем заведениям острова (docs/02, раздел 2.1). */
+export function fetchWallet(authGet: AuthGet): Promise<GuestWallet> {
+  return authGet('/guest/wallet', GuestWallet)
 }
 
-// Не `async`: ждать здесь нечего, а пустой `async` обещает асинхронность, которой нет.
-export function fetchCard(): Promise<GuestCard> {
-  return Promise.resolve({ hasPoints: false })
+/** Токен для показа на кассе. Живёт пять минут — обновляется по таймеру. */
+export function fetchQrToken(authGet: AuthGet): Promise<GuestQrToken> {
+  return authGet('/guest/qr-token', GuestQrToken)
 }
