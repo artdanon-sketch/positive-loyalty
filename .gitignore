@@ -4,6 +4,8 @@ node_modules/
 
 # сборка
 dist/
+# Мобильные сборки веб-части: dist-owner, dist-cashier, dist-native
+dist-*/
 build/
 .turbo/
 .vite/

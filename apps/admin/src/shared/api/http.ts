@@ -1,4 +1,4 @@
-import { API_URL } from '../config/env'
+import { getApiUrl } from '../config/api-url'
 
 /**
  * Ошибка API в форме единого конверта docs/02, раздел 0:
@@ -38,7 +38,7 @@ const readEnvelope = (payload: unknown, status: number): ApiError => {
  * как есть (`TypeError: fetch failed`) — TanStack Query их ретраит сам.
  */
 export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${getApiUrl()}${path}`, {
     ...init,
     headers: {
       Accept: 'application/json',

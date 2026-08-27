@@ -6,13 +6,30 @@
  * схемой, как в apps/guest.
  */
 const raw: unknown = import.meta.env.VITE_API_URL
+const isNative = import.meta.env.VITE_NATIVE === 'true'
+
+/**
+ * Заглушка для мобильной сборки.
+ *
+ * В приложении адрес сервера настраивается на первом экране и хранится
+ * на устройстве, поэтому отсутствие значения при сборке — не ошибка. Падать
+ * здесь значило бы требовать знать адрес заведения в момент сборки APK,
+ * а он у каждого свой и меняется.
+ *
+ * В вебе всё наоборот: адрес известен и обязан быть задан, иначе приложение
+ * молча ходило бы в никуда.
+ */
+const NATIVE_PLACEHOLDER = 'http://127.0.0.1:3000/v1'
 
 if (typeof raw !== 'string' || !/^https?:\/\//.test(raw)) {
-  throw new Error(
-    'Неверное окружение: VITE_API_URL должен быть URL вида http://localhost:3000/v1. ' +
-      'Скопируйте apps/admin/.env.example в apps/admin/.env',
-  )
+  if (!isNative) {
+    throw new Error(
+      'Неверное окружение: VITE_API_URL должен быть URL вида http://localhost:3000/v1. ' +
+        'Скопируйте apps/admin/.env.example в apps/admin/.env',
+    )
+  }
 }
 
 /** База API вместе с версией пути, без завершающего слеша. */
-export const API_URL: string = raw.replace(/\/+$/, '')
+export const API_URL: string =
+  typeof raw === 'string' && /^https?:\/\//.test(raw) ? raw.replace(/\/+$/, '') : NATIVE_PLACEHOLDER

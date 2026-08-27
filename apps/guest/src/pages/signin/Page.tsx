@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from 'react'
 import { Navigate } from 'react-router-dom'
 
 import { ApiError } from '../../shared/api/api-client'
+import { ServerSetting } from '../../shared/config/server-setting'
 import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
 import { ThemeToggle } from '../../shared/theme/theme-toggle'
@@ -148,6 +149,8 @@ export function Page(): ReactElement {
             {error}
           </p>
         ) : null}
+
+        <ServerSetting />
 
         <button className="signin__submit" type="submit" disabled={pending}>
           {pending

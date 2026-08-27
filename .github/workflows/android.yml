@@ -1,0 +1,100 @@
+name: Android
+
+# Сборка трёх приложений: владелец, кассир, гость.
+#
+# СОБИРАЕМ В CI, А НЕ ЛОКАЛЬНО, и это не удобство. Для APK нужны JDK, Android
+# SDK и Gradle — около полутора гигабайт установки плюс принятие лицензий SDK.
+# На раннере GitHub всё это уже стоит, сборка воспроизводима у любого в команде,
+# и артефакт скачивается со страницы запуска.
+#
+# Подпись — отладочная. Такой APK ставится на телефон при включённой установке
+# из неизвестных источников и не годится для магазина. Релизная подпись требует
+# хранилища ключей, которому в репозитории не место; она приедет вместе
+# с выкладкой в Play Console.
+
+on:
+  # Вручную: сборка тяжёлая, гонять её на каждый коммит незачем.
+  workflow_dispatch:
+    inputs:
+      apiUrl:
+        description: 'Адрес API по умолчанию (можно поменять в самом приложении)'
+        required: false
+        default: 'http://127.0.0.1:3000/v1'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Одно упавшее приложение не должно отменять сборку двух остальных:
+      # чаще всего ломается что-то одно, и остальные APK всё равно нужны.
+      fail-fast: false
+      matrix:
+        include:
+          - app: owner
+            label: Владелец
+          - app: cashier
+            label: Касса
+          - app: guest
+            label: Карта гостя
+
+    name: ${{ matrix.label }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build:packages
+
+      - name: Build web bundle
+        # Адрес по умолчанию — именно по умолчанию: в приложении он меняется
+        # на первом экране и хранится на устройстве. Зашивать сюда адрес
+        # заведения нельзя, он у каждого свой и переезжает вместе с ноутбуком.
+        env:
+          VITE_API_URL: ${{ inputs.apiUrl || 'http://127.0.0.1:3000/v1' }}
+        run: pnpm --filter @positive/mobile-${{ matrix.app }} run web
+
+      - name: Copy web bundle into the shell
+        run: pnpm --filter @positive/mobile-${{ matrix.app }} run copy
+
+      - name: Capacitor sync
+        run: pnpm --filter @positive/mobile-${{ matrix.app }} exec cap sync android
+
+      - name: Assemble debug APK
+        working-directory: apps/mobile/${{ matrix.app }}/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Rename APK
+        # Имя по умолчанию у всех трёх одинаковое — app-debug.apk. Скачав их
+        # рядом, различить приложения было бы нечем.
+        run: |
+          mv "apps/mobile/${{ matrix.app }}/android/app/build/outputs/apk/debug/app-debug.apk" \
+             "positive-${{ matrix.app }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: positive-${{ matrix.app }}-apk
+          path: positive-${{ matrix.app }}.apk
+          if-no-files-found: error
+          retention-days: 30

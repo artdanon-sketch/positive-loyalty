@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 
 import { ApiError, requestJson } from '../api/http'
-import { API_URL } from '../config/env'
+import { getApiUrl } from '../config/api-url'
 import { AuthContext } from './auth-context'
 import type { AuthContextValue, AuthStatus, Session } from './auth-context'
 
@@ -173,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
       }
 
       const open = async (token: string): Promise<Response> => {
-        const response = await fetch(`${API_URL}${path}`, withToken(token))
+        const response = await fetch(`${getApiUrl()}${path}`, withToken(token))
 
         if (!response.ok) {
           throw new ApiError(response.status, 'STREAM_FAILED', `Поток ${path} не открылся`)

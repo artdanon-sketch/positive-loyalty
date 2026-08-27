@@ -4,11 +4,25 @@ import { defineConfig } from 'vitest/config'
 // Порт 5174 — гостевое приложение. 5173 занят бэк-офисом, 3000 — API.
 const PORT = 5174
 
-export default defineConfig({
+/**
+ * Режим `native` — сборка для мобильного приложения гостя.
+ *
+ * Отличается ровно одним: в приложении показывается настройка адреса сервера.
+ * В вебе она не нужна и вредна — адрес там известен из сборки и совпадает
+ * с тем, откуда открыта страница.
+ */
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_NATIVE': JSON.stringify(String(mode === 'native')),
+  },
   server: { port: PORT, strictPort: true },
   preview: { port: PORT, strictPort: true },
   build: {
+    // Своя папка у мобильной сборки: веб и приложение собираются из одного
+    // исходника, но разными командами, и общий каталог означал бы, что одна
+    // сборка молча затирает другую.
+    outDir: mode === 'native' ? 'dist-native' : 'dist',
     // Гостевая карта открывается на слабом 4G: современный таргет даёт меньше полифилов,
     // sourcemap не попадает в критический путь загрузки, но чинит разбор ошибок в проде.
     target: 'es2022',
@@ -30,4 +44,4 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}'],
     },
   },
-})
+}))

@@ -151,5 +151,11 @@
   "overview.feed.live": "в эфире",
   "overview.feed.reconnecting": "переподключаемся",
   "overview.feed.waiting": "Ждём первое начисление за сегодня",
-  "overview.feed.anonymous": "Гость"
+  "overview.feed.anonymous": "Гость",
+  "server.title": "Адрес сервера",
+  "server.label": "Адрес сервера",
+  "server.hint": "Например http://192.168.1.10:3000/v1 — адрес компьютера, где запущен сервер, в той же сети Wi-Fi.",
+  "server.invalid": "Адрес должен начинаться с http:// или https:// и содержать имя хоста",
+  "server.saved": "Сохранено, перезагружаем",
+  "server.save": "Сохранить"
 }

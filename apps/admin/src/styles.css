@@ -1257,3 +1257,45 @@ body {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Адрес сервера: настройка мобильного приложения ────────────────────────
+   В вебе этого блока нет вовсе. Свёрнут по умолчанию: обычная смена начинается
+   со входа, а не с настройки сети.
+   ------------------------------------------------------------------------- */
+
+.server-setting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.server-setting__toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tx-3);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.server-setting__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.server-setting__hint {
+  margin: 0;
+  color: var(--tx-3);
+  font-size: 12px;
+}
+
+.server-setting__error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12px;
+}

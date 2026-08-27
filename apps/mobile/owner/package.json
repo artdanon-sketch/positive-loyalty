@@ -1,0 +1,19 @@
+{
+  "name": "@positive/mobile-owner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "web": "pnpm --filter @positive/admin exec vite build --mode owner",
+    "copy": "node ./scripts/copy-web.mjs",
+    "sync": "cap sync android",
+    "prepare:android": "pnpm run web && pnpm run copy && pnpm run sync"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1"
+  }
+}
