@@ -47,6 +47,26 @@ const EnvSchema = z
      * с чужим tenantId. Минимум 32 символа, в production обязателен.
      */
     ACCESS_TOKEN_SECRET: z.string().min(32).optional(),
+    /**
+     * Схема базы, в которой живёт система лояльности.
+     *
+     * ЗАЧЕМ ОТДЕЛЬНАЯ ПЕРЕМЕННАЯ. База может быть общей с другим продуктом:
+     * у нашей стороны своя схема, у соседа своя. Prisma в этом случае обязана
+     * знать имя схемы ЯВНО — драйвер-адаптер без него зашивает в каждый
+     * идентификатор литерал `public`, и запросы уходят к соседу, а не к нам.
+     * Отказ при этом тихий: если старые таблицы остались в public, приложение
+     * молча продолжает читать и писать туда.
+     *
+     * По умолчанию `public` — ровно сегодняшнее поведение. Переезд на свою
+     * схему это отдельный осознанный шаг, а не побочный эффект обновления.
+     */
+    DATABASE_SCHEMA: z
+      .string()
+      .regex(
+        /^[a-z_][a-z0-9_$]*$/,
+        'должно быть идентификатором схемы PostgreSQL в нижнем регистре',
+      )
+      .default('public'),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -54,6 +74,7 @@ const EnvSchema = z
     appVersion: raw.APP_VERSION,
     corsOrigins: resolveCorsOrigins(raw.CORS_ORIGINS, raw.NODE_ENV),
     accessTokenSecret: raw.ACCESS_TOKEN_SECRET ?? '',
+    databaseSchema: raw.DATABASE_SCHEMA,
   }))
   .superRefine((env, ctx) => {
     if (env.nodeEnv === 'production' && env.accessTokenSecret.length === 0) {

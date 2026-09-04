@@ -21,6 +21,36 @@ if (existsSync('.env')) {
  */
 const databaseUrl = process.env.DATABASE_URL
 
+/**
+ * Схема, в которую едут миграции.
+ *
+ * ВЫВОДИТСЯ ИЗ ТОЙ ЖЕ ПЕРЕМЕННОЙ, ЧТО И РАНТАЙМ, а не задаётся в строке
+ * подключения руками. Если бы CLI брал схему из `?schema=` в URL, а приложение
+ * из `DATABASE_SCHEMA`, они однажды разъехались бы молча: миграции создали бы
+ * таблицы в одной схеме, а API писал бы в другую. На общей с чужим продуктом
+ * базе «другая схема» — это схема соседа.
+ *
+ * Значение по умолчанию `public` совпадает с сегодняшним поведением.
+ */
+const schema = process.env.DATABASE_SCHEMA?.trim() || 'public'
+
+if (!/^[a-z_][a-z0-9_$]*$/.test(schema)) {
+  throw new Error(
+    `DATABASE_SCHEMA=${schema} — не идентификатор схемы PostgreSQL. ` +
+      'Допустимы строчные буквы, цифры и подчёркивание.',
+  )
+}
+
+/** Строка подключения с принудительно выставленной схемой. */
+const migrationUrl =
+  databaseUrl === undefined
+    ? undefined
+    : (() => {
+        const parsed = new URL(databaseUrl)
+        parsed.searchParams.set('schema', schema)
+        return parsed.toString()
+      })()
+
 export default defineConfig({
   schema: 'prisma/schema.prisma',
 
@@ -34,5 +64,5 @@ export default defineConfig({
   // Блок datasource нужен только командам, которые ходят в базу: migrate, db, studio.
   // generate, validate и format работают без него — поэтому там, где DATABASE_URL нет
   // (CI, чистый клон), блок просто отсутствует, а не падает на пустой переменной.
-  ...(databaseUrl === undefined ? {} : { datasource: { url: databaseUrl } }),
+  ...(migrationUrl === undefined ? {} : { datasource: { url: migrationUrl } }),
 })

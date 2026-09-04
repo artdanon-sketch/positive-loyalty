@@ -23,7 +23,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:reset": "prisma migrate reset",
+    "db:reset": "node --env-file-if-exists=.env ./prisma/scripts/guard-destructive.mjs && prisma migrate reset",
     "db:seed": "pnpm build:api && prisma db seed",
     "demo:sales": "pnpm build:api && node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types prisma/test-sales.ts",
     "db:studio": "prisma studio",

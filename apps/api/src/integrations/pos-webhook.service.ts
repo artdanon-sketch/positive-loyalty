@@ -319,7 +319,7 @@ export class PosWebhookService {
     // объявленного заведения, а его-то мы и ищем. Функция отдаёт ровно два
     // значения и только для действующей связи — подробности в миграции.
     const rows = await this.prisma.$queryRaw<Array<{ tenantId: string; webhookSecret: string }>>`
-      SELECT * FROM public.pos_link_for_merchant(${merchantId}::text)
+      SELECT * FROM pos_link_for_merchant(${merchantId}::text)
     `
 
     return rows[0] ?? null
