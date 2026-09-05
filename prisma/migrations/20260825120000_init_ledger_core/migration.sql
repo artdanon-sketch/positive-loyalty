@@ -16,7 +16,24 @@
 -- ═══ Часть 1. Структура ══════════════════════════════════════════════════════
 
 -- CreateSchema
-CREATE SCHEMA IF NOT EXISTS "public";
+--
+-- Имя схемы ВЫЧИСЛЯЕТСЯ, а не вписано буквой. Сгенерированная строка создавала
+-- "public" — на общей базе это была бы команда, адресованная схеме соседа.
+-- Пусть и безобидная (IF NOT EXISTS на существующей схеме ничего не делает),
+-- но лезть туда не нужно вовсе.
+DO $create_schema$
+DECLARE
+  target_schema text := current_schema();
+BEGIN
+  IF target_schema IS NULL THEN
+    RAISE EXCEPTION
+      'Схема из DATABASE_SCHEMA не существует и не выбрана. Создайте её до наката.'
+      USING HINT = 'CREATE SCHEMA <имя>; см. docs/07_Развёртывание_в_Supabase.md';
+  END IF;
+
+  EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', target_schema);
+END
+$create_schema$;
 
 -- CreateEnum
 CREATE TYPE "Vertical" AS ENUM ('RESTAURANT', 'SPA', 'RENTAL', 'RETAIL', 'OTHER');

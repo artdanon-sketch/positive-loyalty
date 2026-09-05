@@ -209,7 +209,44 @@ jobs:
           INSERT INTO public."Membership" VALUES ('neighbour-row', 'ЧУЖАЯ СТРОКА САЙТА');
           SQL
 
+          # СЛЕПОК СХЕМЫ СОСЕДА ДО НАКАТА.
+          #
+          # Пересчёт по списку НАШИХ имён ловит только то, о чём мы догадались
+          # заранее. Сравнение слепков ловит всё: любую таблицу, любую функцию,
+          # любое изменение прав на схеме. Утверждение «мы к соседу не лезли»
+          # должно опираться на это, а не на нашу же фантазию о том, что могло
+          # пойти не так.
+          SNAP() {
+            psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+              SELECT (SELECT count(*) FROM information_schema.tables
+                      WHERE table_schema = 'public')
+                  || ' таблиц / '
+                  || (SELECT count(*) FROM pg_proc p
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'public')
+                  || ' функций / права: '
+                  || (SELECT coalesce(array_to_string(nspacl, ','), 'по умолчанию')
+                      FROM pg_namespace WHERE nspname = 'public');"
+          }
+
+          CHECK_PUBLIC() {
+            local now
+            now="$(SNAP)"
+            if [ "${PUBLIC_BEFORE}" != "${now}" ]; then
+              echo "СБОЙ: схема соседа изменилась (${1})."
+              echo "  было:  ${PUBLIC_BEFORE}"
+              echo "  стало: ${now}"
+              exit 1
+            fi
+            echo "  ${1}: ${now} — без изменений"
+          }
+
+          PUBLIC_BEFORE="$(SNAP)"
+
           pnpm db:deploy
+
+          echo "── Схема соседа не изменилась ни на объект, ни на право ──"
+          CHECK_PUBLIC "после наката миграций"
 
           psql -h 127.0.0.1 -U postgres -d "${DB}"             -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
 
@@ -234,6 +271,9 @@ jobs:
 
           echo "── Полный прогон интеграционных тестов на схеме loyalty ──"
           pnpm --filter @positive/api run test:integration
+
+          echo "── Схема соседа не изменилась и после работы приложения ──"
+          CHECK_PUBLIC "после прогона тестов"
 
           echo "── Строка соседа НЕ ТРОНУТА: мы в его схему не писали ──"
           psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc             "SELECT marker FROM public.\"Membership\" WHERE id = 'neighbour-row';"             | grep -q 'ЧУЖАЯ СТРОКА САЙТА' || { echo 'СБОЙ: строка соседа изменена'; exit 1; }

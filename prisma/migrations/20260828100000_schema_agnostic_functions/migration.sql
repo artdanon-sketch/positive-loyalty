@@ -33,9 +33,20 @@ BEGIN
   -- к public — то есть на общей базе роль получала бы доступ к схеме соседа.
   EXECUTE format('GRANT USAGE ON SCHEMA %I TO positive_app', target_schema);
 
-  -- ── Разрешение устройства кассы в заведение, до аутентификации ────────────
-  EXECUTE format('DROP FUNCTION IF EXISTS public.auth_tenant_for_device(text)');
+  -- ── Уборка исторических версий ────────────────────────────────────────────
+  --
+  -- ТОЛЬКО если наша схема и есть public. Раньше эти DROP выполнялись всегда —
+  -- и на общей базе снесли бы одноимённую функцию СОСЕДА: молча и необратимо.
+  -- А убирать там нечего: исторические миграции на чужой схеме не выполняются,
+  -- значит наших функций в public не появлялось ни разу.
+  IF target_schema = 'public' THEN
+    DROP FUNCTION IF EXISTS public.auth_tenant_for_device(text);
+    DROP FUNCTION IF EXISTS public.pos_link_for_merchant(text);
+    DROP FUNCTION IF EXISTS public.webhook_deliveries_due(int, timestamptz);
+    DROP FUNCTION IF EXISTS public.ledger_entries_awaiting_delivery(int, timestamptz);
+  END IF;
 
+  -- ── Разрешение устройства кассы в заведение, до аутентификации ────────────
   EXECUTE format($fmt$
     CREATE OR REPLACE FUNCTION %I.auth_tenant_for_device(p_device_id text)
     RETURNS text
@@ -65,8 +76,6 @@ BEGIN
   );
 
   -- ── Разрешение кассового заведения в наше, до всякой авторизации ──────────
-  EXECUTE format('DROP FUNCTION IF EXISTS public.pos_link_for_merchant(text)');
-
   EXECUTE format($fmt$
     CREATE OR REPLACE FUNCTION %I.pos_link_for_merchant(p_merchant_id text)
     RETURNS TABLE ("tenantId" text, "webhookSecret" text)
@@ -94,8 +103,6 @@ BEGIN
   );
 
   -- ── Исходящие события, которым пора уходить ───────────────────────────────
-  EXECUTE format('DROP FUNCTION IF EXISTS public.webhook_deliveries_due(int, timestamptz)');
-
   EXECUTE format($fmt$
     CREATE OR REPLACE FUNCTION %I.webhook_deliveries_due(p_limit int, p_now timestamptz)
     RETURNS TABLE (
@@ -130,10 +137,6 @@ BEGIN
   );
 
   -- ── Операции, о которых касса ещё не знает ────────────────────────────────
-  EXECUTE format(
-    'DROP FUNCTION IF EXISTS public.ledger_entries_awaiting_delivery(int, timestamptz)'
-  );
-
   EXECUTE format($fmt$
     CREATE OR REPLACE FUNCTION %I.ledger_entries_awaiting_delivery(
       p_limit int,
