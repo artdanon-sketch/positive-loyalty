@@ -172,5 +172,78 @@ jobs:
 
           pnpm --filter @positive/api run test:integration
 
+      - name: Test integration (своя схема)
+        # ДОКАЗАТЕЛЬСТВО ИЗОЛЯЦИИ СХЕМ, а не повтор предыдущего шага.
+        #
+        # Система едет в проект Supabase, где уже живёт чужой продукт: у нас своя
+        # схема, у соседа public. Прогон выше этого НЕ проверяет — он идёт
+        # на schema=public, то есть ровно в том случае, который работает
+        # по совпадению с умолчанием.
+        #
+        # ГЛАВНЫЙ ТРЮК ЗДЕСЬ — ТАБЛИЦА-ДВОЙНИК. В public заводится "Membership"
+        # с заведомо чужой строкой. Если хоть один запрос уйдёт не в ту схему,
+        # он увидит соседа: сырой SQL дашборда обращается к "Membership"
+        # без указания схемы и разрешается по search_path.
+        #
+        # Без двойника тест был бы бессилен: на пустом public промах в схему
+        # дал бы честную ошибку «нет такой таблицы», и мы бы решили, что
+        # защищены. Молчаливое чтение чужих данных — вот чего мы боимся,
+        # и воспроизводится оно только так.
+        env:
+          DATABASE_SCHEMA: loyalty
+          PGPASSWORD: postgres
+        run: |
+          APP_PASSWORD="$(openssl rand -hex 16)"
+          export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
+
+          DB=positive_loyalty_schema
+          export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/${DB}"
+          export DATABASE_URL_TEST="$DATABASE_URL"
+          export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/${DB}"
+
+          psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE ${DB};"
+
+          # Сосед по базе: чужая таблица с НАШИМ именем и чужой строкой.
+          psql -h 127.0.0.1 -U postgres -d "${DB}" <<'SQL'
+          CREATE TABLE public."Membership" (id text primary key, marker text);
+          INSERT INTO public."Membership" VALUES ('neighbour-row', 'ЧУЖАЯ СТРОКА САЙТА');
+          SQL
+
+          pnpm db:deploy
+
+          psql -h 127.0.0.1 -U postgres -d "${DB}"             -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
+
+          echo "── Наши таблицы обязаны быть в loyalty, а не у соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'loyalty'
+              AND table_name IN ('LedgerEntry','Membership','Tenant','PosLink');"             | grep -qx '4' || { echo 'СБОЙ: таблицы не в схеме loyalty'; exit 1; }
+
+          echo "── В public не должно быть НАШИХ таблиц: только двойник соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name IN ('LedgerEntry','Tenant','PosLink');"             | grep -qx '0' || { echo 'СБОЙ: наши таблицы попали в схему соседа'; exit 1; }
+
+          echo "── Функции тоже не должны остаться у соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public' AND p.proname IN (
+              'auth_tenant_for_device','pos_link_for_merchant',
+              'webhook_deliveries_due','ledger_entries_awaiting_delivery');"             | grep -qx '0' || { echo 'СБОЙ: функции остались в схеме соседа'; exit 1; }
+
+          echo "── Полный прогон интеграционных тестов на схеме loyalty ──"
+          pnpm --filter @positive/api run test:integration
+
+          echo "── Строка соседа НЕ ТРОНУТА: мы в его схему не писали ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc             "SELECT marker FROM public.\"Membership\" WHERE id = 'neighbour-row';"             | grep -q 'ЧУЖАЯ СТРОКА САЙТА' || { echo 'СБОЙ: строка соседа изменена'; exit 1; }
+
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc             "SELECT count(*) FROM public.\"Membership\";"             | grep -qx '1' || { echo 'СБОЙ: в таблицу соседа что-то дописали'; exit 1; }
+
+          echo "── RLS: роль приложения без объявленного заведения не видит ничего ──"
+          PGPASSWORD="${APP_PASSWORD}" psql -h 127.0.0.1 -U positive_app -d "${DB}" -tAc             'SELECT count(*) FROM loyalty."Membership";'             | grep -qx '0' || { echo 'СБОЙ: RLS не действует — вероятно, подключились владельцем'; exit 1; }
+
+          echo "Изоляция схем подтверждена."
+
       - name: Build
         run: pnpm build
