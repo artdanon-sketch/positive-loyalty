@@ -24,7 +24,13 @@ const LABEL = process.argv[2] ?? 'snapshot'
 const FILE = `.schema-snapshot-${LABEL}.json`
 const BEFORE_FILE = '.schema-snapshot-before.json'
 
-const url = process.env.DATABASE_URL
+// Снимок снимается ПОД ВЛАДЕЛЬЦЕМ, а не под ролью приложения.
+//
+// information_schema показывает только те объекты, на которые у тебя есть права.
+// Под ограниченной ролью схема соседа выглядела бы пустой — и снимок «до» совпал
+// бы со снимком «после» просто потому, что мы ничего не видим. Проверка,
+// которая не может увидеть нарушение, зелёная всегда.
+const url = process.env.DATABASE_URL_OWNER?.trim() || process.env.DATABASE_URL
 
 if (url === undefined || url.trim() === '') {
   process.stderr.write('DATABASE_URL не задан. Впишите его в .env\n')
