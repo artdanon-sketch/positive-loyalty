@@ -50,3 +50,6 @@ apps/api/src/generated/
 .DS_Store
 Thumbs.db
 .idea/
+
+# Снимки состояния базы до и после наката: рабочие файлы, не для репозитория
+.schema-snapshot-*.json
