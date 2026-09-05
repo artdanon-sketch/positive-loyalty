@@ -172,5 +172,127 @@ jobs:
 
           pnpm --filter @positive/api run test:integration
 
+      - name: Test integration (своя схема)
+        # ДОКАЗАТЕЛЬСТВО ИЗОЛЯЦИИ СХЕМ, а не повтор предыдущего шага.
+        #
+        # Система едет в проект Supabase, где уже живёт чужой продукт: у нас своя
+        # схема, у соседа public. Прогон выше этого НЕ проверяет — он идёт
+        # на schema=public, то есть ровно в том случае, который работает
+        # по совпадению с умолчанием.
+        #
+        # ГЛАВНЫЙ ТРЮК ЗДЕСЬ — ТАБЛИЦА-ДВОЙНИК. В public заводится "Membership"
+        # с заведомо чужой строкой. Если хоть один запрос уйдёт не в ту схему,
+        # он увидит соседа: сырой SQL дашборда обращается к "Membership"
+        # без указания схемы и разрешается по search_path.
+        #
+        # Без двойника тест был бы бессилен: на пустом public промах в схему
+        # дал бы честную ошибку «нет такой таблицы», и мы бы решили, что
+        # защищены. Молчаливое чтение чужих данных — вот чего мы боимся,
+        # и воспроизводится оно только так.
+        env:
+          DATABASE_SCHEMA: loyalty
+          PGPASSWORD: postgres
+        run: |
+          APP_PASSWORD="$(openssl rand -hex 16)"
+          export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
+
+          # ДВЕ РАЗНЫЕ БАЗЫ — по той же причине, что и в шаге выше. Сначала я
+          # указал обе переменные на одну, и защита из
+          # test/integration/setup-integration-env.ts прогон отбила: тесты пишут
+          # в журнал строки, которые физически нельзя удалить, и рабочая база
+          # копилась бы мусором. Проверка сработала как задумано.
+          #
+          # Рабочая база здесь фиктивная: она нужна лишь как ОТЛИЧНОЕ значение
+          # DATABASE_URL, подключений к ней не будет ни одного.
+          DB=positive_loyalty_schema_test
+          export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_schema"
+          export DATABASE_URL_TEST="postgresql://postgres:postgres@127.0.0.1:5432/${DB}"
+          export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/${DB}"
+
+          psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE ${DB};"
+
+          # Сосед по базе: чужая таблица с НАШИМ именем и чужой строкой.
+          psql -h 127.0.0.1 -U postgres -d "${DB}" <<'SQL'
+          CREATE TABLE public."Membership" (id text primary key, marker text);
+          INSERT INTO public."Membership" VALUES ('neighbour-row', 'ЧУЖАЯ СТРОКА САЙТА');
+          SQL
+
+          # СЛЕПОК СХЕМЫ СОСЕДА ДО НАКАТА.
+          #
+          # Пересчёт по списку НАШИХ имён ловит только то, о чём мы догадались
+          # заранее. Сравнение слепков ловит всё: любую таблицу, любую функцию,
+          # любое изменение прав на схеме. Утверждение «мы к соседу не лезли»
+          # должно опираться на это, а не на нашу же фантазию о том, что могло
+          # пойти не так.
+          SNAP() {
+            psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+              SELECT (SELECT count(*) FROM information_schema.tables
+                      WHERE table_schema = 'public')
+                  || ' таблиц / '
+                  || (SELECT count(*) FROM pg_proc p
+                      JOIN pg_namespace n ON n.oid = p.pronamespace
+                      WHERE n.nspname = 'public')
+                  || ' функций / права: '
+                  || (SELECT coalesce(array_to_string(nspacl, ','), 'по умолчанию')
+                      FROM pg_namespace WHERE nspname = 'public');"
+          }
+
+          CHECK_PUBLIC() {
+            local now
+            now="$(SNAP)"
+            if [ "${PUBLIC_BEFORE}" != "${now}" ]; then
+              echo "СБОЙ: схема соседа изменилась (${1})."
+              echo "  было:  ${PUBLIC_BEFORE}"
+              echo "  стало: ${now}"
+              exit 1
+            fi
+            echo "  ${1}: ${now} — без изменений"
+          }
+
+          PUBLIC_BEFORE="$(SNAP)"
+
+          # Накат идёт на ТЕСТОВУЮ базу: именно к ней подключаются тесты.
+          DATABASE_URL="$DATABASE_URL_TEST" pnpm db:deploy
+
+          echo "── Схема соседа не изменилась ни на объект, ни на право ──"
+          CHECK_PUBLIC "после наката миграций"
+
+          psql -h 127.0.0.1 -U postgres -d "${DB}"             -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
+
+          echo "── Наши таблицы обязаны быть в loyalty, а не у соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'loyalty'
+              AND table_name IN ('LedgerEntry','Membership','Tenant','PosLink');"             | grep -qx '4' || { echo 'СБОЙ: таблицы не в схеме loyalty'; exit 1; }
+
+          echo "── В public не должно быть НАШИХ таблиц: только двойник соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name IN ('LedgerEntry','Tenant','PosLink');"             | grep -qx '0' || { echo 'СБОЙ: наши таблицы попали в схему соседа'; exit 1; }
+
+          echo "── Функции тоже не должны остаться у соседа ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
+            SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public' AND p.proname IN (
+              'auth_tenant_for_device','pos_link_for_merchant',
+              'webhook_deliveries_due','ledger_entries_awaiting_delivery');"             | grep -qx '0' || { echo 'СБОЙ: функции остались в схеме соседа'; exit 1; }
+
+          echo "── Полный прогон интеграционных тестов на схеме loyalty ──"
+          pnpm --filter @positive/api run test:integration
+
+          echo "── Схема соседа не изменилась и после работы приложения ──"
+          CHECK_PUBLIC "после прогона тестов"
+
+          echo "── Строка соседа НЕ ТРОНУТА: мы в его схему не писали ──"
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc             "SELECT marker FROM public.\"Membership\" WHERE id = 'neighbour-row';"             | grep -q 'ЧУЖАЯ СТРОКА САЙТА' || { echo 'СБОЙ: строка соседа изменена'; exit 1; }
+
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc             "SELECT count(*) FROM public.\"Membership\";"             | grep -qx '1' || { echo 'СБОЙ: в таблицу соседа что-то дописали'; exit 1; }
+
+          echo "── RLS: роль приложения без объявленного заведения не видит ничего ──"
+          PGPASSWORD="${APP_PASSWORD}" psql -h 127.0.0.1 -U positive_app -d "${DB}" -tAc             'SELECT count(*) FROM loyalty."Membership";'             | grep -qx '0' || { echo 'СБОЙ: RLS не действует — вероятно, подключились владельцем'; exit 1; }
+
+          echo "Изоляция схем подтверждена."
+
       - name: Build
         run: pnpm build

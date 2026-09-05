@@ -71,7 +71,7 @@ export class AuthService {
    */
   async staffPinLogin(deviceId: string, pin: string): Promise<AuthTokens> {
     const resolved = await this.prisma.$queryRaw<Array<{ tenantId: string | null }>>`
-      SELECT public.auth_tenant_for_device(${deviceId}) AS "tenantId"
+      SELECT auth_tenant_for_device(${deviceId}) AS "tenantId"
     `
     const tenantId = resolved[0]?.tenantId ?? null
 

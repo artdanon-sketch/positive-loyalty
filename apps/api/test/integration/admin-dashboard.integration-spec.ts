@@ -252,10 +252,32 @@ describe('Дашборд', () => {
     )
     const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: FAR_ZONE }).format(new Date())
 
-    // Визит один, и он обязан лежать ровно в текущем часе Катманду.
+    // «Загрузка по часам» — это средний БУДНИЙ день (docs/03, раздел 2):
+    // у пляжного кафе суббота ломает картину будней, а совет про тихие часы
+    // адресован именно будням.
+    //
+    // Значит в выходной визит в этот график не попадает ВООБЩЕ — и это не
+    // дефект, а условие задачи. Раньше тест этого не учитывал и падал каждые
+    // выходные; поймалось первым же прогоном в субботу.
+    const localWeekday = new Intl.DateTimeFormat('en-GB', {
+      timeZone: FAR_ZONE,
+      weekday: 'short',
+    }).format(new Date())
+    const isWeekend = localWeekday === 'Sat' || localWeekday === 'Sun'
+
     const busy = body.hourly.filter((point) => point.guests > 0)
-    expect(busy).toHaveLength(1)
-    expect(busy[0]?.hour).toBe(localHour)
+
+    if (isWeekend) {
+      // Проверка не обесценивается: в выходной мы утверждаем ровно обратное —
+      // что будничный график НЕ подхватил выходной визит. И заодно что он
+      // всё-таки посчитался: сутки на месте, просто нулями. Без этой строки
+      // ветка проходила бы и на пустом ответе.
+      expect(body.hourly).toHaveLength(24)
+      expect(busy).toHaveLength(0)
+    } else {
+      expect(busy).toHaveLength(1)
+      expect(busy[0]?.hour).toBe(localHour)
+    }
 
     // И в сегодняшнем дне по календарю заведения.
     const today = body.series.find((day) => day.date === localDate)

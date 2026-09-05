@@ -107,7 +107,7 @@ export class WebhookOutboxService {
    */
   async enqueuePending(now: Date = new Date()): Promise<number> {
     const rows = await this.prisma.$queryRaw<AwaitingEntry[]>`
-      SELECT * FROM public.ledger_entries_awaiting_delivery(${BATCH_SIZE}::int, ${now}::timestamptz)
+      SELECT * FROM ledger_entries_awaiting_delivery(${BATCH_SIZE}::int, ${now}::timestamptz)
     `
 
     let created = 0
@@ -164,7 +164,7 @@ export class WebhookOutboxService {
     // а выборка идёт по другому — и сдвиг часов между процессом и базой
     // превращается в повторы не тогда, когда задумано.
     const due = await this.prisma.$queryRaw<DueDelivery[]>`
-      SELECT * FROM public.webhook_deliveries_due(${BATCH_SIZE}::int, ${now}::timestamptz)
+      SELECT * FROM webhook_deliveries_due(${BATCH_SIZE}::int, ${now}::timestamptz)
     `
 
     let delivered = 0

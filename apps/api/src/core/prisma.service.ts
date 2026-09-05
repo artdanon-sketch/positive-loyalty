@@ -93,14 +93,80 @@ const resolveDatabaseUrl = (): string | undefined => {
  * `errorFormat: 'minimal'` — по той же причине: `pretty` подставляет в текст ошибки
  * значения аргументов запроса.
  */
-const createClientOptions = (): ConstructorParameters<typeof PrismaClient>[0] => ({
-  adapter: new PrismaPg({
-    connectionString: resolveDatabaseUrl(),
+/**
+ * Настройки подключения, зависящие от схемы.
+ *
+ * Вынесено чистой функцией ради проверяемости: схема обязана доехать до базы
+ * двумя РАЗНЫМИ путями, и перепутать их местами легко, а заметить — нет.
+ */
+export interface SchemaBoundConfig {
+  /**
+   * Конфигурация пула pg. `options` задаёт search_path соединения.
+   *
+   * `connectionString` может быть `undefined`: вне production адрес базы
+   * не обязателен, и pg в этом случае берёт стандартные переменные PG*.
+   * Обязательность проверяется отдельно в `resolveDatabaseUrl`.
+   */
+  readonly poolConfig: {
+    connectionString: string | undefined
+    application_name: string
+    options: string
+  }
+  /** Опции адаптера Prisma. Влияют на запросы, которые Prisma генерирует сама. */
+  readonly adapterOptions: { schema: string }
+}
+
+/**
+ * СХЕМА ЗАДАЁТСЯ В ДВУХ МЕСТАХ, И ОБА ОБЯЗАТЕЛЬНЫ — это не дублирование.
+ *
+ * Запросы, которые Prisma генерирует сама, берут схему из опции адаптера.
+ * Проверено снятием SQL с компилятора: без неё в каждый идентификатор
+ * зашивается литерал `public` — не «резолвится по search_path», а именно
+ * зашивается. Поэтому настройка search_path на роли такую сборку не чинит.
+ *
+ * Сырой SQL (`$queryRaw`) уходит в драйвер как есть и разрешается уже
+ * по `search_path` соединения. Опция адаптера на него не влияет вовсе.
+ *
+ * Пропуск любой из двух настроек даёт ТИХИЙ отказ на базе, общей с чужим
+ * продуктом: часть запросов уходит в чужую схему, часть в нашу, и никто
+ * не падает.
+ */
+export const buildSchemaBoundConfig = (
+  connectionString: string | undefined,
+  schema: string,
+): SchemaBoundConfig => ({
+  poolConfig: {
+    connectionString,
     application_name: APPLICATION_NAME,
-  }),
-  log: ['error'],
-  errorFormat: 'minimal',
+    // Имя схемы уже проверено схемой окружения на соответствие идентификатору,
+    // поэтому подстановка безопасна.
+    //
+    // СХЕМЫ СОСЕДА В СПИСКЕ НЕТ, И ЭТО ГЛАВНОЕ. Раньше `public` стоял в хвосте
+    // «на случай расширений» — но ни одна функция расширений в нашем SQL
+    // не вызывается: всё хеширование живёт в Node, идентификаторы генерирует
+    // Prisma, а `now()` и `count()` лежат в pg_catalog, который ищется всегда.
+    //
+    // Ценой этого хвоста был целый класс тихих отказов: не найдя таблицу
+    // в своей схеме, сырой SQL молча прочитал бы одноимённую таблицу чужого
+    // продукта. Теперь тот же промах падает с «relation does not exist».
+    // Громкая ошибка лучше правдоподобного ответа из чужой базы.
+    options: `-c search_path=${schema}`,
+  },
+  adapterOptions: { schema },
 })
+
+const createClientOptions = (): ConstructorParameters<typeof PrismaClient>[0] => {
+  const { poolConfig, adapterOptions } = buildSchemaBoundConfig(
+    resolveDatabaseUrl(),
+    getEnv().databaseSchema,
+  )
+
+  return {
+    adapter: new PrismaPg(poolConfig, adapterOptions),
+    log: ['error'],
+    errorFormat: 'minimal',
+  }
+}
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {

@@ -32,7 +32,16 @@ BEGIN
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO positive_app;
+-- Право на СВОЮ схему выдаётся в 20260828100000_schema_agnostic_functions,
+-- где имя схемы вычисляется. Здесь оно было вписано буквой, и на общей базе
+-- эта строка изменила бы права в схеме соседа. На чужой схеме — не выполняется.
+DO $grant_usage$
+BEGIN
+  IF current_schema() = 'public' THEN
+    GRANT USAGE ON SCHEMA public TO positive_app;
+  END IF;
+END
+$grant_usage$;
 
 GRANT SELECT, INSERT, UPDATE ON TABLE "Tenant" TO positive_app;
 GRANT SELECT, INSERT, UPDATE ON TABLE "Guest" TO positive_app;

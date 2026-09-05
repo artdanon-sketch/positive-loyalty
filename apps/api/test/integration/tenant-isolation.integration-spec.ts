@@ -12,7 +12,7 @@ import type { Prisma } from '../../src/generated/prisma/client'
 import { signAccessToken } from '../../src/common/tenant/access-token'
 import { TenantGuard } from '../../src/common/tenant/tenant.guard'
 import { LedgerService } from '../../src/core/ledger.service'
-import { PrismaService } from '../../src/core/prisma.service'
+import { buildSchemaBoundConfig, PrismaService } from '../../src/core/prisma.service'
 
 import { createMembershipFixture, idempotencyKey, POS_ORIGIN } from './ledger-test-context'
 
@@ -236,8 +236,22 @@ describe('Изоляция заведений — рубеж 2 в одиночк
   let appRole: PrismaClient
 
   beforeAll(() => {
+    // Подключение собирается ТЕМ ЖЕ кодом, что и рабочее.
+    //
+    // Раньше здесь стояло `new PrismaPg({ connectionString })` без опции схемы.
+    // На схеме public это работало по совпадению с умолчанием, а на своей —
+    // молча ушло бы не туда: без опции драйвер зашивает в каждый идентификатор
+    // литерал `public`, то есть запросы этого теста читали бы схему соседа.
+    //
+    // Проверка изоляции, которая сама ходит не в ту схему, — ровно та самая
+    // «зелёная проверка, которая ничего не проверяет», о которой сказано выше.
+    const { poolConfig, adapterOptions } = buildSchemaBoundConfig(
+      appRoleUrl(),
+      process.env['DATABASE_SCHEMA']?.trim() || 'public',
+    )
+
     appRole = new PrismaClient({
-      adapter: new PrismaPg({ connectionString: appRoleUrl() }),
+      adapter: new PrismaPg(poolConfig, adapterOptions),
       errorFormat: 'minimal',
     })
   })
