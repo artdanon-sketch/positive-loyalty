@@ -40,20 +40,17 @@ describe('Привязка к схеме базы', () => {
     expect(poolConfig.options).toContain('search_path=loyalty')
   })
 
-  it('наша схема стоит ПЕРЕД public: при совпадении имён выигрывает она', () => {
-    // На общей базе у соседа в public вполне может оказаться своя "Membership"
-    // или "Session". Порядок в search_path решает, чью таблицу увидит сырой SQL.
+  it('схемы соседа в search_path НЕТ — промах падает, а не читает чужое', () => {
+    // Самая ценная проверка файла. Пока public стоял в хвосте «на случай
+    // расширений», не найдя свою таблицу, сырой SQL молча читал бы одноимённую
+    // таблицу чужого продукта — и вернул бы правдоподобный ответ.
+    //
+    // Расширения нам не нужны: хеши считает Node, идентификаторы — Prisma,
+    // а pg_catalog ищется всегда, без упоминания в списке.
     const { poolConfig } = buildSchemaBoundConfig(CONNECTION, 'loyalty')
 
-    expect(poolConfig.options.indexOf('loyalty')).toBeLessThan(poolConfig.options.indexOf('public'))
-  })
-
-  it('public остаётся в хвосте: там живут расширения', () => {
-    // pgcrypto и uuid-ossp ставятся в public. Убрав его из search_path,
-    // мы бы отвалили вызовы их функций.
-    const { poolConfig } = buildSchemaBoundConfig(CONNECTION, 'loyalty')
-
-    expect(poolConfig.options).toContain('public')
+    expect(poolConfig.options).toBe('-c search_path=loyalty')
+    expect(poolConfig.options).not.toContain('public')
   })
 
   it('обе настройки согласованы между собой', () => {
@@ -61,13 +58,13 @@ describe('Привязка к схеме базы', () => {
     // сырой SQL читает из другой, и расхождение видно только по данным.
     const { poolConfig, adapterOptions } = buildSchemaBoundConfig(CONNECTION, 'shop')
 
-    expect(poolConfig.options).toContain(`search_path=${adapterOptions.schema},`)
+    expect(poolConfig.options).toBe(`-c search_path=${adapterOptions.schema}`)
   })
 
   it('сегодняшнее поведение сохраняется на схеме public', () => {
     const { poolConfig, adapterOptions } = buildSchemaBoundConfig(CONNECTION, 'public')
 
     expect(adapterOptions.schema).toBe('public')
-    expect(poolConfig.options).toBe('-c search_path=public,public')
+    expect(poolConfig.options).toBe('-c search_path=public')
   })
 })

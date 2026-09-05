@@ -196,9 +196,17 @@ jobs:
           APP_PASSWORD="$(openssl rand -hex 16)"
           export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
 
-          DB=positive_loyalty_schema
-          export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/${DB}"
-          export DATABASE_URL_TEST="$DATABASE_URL"
+          # ДВЕ РАЗНЫЕ БАЗЫ — по той же причине, что и в шаге выше. Сначала я
+          # указал обе переменные на одну, и защита из
+          # test/integration/setup-integration-env.ts прогон отбила: тесты пишут
+          # в журнал строки, которые физически нельзя удалить, и рабочая база
+          # копилась бы мусором. Проверка сработала как задумано.
+          #
+          # Рабочая база здесь фиктивная: она нужна лишь как ОТЛИЧНОЕ значение
+          # DATABASE_URL, подключений к ней не будет ни одного.
+          DB=positive_loyalty_schema_test
+          export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_schema"
+          export DATABASE_URL_TEST="postgresql://postgres:postgres@127.0.0.1:5432/${DB}"
           export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/${DB}"
 
           psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE ${DB};"
@@ -243,7 +251,8 @@ jobs:
 
           PUBLIC_BEFORE="$(SNAP)"
 
-          pnpm db:deploy
+          # Накат идёт на ТЕСТОВУЮ базу: именно к ней подключаются тесты.
+          DATABASE_URL="$DATABASE_URL_TEST" pnpm db:deploy
 
           echo "── Схема соседа не изменилась ни на объект, ни на право ──"
           CHECK_PUBLIC "после наката миграций"
