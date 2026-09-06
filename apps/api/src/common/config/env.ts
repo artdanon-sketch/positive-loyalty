@@ -67,6 +67,24 @@ const EnvSchema = z
         'должно быть идентификатором схемы PostgreSQL в нижнем регистре',
       )
       .default('public'),
+
+    /**
+     * Корневой сертификат сервера базы, целиком, в формате PEM.
+     *
+     * ЗАЧЕМ. Соединение с облачной базой обязано быть зашифровано: иначе пароль
+     * и данные гостей идут через интернет открытым текстом. Проверено на живой
+     * базе — Supabase пускает и без шифрования, а драйвер по умолчанию его
+     * не просит, и никто об этом не сообщает.
+     *
+     * Шифрование включается всегда, когда база не на этой машине. А вот
+     * ПРОВЕРИТЬ, что на том конце действительно она, можно только имея её
+     * сертификат: у Supabase он подписан их собственным центром, которого нет
+     * в системном списке доверенных.
+     *
+     * Пусто — шифрование есть, проверки подлинности нет. Это защищает
+     * от подслушивания, но не от подмены сервера. Задан — есть и то, и другое.
+     */
+    DATABASE_SSL_CA: z.string().optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -75,6 +93,7 @@ const EnvSchema = z
     corsOrigins: resolveCorsOrigins(raw.CORS_ORIGINS, raw.NODE_ENV),
     accessTokenSecret: raw.ACCESS_TOKEN_SECRET ?? '',
     databaseSchema: raw.DATABASE_SCHEMA,
+    databaseSslCa: raw.DATABASE_SSL_CA?.trim() === '' ? undefined : raw.DATABASE_SSL_CA,
   }))
   .superRefine((env, ctx) => {
     if (env.nodeEnv === 'production' && env.accessTokenSecret.length === 0) {

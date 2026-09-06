@@ -37,7 +37,25 @@ if (url === undefined || url.trim() === '') {
   process.exit(1)
 }
 
-const client = new Client({ connectionString: url })
+/**
+ * SSL включается для всего, что не на этой машине.
+ *
+ * Проверено на живой базе: Supabase пускает и БЕЗ шифрования, а node-postgres
+ * по умолчанию его не просит — то есть пароль и все данные шли бы через
+ * интернет открытым текстом, и ничто бы об этом не сказало.
+ *
+ * `rejectUnauthorized: false` — сертификат Supabase подписан их собственным
+ * центром, и строгая проверка на нём падает. Шифрование без проверки защищает
+ * от подслушивания, но не от подмены; полная проверка требует их CA-сертификата
+ * и сделана отдельно.
+ */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0', 'host.docker.internal'])
+const isLocal = LOCAL_HOSTS.has(new URL(url).hostname)
+
+const client = new Client({
+  connectionString: url,
+  ssl: isLocal ? false : { rejectUnauthorized: false },
+})
 await client.connect()
 
 /** Таблицы по схемам. Только имена — содержимое чужих таблиц нас не касается. */
