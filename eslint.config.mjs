@@ -139,7 +139,7 @@ export default tseslint.config(
   {
     // Скрипты сборки мобильных оболочек и обвязка Prisma: обычный node,
     // а не браузер.
-    files: ['apps/mobile/*/scripts/*.mjs', 'prisma/scripts/*.mjs'],
+    files: ['apps/mobile/*/scripts/*.mjs', 'prisma/scripts/*.mjs', 'scripts/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {

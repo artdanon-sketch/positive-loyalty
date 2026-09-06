@@ -25,6 +25,7 @@
     "db:deploy": "prisma migrate deploy",
     "setup:supabase": "node ./prisma/scripts/setup-supabase.mjs",
     "setup:business": "pnpm build:api && node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types prisma/provision.ts",
+    "setup:deploy": "node ./scripts/deploy-env.mjs",
     "db:reset": "node --env-file-if-exists=.env ./prisma/scripts/guard-destructive.mjs db:reset && prisma migrate reset",
     "db:seed": "node --env-file-if-exists=.env ./prisma/scripts/guard-destructive.mjs db:seed && pnpm build:api && prisma db seed",
     "demo:sales": "node --env-file-if-exists=.env ./prisma/scripts/guard-destructive.mjs demo:sales && pnpm build:api && node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types prisma/test-sales.ts",
