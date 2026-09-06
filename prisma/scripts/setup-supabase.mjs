@@ -1,4 +1,3 @@
-import { createInterface } from 'node:readline/promises'
 import { randomBytes } from 'node:crypto'
 import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -126,7 +125,15 @@ const setEnvValue = (text, name, value) => {
 const SSL_PARAMS = ['sslmode', 'ssl', 'sslrootcert', 'sslcert', 'sslkey', 'sslnegotiation']
 
 const parseConnection = (raw, { source = 'ввод' } = {}) => {
-  const value = clean(raw)
+  let value = clean(raw)
+
+  // Терминалы иногда добавляют к вставке служебный мусор, а человек — случайный
+  // символ перед адресом. Если адрес внутри строки есть, начинаем с него,
+  // а не отвергаем всё целиком: отказ заставил бы вставлять заново то же самое.
+  const scheme = value.search(/postgres(ql)?:\/\//i)
+  if (scheme > 0) {
+    value = value.slice(scheme)
+  }
 
   if (value === '') {
     die('Строка пустая. Запусти команду ещё раз и вставь адрес из Supabase.')
@@ -172,15 +179,21 @@ const parseConnection = (raw, { source = 'ввод' } = {}) => {
 
   const port = url.port === '' ? '5432' : url.port
 
+  // Порт 6543 — транзакционный пулер, он не умеет создавать таблицы.
+  //
+  // ЧИНИМ САМИ, А НЕ ОТКАЗЫВАЕМ. Раньше здесь был отказ с инструкцией «вернись
+  // в Supabase и возьми другую вкладку» — и человек шёл делать руками ровно то,
+  // что программа умеет сама. У обоих хостов Supabase замена 6543 на 5432 даёт
+  // рабочий адрес: у `db.<проект>.supabase.co` это прямое соединение,
+  // у `<регион>.pooler.supabase.com` — session pooler. Оба умеют DDL.
+  //
+  // Молча менять чужой адрес всё равно нельзя, поэтому говорим вслух.
   if (port === '6543') {
-    die(
-      'Это адрес транзакционного пулера (порт 6543). Он не умеет создавать таблицы.\n' +
-        '  Нужен адрес с портом 5432: в окне Connect выбери «Session pooler»\n' +
-        '  или «Direct connection» — у обоих порт 5432.',
-    )
-  }
-
-  if (port !== '5432') {
+    url.port = '5432'
+    say('  · В адресе был порт 6543 — это пулер, он не умеет создавать таблицы.')
+    say('    Поменял на 5432. Так и должно быть, ничего делать не нужно.')
+    say('')
+  } else if (port !== '5432') {
     say(`  ⚠ Необычный порт ${port}. Обычно у Supabase это 5432. Продолжаю.`)
   }
 
@@ -189,7 +202,9 @@ const parseConnection = (raw, { source = 'ввод' } = {}) => {
   // то есть выбранный нами режим проверки сертификата не применяется вовсе.
   for (const key of SSL_PARAMS) url.searchParams.delete(key)
 
-  return { value: url.toString(), url, port, hostname: url.hostname }
+  // Порт берём из url, а не из константы выше: при починке 6543→5432
+  // константа осталась бы старой и однажды соврала бы вызывающему.
+  return { value: url.toString(), url, port: url.port, hostname: url.hostname }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,6 +347,113 @@ const appUrlFrom = (ownerUrl, password) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Скрытый ввод.
+//
+// ПОЧЕМУ НЕ readline. Стандартный приём — подменить у readline внутренний метод
+// вывода. На живой машине он НЕ сработал: вставленная строка вместе с паролем
+// базы появилась на экране, осталась в истории терминала и оттуда попала
+// в переписку. Опираться на внутреннее устройство чужой библиотеки там, где
+// ценой промаха является утёкший пароль, нельзя — тем более что промах этот
+// тихий: на моей стороне всё «выглядело спрятанным».
+//
+// Поэтому ввод читается посимвольно самостоятельно: что показать на экране,
+// решаем только мы. Показываем звёздочки, а не пустоту: молчащий экран
+// заставляет думать, что программа зависла, и человек жмёт что попало.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const askHidden = (prompt) =>
+  new Promise((resolve) => {
+    const stdin = process.stdin
+
+    if (typeof stdin.setRawMode !== 'function') {
+      die(
+        'Не удалось скрыть ввод, а показывать пароль на экране нельзя.\n' +
+          '  Запусти команду в обычном окне терминала.',
+      )
+    }
+
+    out.write(prompt)
+
+    const wasRaw = stdin.isRaw === true
+    stdin.setRawMode(true)
+    stdin.resume()
+    stdin.setEncoding('utf8')
+
+    let value = ''
+
+    const finish = (done) => {
+      stdin.off('data', onData)
+      stdin.setRawMode(wasRaw)
+      stdin.pause()
+      done()
+    }
+
+    // Терминал обрамляет вставку служебными последовательностями, а стрелки
+    // и прочие клавиши присылают свои. В пароль им попадать нечего.
+    //
+    // Разбираем посимвольно, а не регуляркой: во-первых, управляющий символ
+    // внутри регулярного выражения — сам по себе повод для ошибки линтера,
+    // и не зря. Во-вторых, длинную вставку система может отдать несколькими
+    // кусками, и последовательность окажется разрезанной посередине —
+    // разбор внутри одного куска про такое не знает и выпустил бы её хвост
+    // прямо в пароль. Поэтому состояние живёт СНАРУЖИ обработчика.
+    let inEscape = false
+
+    const onData = (chunk) => {
+      for (const ch of chunk) {
+        if (inEscape) {
+          // Последовательность кончается буквой или тильдой (ESC [ 200 ~).
+          if (/[A-Za-z~]/.test(ch)) inEscape = false
+          continue
+        }
+
+        if (ch === '\u001b') {
+          inEscape = true
+          continue
+        }
+
+        if (ch === '\r' || ch === '\n') {
+          out.write('\n')
+          finish(() => resolve(value))
+          return
+        }
+
+        if (ch === '\u0003') {
+          out.write('\n')
+          finish(() => {
+            say('')
+            say('Отменено. Ничего не изменено.')
+            say('')
+            process.exit(130)
+          })
+          return
+        }
+
+        if (ch === '\u0004') {
+          out.write('\n')
+          finish(() => resolve(value))
+          return
+        }
+
+        if (ch === '\u007f' || ch === '\b') {
+          if (value.length > 0) {
+            value = value.slice(0, -1)
+            out.write('\b \b')
+          }
+          continue
+        }
+
+        if (ch < ' ') continue
+
+        value += ch
+        out.write('*')
+      }
+    }
+
+    stdin.on('data', onData)
+  })
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Главное.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -388,36 +510,10 @@ if (CHECK_ONLY) {
   say('  5. Если внутри написано [YOUR-PASSWORD] — замени это на пароль базы.')
   say('')
   say('Вставь строку и нажми Enter.')
-  say('ТЕКСТ НА ЭКРАНЕ НЕ ПОЯВИТСЯ — так и задумано, в нём твой пароль.')
+  say('Вместо текста будут звёздочки — в строке твой пароль.')
   say('')
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
-
-  let muted = false
-  const write = rl._writeToOutput?.bind(rl)
-  rl._writeToOutput = (chunk) => {
-    if (!muted && write) write(chunk)
-  }
-
-  let answer
-  try {
-    const pending = rl.question('> ')
-    muted = true
-    answer = await pending
-  } catch {
-    // Ctrl+C внутри вопроса приходит сюда как AbortError. Без перехвата
-    // человек увидел бы английский стектрейс вместо слова «отменено».
-    muted = false
-    rl.close()
-    say('')
-    say('Отменено. Ничего не изменено.')
-    say('')
-    process.exit(130)
-  }
-
-  muted = false
-  rl.close()
-  out.write('\n')
+  const answer = await askHidden('> ')
 
   owner = parseConnection(answer)
   say('')
