@@ -111,6 +111,8 @@ export interface SchemaBoundConfig {
     connectionString: string | undefined
     application_name: string
     options: string
+    /** `false` для местной базы, объект настроек TLS для всякой удалённой. */
+    ssl: false | { rejectUnauthorized: boolean; ca?: string }
   }
   /** Опции адаптера Prisma. Влияют на запросы, которые Prisma генерирует сама. */
   readonly adapterOptions: { schema: string }
@@ -131,13 +133,64 @@ export interface SchemaBoundConfig {
  * продуктом: часть запросов уходит в чужую схему, часть в нашу, и никто
  * не падает.
  */
+/**
+ * База на этой же машине. Для неё шифрование не нужно и только мешает.
+ */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0', 'host.docker.internal'])
+
+const isLocalDatabase = (connectionString: string | undefined): boolean => {
+  // Адреса нет — драйвер возьмёт переменные PG*, а это всегда местная база.
+  if (connectionString === undefined || connectionString.trim() === '') return true
+
+  try {
+    return LOCAL_HOSTS.has(new URL(connectionString).hostname)
+  } catch {
+    // Неразбираемый адрес — считаем удалённым: ошибиться в сторону шифрования
+    // безопаснее, чем в сторону открытого текста.
+    return false
+  }
+}
+
+/**
+ * Настройки TLS.
+ *
+ * ЗАЧЕМ ЭТО ВООБЩЕ ЕСТЬ. Драйвер по умолчанию шифрование НЕ запрашивает,
+ * а Supabase соединение без него принимает. Проверено на живой базе: запрос
+ * проходит, ошибки нет, и ничто не намекает, что пароль и данные гостей только
+ * что ушли через интернет открытым текстом. Молчаливее отказа не бывает.
+ *
+ * ПОЧЕМУ НЕ sslmode=require В СТРОКЕ. Тоже проверено на живой базе: этот
+ * драйвер понимает `require` как полную проверку подлинности и падает
+ * на сертификате Supabase. Настройка, которая выглядит как «включить
+ * шифрование», на деле означает другое — поэтому режим задаётся здесь явно,
+ * а из строки подключения параметры SSL вычищаются при её записи.
+ */
+const buildSslConfig = (
+  connectionString: string | undefined,
+  ca: string | undefined,
+): false | { rejectUnauthorized: boolean; ca?: string } => {
+  if (isLocalDatabase(connectionString)) return false
+
+  // Сертификат известен — проверяем подлинность сервера по-настоящему.
+  if (ca !== undefined && ca.trim() !== '') {
+    return { rejectUnauthorized: true, ca }
+  }
+
+  // Сертификата нет: шифруем, но подлинность не проверяем. Защищает
+  // от подслушивания, не защищает от подмены сервера. Чтобы получить второе,
+  // положите корневой сертификат базы в DATABASE_SSL_CA.
+  return { rejectUnauthorized: false }
+}
+
 export const buildSchemaBoundConfig = (
   connectionString: string | undefined,
   schema: string,
+  ca?: string,
 ): SchemaBoundConfig => ({
   poolConfig: {
     connectionString,
     application_name: APPLICATION_NAME,
+    ssl: buildSslConfig(connectionString, ca),
     // Имя схемы уже проверено схемой окружения на соответствие идентификатору,
     // поэтому подстановка безопасна.
     //
@@ -159,6 +212,7 @@ const createClientOptions = (): ConstructorParameters<typeof PrismaClient>[0] =>
   const { poolConfig, adapterOptions } = buildSchemaBoundConfig(
     resolveDatabaseUrl(),
     getEnv().databaseSchema,
+    getEnv().databaseSslCa,
   )
 
   return {

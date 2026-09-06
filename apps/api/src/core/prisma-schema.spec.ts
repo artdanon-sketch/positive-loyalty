@@ -61,6 +61,63 @@ describe('Привязка к схеме базы', () => {
     expect(poolConfig.options).toBe(`-c search_path=${adapterOptions.schema}`)
   })
 
+  /**
+   * Шифрование канала до базы.
+   *
+   * ЗАЧЕМ ЭТИ ТЕСТЫ. Драйвер по умолчанию шифрование НЕ запрашивает, а облачная
+   * база соединение без него принимает. Проверено на живой базе: запрос
+   * проходит, ошибки нет — и ничто не сообщает, что пароль и данные гостей
+   * только что ушли через интернет открытым текстом.
+   *
+   * Отказ такого рода нельзя заметить глазами: он выглядит как успех.
+   * Поэтому он проверяется здесь.
+   */
+  it('до удалённой базы соединение шифруется', () => {
+    const { poolConfig } = buildSchemaBoundConfig(
+      'postgresql://user:pass@db.example.supabase.co:5432/postgres',
+      'loyalty',
+    )
+
+    expect(poolConfig.ssl).not.toBe(false)
+  })
+
+  it('до местной базы шифрование не навязывается', () => {
+    // Локальный postgres из docker-compose сертификата не имеет, и требовать
+    // от него шифрования значит сломать разработку ради ничего.
+    const { poolConfig } = buildSchemaBoundConfig(CONNECTION, 'public')
+
+    expect(poolConfig.ssl).toBe(false)
+  })
+
+  it('без сертификата подлинность сервера не проверяется — и это видно', () => {
+    // Шифрование без проверки защищает от подслушивания, но не от подмены.
+    // Тест фиксирует именно это состояние, чтобы оно оставалось осознанным.
+    const { poolConfig } = buildSchemaBoundConfig(
+      'postgresql://user:pass@db.example.supabase.co:5432/postgres',
+      'loyalty',
+    )
+
+    expect(poolConfig.ssl).toEqual({ rejectUnauthorized: false })
+  })
+
+  it('с сертификатом подлинность сервера проверяется', () => {
+    const ca = '-----BEGIN CERTIFICATE----- тест -----END CERTIFICATE-----'
+
+    const { poolConfig } = buildSchemaBoundConfig(
+      'postgresql://user:pass@db.example.supabase.co:5432/postgres',
+      'loyalty',
+      ca,
+    )
+
+    expect(poolConfig.ssl).toEqual({ rejectUnauthorized: true, ca })
+  })
+
+  it('неразбираемый адрес считается удалённым: ошибаемся в сторону шифрования', () => {
+    const { poolConfig } = buildSchemaBoundConfig('это не адрес', 'loyalty')
+
+    expect(poolConfig.ssl).not.toBe(false)
+  })
+
   it('сегодняшнее поведение сохраняется на схеме public', () => {
     const { poolConfig, adapterOptions } = buildSchemaBoundConfig(CONNECTION, 'public')
 
