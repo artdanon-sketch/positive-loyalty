@@ -8,6 +8,7 @@ import type {
 } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
+import { maskPhone } from '../common/pii/mask-phone'
 import { PrismaService } from '../core/prisma.service'
 
 /**
@@ -182,14 +183,3 @@ const toLedgerEntry = (row: LedgerRow): AdminLedgerEntry => ({
   reversalOfId: row.reversalOfId,
   createdAt: row.createdAt.toISOString(),
 })
-
-/**
- * Маска телефона по образцу docs/02, раздел 2.1: «+66 •• •• 4821».
- * Код страны и последние четыре цифры — достаточно, чтобы гость узнал свой
- * номер на экране кассира, и мало, чтобы номер утёк с экрана.
- */
-const maskPhone = (e164: string): string => {
-  const head = e164.slice(0, 3)
-  const tail = e164.slice(-4)
-  return `${head} •• •• ${tail}`
-}

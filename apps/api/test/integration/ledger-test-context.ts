@@ -137,6 +137,16 @@ export interface MembershipFixture {
   readonly tenantId: string
   readonly guestId: string
   readonly membershipId: string
+  /**
+   * Телефон гостя.
+   *
+   * Возвращается фикстурой, а не вычитывается из базы: с появлением входа
+   * через Google, LINE и Telegram телефон стал необязательным, и прочитанный
+   * из базы он имеет тип «строка или ничего». Тесты про телефон писали бы
+   * лишнюю проверку на пустоту там, где пустоты быть не может — фикстура
+   * сама этот номер и придумала.
+   */
+  readonly guestPhone: string
   /** То, что в проде придёт из JWT через TenantContext (CLAUDE.md, правило 2). */
   readonly scope: TenantScope
 }
@@ -176,8 +186,10 @@ export const createMembershipFixture = async (
 ): Promise<MembershipFixture> => {
   const tenantId = options.tenantId ?? (await createTenant(prisma))
 
+  const guestPhone = syntheticPhone()
+
   const guest = await prisma.guest.create({
-    data: { phoneE164: syntheticPhone(), locale: 'ru' },
+    data: { phoneE164: guestPhone, locale: 'ru' },
     select: { id: true },
   })
 
@@ -190,6 +202,7 @@ export const createMembershipFixture = async (
     tenantId,
     guestId: guest.id,
     membershipId: membership.id,
+    guestPhone,
     scope: { tenantId },
   }
 }

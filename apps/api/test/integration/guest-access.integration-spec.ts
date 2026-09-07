@@ -173,8 +173,7 @@ describe('Гостевое API', () => {
       first.scope,
     )
 
-    const guest = await prisma.guest.findFirstOrThrow({ where: { id: first.guestId } })
-    const auth = await loginGuest(guest.phoneE164)
+    const auth = await loginGuest(first.guestPhone)
     expect(auth.isNew).toBe(false)
 
     const wallet = await request(server())

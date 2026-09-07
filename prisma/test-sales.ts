@@ -72,8 +72,6 @@ const shortId = (id: string): string => `#${id.slice(-6)}`
  * Железное правило 5 — про логи, но вывод этого скрипта показывают людям и пересылают
  * в мессенджерах, а это ровно тот же риск. Номер целиком здесь не нужен никому.
  */
-const maskPhone = (phone: string): string =>
-  phone.length <= 6 ? '***' : `${phone.slice(0, phone.length - 4)}****`
 
 const TYPE_LABELS: Readonly<Record<string, string>> = {
   EARN: 'начисление',
@@ -173,7 +171,7 @@ const demo = async (): Promise<void> => {
   out(heading('POSitive Loyalty — демонстрация продаж'))
   out(`Заведение:   ${membership.tenant.brandName}`)
   out(`Гость:       ${membership.guest.displayName ?? 'без имени'}`)
-  out(`Телефон:     ${maskPhone(membership.guest.phoneE164)}`)
+  out(`Телефон:     ${runtime.maskPhone(membership.guest.phoneE164) ?? 'не указан'}`)
   out(`Ставка:      ${earnRatePercent}% от чека баллами`)
   out(`Баланс до:   ${formatMinorUnits(membership.pointsBalance)}`)
 

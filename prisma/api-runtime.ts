@@ -45,6 +45,7 @@ const API_PACKAGE_JSON = new URL('../apps/api/package.json', import.meta.url)
 const PRISMA_SERVICE_MODULE = new URL('core/prisma.service.js', DIST_ROOT)
 const LEDGER_SERVICE_MODULE = new URL('core/ledger.service.js', DIST_ROOT)
 const PIN_MODULE = new URL('auth/pin.js', DIST_ROOT)
+const MASK_MODULE = new URL('common/pii/mask-phone.js', DIST_ROOT)
 
 const BUILD_COMMAND = 'pnpm --filter @positive/api run build'
 
@@ -63,6 +64,18 @@ interface PinModule {
 }
 
 /**
+ * Маскирование телефона — та же реализация, что у API.
+ *
+ * Своя копия здесь уже была, и она успела разойтись: прятала последние цифры,
+ * а показывала первые, то есть открывала на экране больше номера, чем остальные
+ * три. Расхождения такого рода не замечают, пока однажды не окажется, что
+ * персональные данные утекли из самого безобидного места.
+ */
+interface MaskModule {
+  readonly maskPhone: (e164: string | null | undefined) => string | null
+}
+
+/**
  * Статическая часть `Logger` из @nestjs/common — только то, чем мы пользуемся.
  * Полный тип сюда тянуть незачем: @nestjs/common не зависимость корня.
  */
@@ -78,12 +91,14 @@ export interface ApiRuntime {
   readonly ledger: LedgerService
   /** Хеш PIN тем же scrypt, которым API проверяет вход. */
   readonly hashPin: (pin: string) => Promise<string>
+  /** Маска телефона тем же способом, каким её строит API. */
+  readonly maskPhone: (e164: string | null | undefined) => string | null
   /** Закрыть пул соединений. Без этого процесс висит после последнего запроса. */
   readonly close: () => Promise<void>
 }
 
 const assertBuilt = (): void => {
-  const missing = [PRISMA_SERVICE_MODULE, LEDGER_SERVICE_MODULE, PIN_MODULE].filter(
+  const missing = [PRISMA_SERVICE_MODULE, LEDGER_SERVICE_MODULE, PIN_MODULE, MASK_MODULE].filter(
     (module) => !existsSync(fileURLToPath(module)),
   )
 
@@ -133,6 +148,7 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
   const prismaModule = (await import(PRISMA_SERVICE_MODULE.href)) as PrismaServiceModule
   const ledgerModule = (await import(LEDGER_SERVICE_MODULE.href)) as LedgerServiceModule
   const pinModule = (await import(PIN_MODULE.href)) as PinModule
+  const maskModule = (await import(MASK_MODULE.href)) as MaskModule
 
   const prisma = new prismaModule.PrismaService()
   const ledger = new ledgerModule.LedgerService(prisma)
@@ -141,6 +157,7 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
     prisma,
     ledger,
     hashPin: pinModule.hashPin,
+    maskPhone: maskModule.maskPhone,
     close: async () => {
       await prisma.$disconnect()
     },

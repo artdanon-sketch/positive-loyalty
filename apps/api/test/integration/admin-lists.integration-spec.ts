@@ -61,8 +61,7 @@ beforeAll(async () => {
   const own = await createMembershipFixture(prisma)
   tenantId = own.tenantId
 
-  const guest = await prisma.guest.findFirstOrThrow({ where: { id: own.guestId } })
-  guestPhone = guest.phoneE164
+  guestPhone = own.guestPhone
 
   // Один визит, чтобы у гостя появились баллы и дата последнего визита.
   await ledger.earn(

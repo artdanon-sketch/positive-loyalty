@@ -86,7 +86,8 @@ export const AdminGuestRow = z
      * Решение о маскировании принимает сервер по роли из токена — клиент
      * ничего не «домаскирует», у него просто нет полного значения.
      */
-    phone: z.string().min(1),
+    /** null — гость вошёл через аккаунт и номер не оставлял. */
+    phone: z.string().min(1).nullable(),
     mode: z.enum(['TOURIST', 'RESIDENT']),
     pointsBalance: z.number().int(),
     visitsTotal: z.number().int().nonnegative(),
