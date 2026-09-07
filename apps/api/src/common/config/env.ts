@@ -85,6 +85,20 @@ const EnvSchema = z
      * от подслушивания, но не от подмены сервера. Задан — есть и то, и другое.
      */
     DATABASE_SSL_CA: z.string().optional(),
+
+    /**
+     * Идентификатор приложения в Google — тот же, что стоит на кнопке входа.
+     *
+     * СЕКРЕТОМ НЕ ЯВЛЯЕТСЯ: он попадает в код страницы и виден любому. Секрет
+     * приложения (client secret) здесь не нужен вовсе — выбран способ входа,
+     * где подпись токена проверяется открытыми ключами Google.
+     *
+     * Зато он ОБЯЗАТЕЛЕН для проверки: в токене есть поле «для кого выписан»,
+     * и сверять его не с чем, если идентификатор неизвестен. Тогда подошёл бы
+     * любой токен Google, выданный любому другому сайту. Поэтому пусто —
+     * значит вход через Google выключен целиком, а не «работает как-нибудь».
+     */
+    GOOGLE_CLIENT_ID: z.string().optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -94,6 +108,7 @@ const EnvSchema = z
     accessTokenSecret: raw.ACCESS_TOKEN_SECRET ?? '',
     databaseSchema: raw.DATABASE_SCHEMA,
     databaseSslCa: raw.DATABASE_SSL_CA?.trim() === '' ? undefined : raw.DATABASE_SSL_CA,
+    googleClientId: raw.GOOGLE_CLIENT_ID?.trim() ?? '',
   }))
   .superRefine((env, ctx) => {
     if (env.nodeEnv === 'production' && env.accessTokenSecret.length === 0) {

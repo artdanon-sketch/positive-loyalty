@@ -9,6 +9,7 @@ import { getEnv } from '../common/config/env'
 import { signGuestToken } from '../common/tenant/access-token'
 import { maskPhone } from '../common/pii/mask-phone'
 import { PrismaService } from '../core/prisma.service'
+import { verifyGoogleIdToken, type GoogleAccount } from './google-token'
 
 /**
  * Вход гостя по коду подтверждения. docs/02, разделы 1.1–1.2.
@@ -175,6 +176,93 @@ export class GuestAuthService {
     })
 
     return this.issueTokens(guest, existing === null, randomUUID(), null)
+  }
+
+  /**
+   * Вход через Google.
+   *
+   * Кода подтверждения здесь нет и не нужно: личность уже подтвердил Google,
+   * и его токен мы проверяем сами — подпись, выпускающего, срок и то, что
+   * токен выписан именно нашему приложению (`google-token.ts`).
+   *
+   * ТЕЛЕФОН НЕ СПРАШИВАЕТСЯ. Google его не отдаёт, а требовать отдельно значит
+   * вернуть трение, ради устранения которого вход и добавлялся. Цена названа
+   * в docs/01: кассир находит такого гостя только по QR-коду.
+   *
+   * СКЛЕЙКА КАРТ. Один человек может войти сегодня через Google, завтра через
+   * LINE — и получить две карты с разными балансами. Поэтому при первом входе
+   * ищется гость с ТОЙ ЖЕ подтверждённой почтой, и новый способ входа
+   * привязывается к нему, а не заводит второго человека.
+   *
+   * Почта берётся только подтверждённая (это обеспечивает `verifyGoogleIdToken`):
+   * иначе достаточно назваться чужим адресом, чтобы забрать чужие баллы.
+   */
+  async loginWithGoogle(idToken: string): Promise<GuestAuthResult> {
+    let account: GoogleAccount
+
+    try {
+      account = await verifyGoogleIdToken(idToken, getEnv().googleClientId)
+    } catch (error) {
+      // Наружу — один общий отказ. По тому, ЧЕМ именно плох токен, подбирать
+      // его было бы удобнее; в лог причина попадает, гостю — нет.
+      throw this.rejected('токен Google не принят', {
+        reason: error instanceof Error ? error.message : 'неизвестно',
+      })
+    }
+
+    const known = await this.prisma.guestIdentity.findFirst({
+      where: { provider: 'GOOGLE', externalId: account.externalId },
+      include: { guest: true },
+    })
+
+    if (known !== null) {
+      await this.prisma.guestIdentity.update({
+        where: { id: known.id },
+        data: { lastSeenAt: new Date(), email: account.email },
+      })
+      await this.prisma.guest.update({
+        where: { id: known.guest.id },
+        data: { lastSeenAt: new Date() },
+      })
+
+      return this.issueTokens(known.guest, false, randomUUID(), null)
+    }
+
+    // Первый вход этим аккаунтом. Возможно, человек нам уже знаком по другому.
+    const sameEmail =
+      account.email === null
+        ? null
+        : await this.prisma.guestIdentity.findFirst({
+            where: { email: account.email },
+            include: { guest: true },
+          })
+
+    const guest =
+      sameEmail?.guest ??
+      (await this.prisma.guest.create({
+        data: {
+          // Телефона нет и не будет спрошен — см. пояснение выше.
+          displayName: account.displayName,
+          locale: 'en',
+        },
+      }))
+
+    await this.prisma.guestIdentity.create({
+      data: {
+        guestId: guest.id,
+        provider: 'GOOGLE',
+        externalId: account.externalId,
+        email: account.email,
+        lastSeenAt: new Date(),
+      },
+    })
+
+    await this.prisma.guest.update({ where: { id: guest.id }, data: { lastSeenAt: new Date() } })
+
+    // «Новый» — именно новый человек, а не новый способ входа: гость, к карте
+    // которого мы только что привязали второй аккаунт, новым не является,
+    // и показывать ему приветствие новичка было бы неверно.
+    return this.issueTokens(guest, sameEmail === null, randomUUID(), null)
   }
 
   /** Ротация refresh гостя. Механика та же, что у сотрудников: повтор гасит цепочку. */
