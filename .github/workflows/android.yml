@@ -98,6 +98,16 @@ jobs:
         # запуске, а на сборке по тегу и на pull request он пустой.
         env:
           VITE_API_URL: ${{ inputs.apiUrl || 'https://positive-loyalty-production.up.railway.app/v1' }}
+          # Ключ приложения в Google.
+          #
+          # Без него приложение соберётся, но кнопки «Войти через Google»
+          # в нём не будет: компонент не рисует её, когда ключа нет. Первую
+          # сборку с этой кнопкой я запустил, забыв эту строку — приложения
+          # вышли бы без обещанного входа, и понять почему было бы нечем:
+          # ни ошибки, ни предупреждения, просто нет кнопки.
+          #
+          # Секретом значение не является: оно и так попадает в код страницы.
+          VITE_GOOGLE_CLIENT_ID: '440017639472-eteoghugm5pdce0pjkf481u1re2coo6b.apps.googleusercontent.com'
         run: pnpm --filter @positive/mobile-${{ matrix.app }} run web
 
       - name: Copy web bundle into the shell
