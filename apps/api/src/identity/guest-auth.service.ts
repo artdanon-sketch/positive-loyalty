@@ -158,24 +158,37 @@ export class GuestAuthService {
       data: { verifiedAt: new Date() },
     })
 
-    // Гость по телефону: существующий или новый. Телефон уникален — гонка
-    // двух verify упрётся в UNIQUE, а не создаст дубль человека.
-    const existing = await this.prisma.guest.findFirst({
-      where: { phoneE164: request.phoneE164 },
-    })
+    // ГОСТЬ ПО ТЕЛЕФОНУ — ЧЕРЕЗ ФУНКЦИЮ С ПОВЫШЕННЫМИ ПРАВАМИ.
+    //
+    // Обычный запрос здесь возвращал пусто ВСЕГДА, даже для существующего
+    // гостя: политика пускает к строке по условию `id = app.guest_id`,
+    // а при входе объявлять нечего — идентификатор как раз и разыскивается.
+    // Замкнутый круг; разрывается так же, как для устройств кассы.
+    //
+    // Функция отдаёт ровно один идентификатор и вызывается только ПОСЛЕ
+    // проверки кода, то есть тем, кто уже доказал владение номером.
+    const found = await this.prisma.$queryRaw<Array<{ guestId: string | null }>>`
+      SELECT guest_id_for_phone(${request.phoneE164}) AS "guestId"
+    `
 
-    const guest =
-      existing ??
-      (await this.prisma.guest.create({
-        data: { phoneE164: request.phoneE164 },
-      }))
+    const existingId = found[0]?.guestId ?? null
 
-    await this.prisma.guest.update({
-      where: { id: guest.id },
-      data: { lastSeenAt: new Date() },
-    })
+    // Идентификатор нового гостя придумывается ДО вставки: политика сверяет
+    // строку с app.guest_id, а он был бы известен только после вставки —
+    // которую сама же политика и не пропустит на чтении. Prisma после INSERT
+    // всегда читает созданную строку.
+    //
+    // Телефон остаётся уникальным: гонка двух подтверждений упрётся в базу,
+    // а не заведёт двух людей с одним номером.
+    const guestId = existingId ?? randomUUID()
 
-    return this.issueTokens(guest, existing === null, randomUUID(), null)
+    const guest = await this.prisma.forGuest(guestId, async (tx) =>
+      existingId === null
+        ? tx.guest.create({ data: { id: guestId, phoneE164: request.phoneE164 } })
+        : tx.guest.update({ where: { id: guestId }, data: { lastSeenAt: new Date() } }),
+    )
+
+    return this.issueTokens(guest, existingId === null, randomUUID(), null)
   }
 
   /**
