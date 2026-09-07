@@ -42,5 +42,7 @@
   "server.hint": "For example http://192.168.1.10:3000/v1 — the address of the computer running the server, on the same Wi-Fi.",
   "server.invalid": "The address must start with http:// or https:// and contain a host name",
   "server.saved": "Saved, reloading",
-  "server.save": "Save"
+  "server.save": "Save",
+  "signin.or": "or",
+  "signin.google.unavailable": "Google sign-in is unavailable right now. Use your phone number instead."
 }

@@ -422,3 +422,45 @@ output {
   justify-items: center;
   gap: 12px;
 }
+
+/* ── Вход через аккаунт ──────────────────────────────────────────────────────
+ *
+ * Разделитель между двумя способами входа. Нужен не для красоты: без него
+ * кнопка Google читается как ещё одно поле формы телефона, и гость нажимает
+ * её, уже начав вводить номер.
+ */
+.signin__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  color: var(--muted, #7c8b86);
+  font-size: 13px;
+}
+
+.signin__divider::before,
+.signin__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.25;
+}
+
+/* Кнопку рисует скрипт Google, её внутренности нам не принадлежат.
+ * Поэтому здесь только выравнивание — ширину и оформление задаёт он сам. */
+.signin__google {
+  display: flex;
+  justify-content: center;
+}
+
+.signin__google[aria-busy='true'] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.signin__googleButton {
+  /* Пока скрипт не отрисовал кнопку, место под неё занято: иначе форма
+   * прыгает в момент загрузки, и палец попадает не туда, куда целился. */
+  min-height: 44px;
+}
