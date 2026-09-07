@@ -172,14 +172,7 @@ export function Page(): ReactElement {
               : t('signin.submit')}
         </button>
 
-        {requestId === null ? (
-          <>
-            <div className="signin__divider">
-              <span>{t('signin.or')}</span>
-            </div>
-            <GoogleButton onToken={onGoogle} disabled={pending} />
-          </>
-        ) : null}
+        {requestId === null ? <GoogleButton onToken={onGoogle} disabled={pending} /> : null}
       </form>
     </div>
   )

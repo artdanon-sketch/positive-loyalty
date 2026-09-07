@@ -166,19 +166,42 @@ export function GoogleButton({ onToken, disabled }: Props): ReactElement | null 
     return null
   }
 
+  /**
+   * Разделитель живёт ЗДЕСЬ, а не в форме.
+   *
+   * Сначала он стоял снаружи, при условии «первый шаг входа», — и на боевой
+   * странице получилось «или», под которым ничего нет: ключ до сборки
+   * не доехал, кнопка не отрисовалась, а разделитель остался. Выглядело как
+   * недогрузившийся экран.
+   *
+   * Условие у разделителя и у кнопки должно быть одно, иначе они разъезжаются
+   * ровно в тот момент, когда что-то пошло не так.
+   */
+  const divider = (
+    <div className="signin__divider">
+      <span>{t('signin.or')}</span>
+    </div>
+  )
+
   if (failed) {
     // Не молчим: гость должен понимать, почему кнопки нет, и что вход по коду
     // остаётся. Молчаливое исчезновение выглядит как поломка программы.
     return (
-      <p className="signin__hint" role="status">
-        {t('signin.google.unavailable')}
-      </p>
+      <>
+        {divider}
+        <p className="signin__hint" role="status">
+          {t('signin.google.unavailable')}
+        </p>
+      </>
     )
   }
 
   return (
-    <div className="signin__google" aria-busy={disabled}>
-      <div className="signin__googleButton" ref={holder} />
-    </div>
+    <>
+      {divider}
+      <div className="signin__google" aria-busy={disabled}>
+        <div className="signin__googleButton" ref={holder} />
+      </div>
+    </>
   )
 }
