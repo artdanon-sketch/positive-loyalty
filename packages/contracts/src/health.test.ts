@@ -8,6 +8,7 @@ const valid = {
   version: '0.0.0',
   uptimeSeconds: 42,
   timestamp: '2026-08-25T07:00:00.000Z',
+  logins: { google: true, phone: false },
 } as const
 
 /** Пути полей, к которым претензии у валидатора — удобно сравнивать в ожиданиях. */
@@ -72,5 +73,20 @@ describe('HealthResponse', () => {
     if (!result.success) {
       expect(result.error.issues.some((issue) => issue.code === 'unrecognized_keys')).toBe(true)
     }
+  })
+
+  it('logins обязателен: без него нельзя понять, доехала ли настройка входа', () => {
+    // Поле появилось затем, чтобы снаружи было видно, включён ли вход через
+    // аккаунт. Необязательным оно бы этой задачи не решало: пропавшее поле
+    // не отличить от «сервер старой версии».
+    const { logins: _dropped, ...withoutLogins } = valid
+
+    expect(HealthResponse.safeParse(withoutLogins).success).toBe(false)
+  })
+
+  it('в logins только признаки, значения ключей туда не попадают', () => {
+    // Проверка от обратного: если однажды кто-то решит отдать сюда сам ключ,
+    // схема это не пропустит — там только да/нет.
+    expect(HealthResponse.safeParse({ ...valid, logins: { google: 'ключ' } }).success).toBe(false)
   })
 })

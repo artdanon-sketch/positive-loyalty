@@ -25,13 +25,19 @@ export class HealthController {
     description: 'Сервис поднят и отвечает',
     schema: {
       type: 'object',
-      required: ['status', 'service', 'version', 'uptimeSeconds', 'timestamp'],
+      required: ['status', 'service', 'version', 'uptimeSeconds', 'timestamp', 'logins'],
       properties: {
         status: { type: 'string', enum: ['ok'], example: 'ok' },
         service: { type: 'string', example: 'api' },
         version: { type: 'string', example: '0.0.0' },
         uptimeSeconds: { type: 'integer', minimum: 0, example: 42 },
         timestamp: { type: 'string', format: 'date-time' },
+        logins: {
+          type: 'object',
+          additionalProperties: { type: 'boolean' },
+          description: 'Какие способы входа настроены. Только признак, без значений.',
+          example: { google: true, phone: false },
+        },
       },
     },
   })
