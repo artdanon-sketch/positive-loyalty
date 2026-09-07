@@ -138,6 +138,17 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     [applyTokens],
   )
 
+  const signInWithGoogle = useCallback(
+    async (idToken: string): Promise<void> => {
+      const tokens = await apiRequest('/auth/social/google', GuestAuthResult, {
+        method: 'POST',
+        body: { idToken },
+      })
+      applyTokens(tokens)
+    },
+    [applyTokens],
+  )
+
   const authGet = useCallback(
     async <T,>(path: string, schema: ZodType<T>): Promise<T> => {
       const current = sessionRef.current
@@ -165,8 +176,16 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
   )
 
   const value = useMemo<SessionContextValue>(
-    () => ({ status, session, requestCode, verifyCode, signOut: dropSession, authGet }),
-    [authGet, dropSession, requestCode, session, status, verifyCode],
+    () => ({
+      status,
+      session,
+      requestCode,
+      verifyCode,
+      signInWithGoogle,
+      signOut: dropSession,
+      authGet,
+    }),
+    [authGet, dropSession, requestCode, session, signInWithGoogle, status, verifyCode],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

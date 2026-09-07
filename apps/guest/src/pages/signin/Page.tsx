@@ -8,6 +8,8 @@ import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
 import { ThemeToggle } from '../../shared/theme/theme-toggle'
 
+import { GoogleButton } from './GoogleButton'
+
 /**
  * Вход гостя: телефон → код. docs/02, разделы 1.1–1.2.
  *
@@ -54,6 +56,16 @@ export function Page(): ReactElement {
       .finally(() => {
         setPending(false)
       })
+  }
+
+  const onGoogle = (idToken: string): void => {
+    setPending(true)
+    setError(null)
+
+    void session.signInWithGoogle(idToken).catch((cause: unknown) => {
+      setError(describe(cause))
+      setPending(false)
+    })
   }
 
   const onVerify = (event: FormEvent): void => {
@@ -159,6 +171,15 @@ export function Page(): ReactElement {
               ? t('signin.getCode')
               : t('signin.submit')}
         </button>
+
+        {requestId === null ? (
+          <>
+            <div className="signin__divider">
+              <span>{t('signin.or')}</span>
+            </div>
+            <GoogleButton onToken={onGoogle} disabled={pending} />
+          </>
+        ) : null}
       </form>
     </div>
   )

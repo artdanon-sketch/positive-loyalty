@@ -21,6 +21,11 @@ export interface SessionContextValue {
   readonly requestCode: (phone: string) => Promise<{ requestId: string; devCode?: string }>
   /** Шаг 2: подтвердить код и получить сессию. */
   readonly verifyCode: (requestId: string, code: string) => Promise<void>
+  /**
+   * Вход через Google: шага два не нужно, личность уже подтверждена.
+   * На вход — токен от Google, который проверяет сервер, а не мы.
+   */
+  readonly signInWithGoogle: (idToken: string) => Promise<void>
   readonly signOut: () => void
   /** Запрос от имени гостя: подставляет токен, на 401 обновляет сессию и повторяет. */
   readonly authGet: <T>(path: string, schema: import('zod').ZodType<T>) => Promise<T>
