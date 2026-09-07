@@ -210,22 +210,27 @@ export class GuestAuthService {
       })
     }
 
+    // Таблица способов входа адресуется самим аккаунтом и политикой не закрыта:
+    // в этот момент гость ещё не объявлен, объявлять нечего.
     const known = await this.prisma.guestIdentity.findFirst({
       where: { provider: 'GOOGLE', externalId: account.externalId },
-      include: { guest: true },
+      select: { id: true, guestId: true },
     })
 
     if (known !== null) {
-      await this.prisma.guestIdentity.update({
-        where: { id: known.id },
-        data: { lastSeenAt: new Date(), email: account.email },
-      })
-      await this.prisma.guest.update({
-        where: { id: known.guest.id },
-        data: { lastSeenAt: new Date() },
+      const guest = await this.prisma.forGuest(known.guestId, async (tx) => {
+        await tx.guestIdentity.update({
+          where: { id: known.id },
+          data: { lastSeenAt: new Date(), email: account.email },
+        })
+
+        return tx.guest.update({
+          where: { id: known.guestId },
+          data: { lastSeenAt: new Date() },
+        })
       })
 
-      return this.issueTokens(known.guest, false, randomUUID(), null)
+      return this.issueTokens(guest, false, randomUUID(), null)
     }
 
     // Первый вход этим аккаунтом. Возможно, человек нам уже знаком по другому.
@@ -234,30 +239,40 @@ export class GuestAuthService {
         ? null
         : await this.prisma.guestIdentity.findFirst({
             where: { email: account.email },
-            include: { guest: true },
+            select: { guestId: true },
           })
 
-    const guest =
-      sameEmail?.guest ??
-      (await this.prisma.guest.create({
+    // Идентификатор нового гостя придумываем САМИ, до вставки. Иначе объявить
+    // гостя политике нечем: она сверяет строку с app.guest_id, а он был бы
+    // известен только после вставки — которую сама же политика и не пропустит
+    // на чтении. Prisma после INSERT всегда читает созданную строку.
+    const guestId = sameEmail?.guestId ?? randomUUID()
+
+    const guest = await this.prisma.forGuest(guestId, async (tx) => {
+      const record =
+        sameEmail === null
+          ? await tx.guest.create({
+              data: {
+                id: guestId,
+                // Телефона нет и не будет спрошен — см. пояснение выше.
+                displayName: account.displayName,
+                locale: 'en',
+              },
+            })
+          : await tx.guest.update({ where: { id: guestId }, data: { lastSeenAt: new Date() } })
+
+      await tx.guestIdentity.create({
         data: {
-          // Телефона нет и не будет спрошен — см. пояснение выше.
-          displayName: account.displayName,
-          locale: 'en',
+          guestId,
+          provider: 'GOOGLE',
+          externalId: account.externalId,
+          email: account.email,
+          lastSeenAt: new Date(),
         },
-      }))
+      })
 
-    await this.prisma.guestIdentity.create({
-      data: {
-        guestId: guest.id,
-        provider: 'GOOGLE',
-        externalId: account.externalId,
-        email: account.email,
-        lastSeenAt: new Date(),
-      },
+      return record
     })
-
-    await this.prisma.guest.update({ where: { id: guest.id }, data: { lastSeenAt: new Date() } })
 
     // «Новый» — именно новый человек, а не новый способ входа: гость, к карте
     // которого мы только что привязали второй аккаунт, новым не является,

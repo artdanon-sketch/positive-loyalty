@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
 
 import type { INestApplication } from '@nestjs/common'
@@ -268,6 +269,68 @@ describe('Изоляция заведений — рубеж 2 в одиночк
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`
       return fn(tx)
     })
+
+  const underGuest = async <T>(
+    guestId: string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> =>
+    appRole.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.guest_id', ${guestId}, true)`
+      return fn(tx)
+    })
+
+  /**
+   * ЭТИХ ДВУХ ПРОВЕРОК НЕ ХВАТАЛО, И ЦЕНА ОКАЗАЛАСЬ ВЫСОКОЙ.
+   *
+   * Вход гостя падал с ошибкой 500 на боевом сервере: гость создавался,
+   * но прочитать его обратно роль приложения не могла — политика пускает
+   * к строке только по объявленному app.guest_id, а при входе его ещё нет.
+   * Prisma после вставки ВСЕГДА читает созданную строку, не получала её
+   * и падала.
+   *
+   * Ни один тест этого не поймал, потому что все они ходят в базу владельцем,
+   * а владельцу политики не писаны. Проверять изоляцию под ролью, которой
+   * изоляция не касается, — то же самое, что не проверять её вовсе.
+   */
+  it('создание гостя под ролью приложения БЕЗ объявления не читается обратно', async () => {
+    const orphanId = randomUUID()
+
+    const readBack = await appRole.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO "Guest" (id, locale, mode) VALUES (${orphanId}, 'en', 'TOURIST'::"GuestMode")
+      `
+
+      return tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Guest" WHERE id = ${orphanId}
+      `
+    })
+
+    // Строка вставлена, но невидима: ровно то, на чём падал вход.
+    expect(readBack).toHaveLength(0)
+  })
+
+  it('создание гостя под ролью приложения С объявлением читается и обновляется', async () => {
+    const guestId = randomUUID()
+
+    const result = await underGuest(guestId, async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO "Guest" (id, locale, mode) VALUES (${guestId}, 'en', 'TOURIST'::"GuestMode")
+      `
+
+      const rows = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Guest" WHERE id = ${guestId}
+      `
+
+      const updated = await tx.$executeRaw`
+        UPDATE "Guest" SET "lastSeenAt" = now() WHERE id = ${guestId}
+      `
+
+      return { seen: rows.length, updated }
+    })
+
+    expect(result.seen).toBe(1)
+    expect(result.updated).toBe(1)
+  })
 
   it('роль приложения БЕЗ объявленного тенанта не видит ничего', async () => {
     const rows = await appRole.$queryRaw<Array<{ count: bigint }>>`
