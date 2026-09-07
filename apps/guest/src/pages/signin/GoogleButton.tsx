@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 
 import { env } from '../../shared/config/env'
 import { useT } from '../../shared/i18n/i18n-context'
+import { useTheme } from '../../shared/theme/theme-context'
 
 /**
  * Кнопка «Войти через Google».
@@ -101,6 +102,7 @@ interface Props {
 
 export function GoogleButton({ onToken, disabled }: Props): ReactElement | null {
   const t = useT()
+  const { theme } = useTheme()
   const holder = useRef<HTMLDivElement>(null)
   const [failed, setFailed] = useState(false)
 
@@ -143,12 +145,24 @@ export function GoogleButton({ onToken, disabled }: Props): ReactElement | null 
           cancel_on_tap_outside: true,
         })
 
+        // Кнопку рисуем заново при каждой смене темы, а прежнюю убираем:
+        // Google ДОБАВЛЯЕТ разметку внутрь, а не заменяет её, и без очистки
+        // после переключения темы кнопок стало бы две.
+        holder.current.replaceChildren()
+
         google.accounts.id.renderButton(holder.current, {
           type: 'standard',
-          theme: 'outline',
+          // Белая кнопка на тёмной карточке выглядит вставкой из другого
+          // приложения. Google даёт готовый тёмный вариант — берём его,
+          // а не перекрашиваем чужую кнопку своими стилями: правила Google
+          // это запрещают, да и сломается при любом их обновлении.
+          theme: theme === 'dark' ? 'filled_black' : 'outline',
           size: 'large',
           shape: 'pill',
           text: 'continue_with',
+          // Ширина — по форме, чтобы кнопка встала вровень с «Получить код»,
+          // а не была уже её. Google принимает только число и не больше 400.
+          width: Math.min(400, Math.max(200, Math.round(holder.current.offsetWidth))),
         })
       })
       .catch(() => {
@@ -160,7 +174,7 @@ export function GoogleButton({ onToken, disabled }: Props): ReactElement | null 
     return () => {
       cancelled = true
     }
-  }, [clientId])
+  }, [clientId, theme])
 
   if (clientId === '') {
     return null
