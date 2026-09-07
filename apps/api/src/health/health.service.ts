@@ -22,6 +22,14 @@ export class HealthService {
       version: getEnv().appVersion,
       uptimeSeconds: Math.floor((Date.now() - this.startedAt) / 1000),
       timestamp: new Date().toISOString(),
+      logins: {
+        // Пустой ключ приложения означает выключенный вход, а не «как-нибудь
+        // да заработает»: без него нечем сверить, кому выписан токен.
+        google: getEnv().googleClientId !== '',
+        // Вход по коду подтверждения есть всегда, но код пока никуда
+        // не отправляется — канала доставки нет. Считать его рабочим нельзя.
+        phone: false,
+      },
     }
 
     return HealthResponse.parse(payload)
