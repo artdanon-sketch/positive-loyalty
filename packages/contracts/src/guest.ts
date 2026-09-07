@@ -6,6 +6,29 @@ import { z } from 'zod'
  */
 
 /** Канал доставки кода. SMS появится с провайдером; DEV — код в лог сервера. */
+/**
+ * Вход через аккаунт: гость нажимает кнопку у поставщика и приносит нам токен.
+ *
+ * Телефон при этом не спрашивается: ни один из поставщиков его не отдаёт,
+ * а требовать номер отдельно значит вернуть трение, ради устранения которого
+ * такой вход и добавлялся (docs/01, раздел 4.2).
+ */
+export const SocialProvider = z.enum(['GOOGLE', 'LINE', 'TELEGRAM'])
+
+export type SocialProvider = z.infer<typeof SocialProvider>
+
+export const SocialLoginInput = z
+  .object({
+    /**
+     * Подписанный поставщиком токен. Длина ограничена сверху не для красоты:
+     * без предела сюда можно прислать мегабайт и заставить сервер его разбирать.
+     */
+    idToken: z.string().min(16).max(8192),
+  })
+  .strict()
+
+export type SocialLoginInput = z.infer<typeof SocialLoginInput>
+
 export const OtpChannel = z.enum(['DEV', 'SMS', 'TELEGRAM', 'LINE'])
 export type OtpChannel = z.infer<typeof OtpChannel>
 
