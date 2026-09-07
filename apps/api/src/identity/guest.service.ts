@@ -2,14 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common'
 import type { GuestMe, GuestQrToken, GuestWallet } from '@positive/contracts'
 
 import { getEnv } from '../common/config/env'
+import { maskPhone } from '../common/pii/mask-phone'
 import { signGuestQrToken } from '../common/tenant/access-token'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
 
 /** Токен на кассу живёт пять минут: экран открыт у стойки, а не хранится. */
 const QR_TTL_SECONDS = 300
-
-const maskPhone = (e164: string): string => `${e164.slice(0, 3)} •• •• ${e164.slice(-4)}`
 
 @Injectable()
 export class GuestService {

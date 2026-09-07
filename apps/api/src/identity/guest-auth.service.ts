@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken'
 import { hashPin, verifyPin } from '../auth/pin'
 import { getEnv } from '../common/config/env'
 import { signGuestToken } from '../common/tenant/access-token'
+import { maskPhone } from '../common/pii/mask-phone'
 import { PrismaService } from '../core/prisma.service'
 
 /**
@@ -35,8 +36,6 @@ const OTP_PHONE_WINDOW_MS = 10 * 60_000
 /** docs/05, раздел 2: access гостя 15 минут, refresh 30 дней с ротацией. */
 const GUEST_ACCESS_TTL_SECONDS = 15 * 60
 const GUEST_REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60
-
-const maskPhone = (e164: string): string => `${e164.slice(0, 3)} •• •• ${e164.slice(-4)}`
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 

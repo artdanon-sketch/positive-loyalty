@@ -64,8 +64,7 @@ beforeAll(async () => {
   tenantId = fixture.tenantId
   membershipId = fixture.membershipId
 
-  const guest = await prisma.guest.findFirstOrThrow({ where: { id: fixture.guestId } })
-  guestPhone = guest.phoneE164
+  guestPhone = fixture.guestPhone
 
   // Настройки программы: 10% начисления, до 20% чека баллами, номер чека не обязателен.
   await prisma.tenant.update({
