@@ -137,3 +137,73 @@ export const GuestQrToken = z
   .strict()
 
 export type GuestQrToken = z.infer<typeof GuestQrToken>
+
+/**
+ * Вход через Telegram. docs/02, раздел 1 — третий способ рядом с кодом и Google.
+ *
+ * ПОЧЕМУ НЕ ТАК, КАК У GOOGLE. У Google гость нажимает кнопку прямо на странице
+ * и приносит нам подписанный токен одним движением. Telegram так тоже умеет
+ * (Login Widget), но виджет привязан к домену, зарегистрированному у бота,
+ * а внутри мобильного приложения адрес страницы — `https://localhost`.
+ * Ровно об эту стену уже разбился вход через Google в приложении.
+ *
+ * Поэтому здесь другой обмен: сервер выдаёт одноразовую ссылку на бота, гость
+ * открывает её в Telegram и нажимает «Запустить», бот сообщает серверу, кто
+ * это был, а приложение тем временем спрашивает: «уже?». Домен в этом обмене
+ * не участвует вовсе — работает и на сайте, и в приложении.
+ *
+ * ПОБОЧНАЯ ВЫГОДА, РАДИ КОТОРОЙ ВСЁ И ЗАТЕВАЛОСЬ. Гость, нажавший «Запустить»,
+ * тем самым разрешил боту себе писать. То есть вместе со входом мы получаем
+ * бесплатный канал доставки — тот самый, которым по ТЗ должны уходить коды
+ * и уведомления вместо платных SMS (docs/02, раздел 1.1).
+ */
+export const TelegramLoginStartResult = z
+  .object({
+    requestId: z.uuid(),
+    /**
+     * Одноразовый секрет, которым приложение доказывает, что вход начало оно.
+     *
+     * Без него любой, кто угадал бы `requestId`, забрал бы чужую сессию:
+     * подтверждение приходит от бота, а не от того, кто спрашивает результат.
+     */
+    claimSecret: z.string().min(32).max(128),
+    /** Ссылка вида `https://t.me/<бот>?start=<одноразовый код>`. */
+    url: z.url(),
+    /** Секунды жизни ссылки. */
+    expiresIn: z.number().int().positive(),
+    /** Не спрашивать результат чаще, чем раз в столько секунд. */
+    pollAfter: z.number().int().positive(),
+  })
+  .strict()
+
+export type TelegramLoginStartResult = z.infer<typeof TelegramLoginStartResult>
+
+export const TelegramClaimInput = z
+  .object({
+    requestId: z.uuid(),
+    claimSecret: z.string().min(32).max(128),
+  })
+  .strict()
+
+export type TelegramClaimInput = z.infer<typeof TelegramClaimInput>
+
+/**
+ * `PENDING` — гость ещё не нажал «Запустить». `READY` — вошёл, токены в ответе.
+ * `EXPIRED` — ссылка протухла, сессия уже забрана или секрет не подошёл.
+ *
+ * Три причины `EXPIRED` намеренно неразличимы снаружи: по разнице ответов
+ * видно, существует ли запрос с таким идентификатором.
+ */
+export const TelegramLoginState = z.enum(['PENDING', 'READY', 'EXPIRED'])
+
+export type TelegramLoginState = z.infer<typeof TelegramLoginState>
+
+export const TelegramClaimResult = z
+  .object({
+    state: TelegramLoginState,
+    /** Заполнено только при `READY`, и только один раз: сессия забирается однократно. */
+    session: GuestAuthResult.nullable(),
+  })
+  .strict()
+
+export type TelegramClaimResult = z.infer<typeof TelegramClaimResult>

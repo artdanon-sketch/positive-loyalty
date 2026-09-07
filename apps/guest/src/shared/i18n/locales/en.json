@@ -44,5 +44,11 @@
   "server.saved": "Saved, reloading",
   "server.save": "Save",
   "signin.or": "or",
-  "signin.google.unavailable": "Google sign-in is unavailable right now. Use your phone number instead."
+  "signin.google.unavailable": "Google sign-in is unavailable right now. Use your phone number instead.",
+  "signin.telegram.button": "Continue with Telegram",
+  "signin.telegram.open": "Open Telegram",
+  "signin.telegram.waiting": "Tap Start in the bot and come back — the sign-in finishes on its own.",
+  "signin.telegram.expired": "The link has expired. Start again.",
+  "signin.telegram.failed": "Could not start Telegram sign-in. Please try again.",
+  "signin.telegram.cancel": "Cancel"
 }

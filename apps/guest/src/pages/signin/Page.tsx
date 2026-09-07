@@ -8,7 +8,7 @@ import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
 import { ThemeToggle } from '../../shared/theme/theme-toggle'
 
-import { GoogleButton } from './GoogleButton'
+import { SocialSection } from './SocialSection'
 
 /**
  * Вход гостя: телефон → код. docs/02, разделы 1.1–1.2.
@@ -172,7 +172,9 @@ export function Page(): ReactElement {
               : t('signin.submit')}
         </button>
 
-        {requestId === null ? <GoogleButton onToken={onGoogle} disabled={pending} /> : null}
+        {requestId === null ? (
+          <SocialSection onGoogleToken={onGoogle} disabled={pending} />
+        ) : null}
       </form>
     </div>
   )

@@ -2,6 +2,7 @@ import 'reflect-metadata'
 
 import { Logger, RequestMethod } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import type { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import helmet from 'helmet'
 import { ZodValidationPipe } from 'nestjs-zod'
@@ -16,13 +17,25 @@ const bootstrap = async (): Promise<void> => {
   // `rawBody` — ради подписи вебхуков от кассы. Она считается по СЫРЫМ БАЙТАМ
   // тела: разобранный и снова собранный JSON даёт другой порядок ключей
   // и другие пробелы, и хеш не сходится (docs/02, раздел 4.1).
-  const app = await NestFactory.create(AppModule, { rawBody: true })
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true })
 
   // ConfigModule уже подтянул .env в process.env, поэтому разбор окружения — здесь.
   // Некорректная конфигурация роняет процесс до того, как порт начнёт слушаться.
   const env = getEnv()
 
   app.use(helmet())
+
+  // Адрес клиента берём из заголовка ближайшего прокси.
+  //
+  // ЗАЧЕМ. На Railway (и за любым обратным прокси) запрос приходит от прокси,
+  // и без этой строки все клиенты выглядят одним адресом. Любое ограничение
+  // «столько-то попыток с адреса» тогда молча превращается в ограничение
+  // на всех сразу — то есть в отказ в обслуживании вместо защиты от него.
+  //
+  // ЕДИНИЦА, А НЕ `true`. Доверяем ровно одному ближайшему прокси и берём
+  // адрес, который проставил он. `true` доверял бы всей цепочке заголовка,
+  // а её начало пишет сам клиент — то есть подделывается свободно.
+  app.set('trust proxy', 1)
 
   // CORS только по явному списку доменов (docs/05_Безопасность_и_антифрод.md, раздел 9).
   app.enableCors({

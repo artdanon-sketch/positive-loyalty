@@ -469,3 +469,47 @@ output {
    * то есть в ноль до отрисовки — и кнопка вышла бы минимальной ширины. */
   width: 100%;
 }
+
+/* Кнопка входа через Telegram.
+ *
+ * Оформление — фирменное, чужое. Это не наша вольность: гость должен узнать
+ * кнопку до того, как прочитает надпись, иначе он не понимает, куда уходит.
+ * Цвет берётся токеном (--brand-telegram), значения в коде нет.
+ *
+ * Форма и высота — наши: те же, что у «Получить код», чтобы кнопки в форме
+ * стояли вровень и палец попадал туда, куда целился.
+ */
+.signin__telegram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 22px;
+  border: none;
+  border-radius: var(--r-pill, 99px);
+  background: var(--brand-telegram);
+  color: var(--brand-telegram-ink);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform var(--dur-press, 0.3s) var(--spring, ease);
+}
+
+.signin__telegram:active {
+  transform: scale(0.97);
+}
+
+.signin__telegram:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Ожидание подтверждения: ссылка, пояснение и отмена одной колонкой. */
+.signin__telegramWait {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}

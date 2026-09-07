@@ -99,6 +99,24 @@ const EnvSchema = z
      * значит вход через Google выключен целиком, а не «работает как-нибудь».
      */
     GOOGLE_CLIENT_ID: z.string().optional(),
+
+    /**
+     * Ключ бота Telegram — тот, что выдал `@BotFather`.
+     *
+     * ЭТО НАСТОЯЩИЙ СЕКРЕТ, в отличие от идентификатора Google выше. Кто им
+     * владеет — читает всю переписку бота и пишет от его имени. В лог он
+     * не попадает никогда, в ответы API — тем более.
+     *
+     * Формат проверяем здесь же, а не при первом обращении к Telegram:
+     * опечатка в переменной окружения должна ронять процесс на старте,
+     * а не превращаться в непонятный отказ входа через неделю.
+     *
+     * Пусто — вход через Telegram выключен целиком.
+     */
+    TELEGRAM_BOT_TOKEN: z
+      .string()
+      .regex(/^\d{5,}:[A-Za-z0-9_-]{30,}$/, 'не похоже на ключ бота: ожидается «<число>:<строка>»')
+      .optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -109,6 +127,7 @@ const EnvSchema = z
     databaseSchema: raw.DATABASE_SCHEMA,
     databaseSslCa: raw.DATABASE_SSL_CA?.trim() === '' ? undefined : raw.DATABASE_SSL_CA,
     googleClientId: raw.GOOGLE_CLIENT_ID?.trim() ?? '',
+    telegramBotToken: raw.TELEGRAM_BOT_TOKEN?.trim() ?? '',
   }))
   .superRefine((env, ctx) => {
     if (env.nodeEnv === 'production' && env.accessTokenSecret.length === 0) {
