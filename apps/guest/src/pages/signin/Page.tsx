@@ -172,9 +172,7 @@ export function Page(): ReactElement {
               : t('signin.submit')}
         </button>
 
-        {requestId === null ? (
-          <SocialSection onGoogleToken={onGoogle} disabled={pending} />
-        ) : null}
+        {requestId === null ? <SocialSection onGoogleToken={onGoogle} disabled={pending} /> : null}
       </form>
     </div>
   )

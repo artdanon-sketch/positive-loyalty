@@ -143,8 +143,7 @@ export class TelegramApi {
     // Без второго остановка сервиса ждала бы, пока Telegram отпустит запрос,
     // а он держит его до сорока пяти секунд — то есть каждый выкат вставал бы
     // на эту паузу.
-    const signal =
-      external === undefined ? abort.signal : AbortSignal.any([abort.signal, external])
+    const signal = external === undefined ? abort.signal : AbortSignal.any([abort.signal, external])
 
     let response: Response
 
