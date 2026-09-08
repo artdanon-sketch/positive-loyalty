@@ -28,6 +28,11 @@ import {
 } from '../../src/platform/platform-auth.service'
 import { PlatformPrismaService } from '../../src/platform/platform-prisma.service'
 import { sealSecret, keyFromEnv } from '../../src/platform/secret-box'
+import {
+  PlatformTokenInvalidError,
+  signPlatformToken,
+  verifyPlatformToken,
+} from '../../src/platform/platform-token'
 import { generateSecret, totpCode } from '../../src/platform/totp'
 
 const platformUrl = (): string => {
@@ -43,6 +48,12 @@ const platformUrl = (): string => {
 
 /** Ключ шифрования секретов второго фактора. В тестах — свой, одноразовый. */
 const TEST_ENC_KEY = Buffer.alloc(32, 7).toString('base64')
+
+/** Секрет подписи платформенных токенов. Отдельный от ACCESS_TOKEN_SECRET — в этом суть. */
+const TEST_TOKEN_SECRET = 'секрет-подписи-платформы-только-для-тестов'
+
+/** Секрет ОСНОВНОГО контура. Нужен ровно затем, чтобы доказать несовместимость. */
+const TEST_FOREIGN_SECRET = 'секрет-основного-контура-только-для-тестов'
 
 let prisma: PlatformPrismaService
 let service: PlatformAuthService
@@ -105,6 +116,7 @@ describe('Вход в админку платформы', () => {
     const previousUrl = process.env['DATABASE_URL_PLATFORM']
     process.env['DATABASE_URL_PLATFORM'] = platformUrl()
     process.env['PLATFORM_TOTP_ENC_KEY'] = TEST_ENC_KEY
+    process.env['PLATFORM_ACCESS_TOKEN_SECRET'] = TEST_TOKEN_SECRET
 
     try {
       prisma = new PlatformPrismaService()
@@ -159,6 +171,37 @@ describe('Вход в админку платформы', () => {
     })
 
     expect(trail.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('выданный токен проверяется и несёт того, кто вошёл', async () => {
+    const { admin, password, secret } = await createAdmin()
+
+    const result = await service.signIn(signInInput(admin.email, password, secret, now))
+    const claims = verifyPlatformToken(result.accessToken, TEST_TOKEN_SECRET)
+
+    expect(claims.adminId).toBe(admin.id)
+    expect(claims.sessionId).toBe(result.sessionId)
+    expect(result.expiresIn).toBeGreaterThan(0)
+  })
+
+  it('ТОКЕН ОСНОВНОГО КОНТУРА ЗДЕСЬ НЕ РАБОТАЕТ — ради этого секреты и разделены', async () => {
+    const { admin, password, secret } = await createAdmin()
+    const result = await service.signIn(signInInput(admin.email, password, secret, now))
+
+    // Подделка с ТЕМИ ЖЕ полями, но чужой подписью. Если бы секрет был общим,
+    // единственным различием контуров осталась бы дисциплина при заполнении
+    // полей — а она не переживает рефакторинг.
+    const forged = signPlatformToken(
+      { adminId: admin.id, sessionId: result.sessionId },
+      TEST_FOREIGN_SECRET,
+    )
+
+    expect(() => verifyPlatformToken(forged, TEST_TOKEN_SECRET)).toThrow(PlatformTokenInvalidError)
+
+    // И наоборот: наш настоящий токен не проходит проверку чужим секретом.
+    expect(() => verifyPlatformToken(result.accessToken, TEST_FOREIGN_SECRET)).toThrow(
+      PlatformTokenInvalidError,
+    )
   })
 
   it('ОДИН И ТОТ ЖЕ КОД ВТОРОЙ РАЗ НЕ ПРИНИМАЕТСЯ (RFC 6238, раздел 5.2)', async () => {
