@@ -66,18 +66,22 @@ const ownerUrl = (): string => {
 }
 
 /**
- * Схема берётся у самого соединения, а не из переменной окружения.
+ * Схема берётся из DATABASE_SCHEMA — так же, как её выбирает PrismaService.
  *
- * На общей с чужим продуктом базе разойтись в схеме означало бы проверять
- * права на таблицы соседа и успокоиться.
+ * Спрашивать `current_schema()` у соединения здесь НЕЛЬЗЯ, и это выяснилось
+ * красным прогоном. Драйвер pg подключается с обычным search_path, то есть
+ * отвечает `public` независимо от того, где на самом деле лежат наши таблицы.
+ * В прогоне «своя схема» они лежат в loyalty, и тест честно сообщил
+ * «relation "Tenant" does not exist», спрашивая не ту схему.
+ *
+ * Приложение решает этот вопрос через `-c search_path=${schema}` из
+ * DATABASE_SCHEMA (prisma.service.ts). Тест обязан повторять эту логику,
+ * а не изобретать свою: разойтись с приложением в выборе схемы значит
+ * проверять права на чужие таблицы и успокоиться.
  */
-const currentSchema = async (client: Client): Promise<string> => {
-  const result = await client.query<{ schema: string }>('SELECT current_schema() AS schema')
-  const schema = result.rows[0]?.schema
-  if (schema === undefined || schema === null) {
-    throw new Error('current_schema() вернул пусто — соединение смотрит в никуда.')
-  }
-  return schema
+const workingSchema = (): string => {
+  const explicit = process.env['DATABASE_SCHEMA']
+  return typeof explicit === 'string' && explicit.trim().length > 0 ? explicit.trim() : 'public'
 }
 
 const connect = async (url: string): Promise<Client> => {
@@ -114,8 +118,9 @@ describe('Роль positive_platform: видит всех, но не всё', ()
     appRole = await connect(appRoleUrl())
     owner = await connect(ownerUrl())
 
+    const schema = workingSchema()
+
     for (const client of [platform, appRole, owner]) {
-      const schema = await currentSchema(client)
       await client.query(`SET search_path TO "${schema}"`)
     }
 
