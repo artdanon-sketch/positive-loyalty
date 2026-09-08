@@ -1,4 +1,10 @@
-import { GuestAuthResult, OtpRequestResult } from '@positive/contracts'
+import {
+  GuestAuthResult,
+  OtpRequestResult,
+  TelegramClaimResult,
+  TelegramLoginStartResult,
+} from '@positive/contracts'
+import type { TelegramLoginState } from '@positive/contracts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type { ZodType } from 'zod'
@@ -149,6 +155,32 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     [applyTokens],
   )
 
+  const startTelegramLogin = useCallback(
+    async (): Promise<TelegramLoginStartResult> =>
+      apiRequest('/auth/social/telegram/start', TelegramLoginStartResult, { method: 'POST' }),
+    [],
+  )
+
+  /**
+   * Один вопрос «уже?». Цикл живёт в экране, а не здесь: как часто и сколько
+   * спрашивать — это поведение интерфейса, а не работа с сессией.
+   */
+  const pollTelegramLogin = useCallback(
+    async (requestId: string, claimSecret: string): Promise<TelegramLoginState> => {
+      const result = await apiRequest('/auth/social/telegram/claim', TelegramClaimResult, {
+        method: 'POST',
+        body: { requestId, claimSecret },
+      })
+
+      if (result.state === 'READY' && result.session !== null) {
+        applyTokens(result.session)
+      }
+
+      return result.state
+    },
+    [applyTokens],
+  )
+
   const authGet = useCallback(
     async <T,>(path: string, schema: ZodType<T>): Promise<T> => {
       const current = sessionRef.current
@@ -182,10 +214,22 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
       requestCode,
       verifyCode,
       signInWithGoogle,
+      startTelegramLogin,
+      pollTelegramLogin,
       signOut: dropSession,
       authGet,
     }),
-    [authGet, dropSession, requestCode, session, signInWithGoogle, status, verifyCode],
+    [
+      authGet,
+      dropSession,
+      pollTelegramLogin,
+      requestCode,
+      session,
+      signInWithGoogle,
+      startTelegramLogin,
+      status,
+      verifyCode,
+    ],
   )
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>

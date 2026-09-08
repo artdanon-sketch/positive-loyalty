@@ -1,4 +1,8 @@
-import type { GuestProfile } from '@positive/contracts'
+import type {
+  GuestProfile,
+  TelegramLoginStartResult,
+  TelegramLoginState,
+} from '@positive/contracts'
 import { createContext, useContext } from 'react'
 
 /**
@@ -26,6 +30,17 @@ export interface SessionContextValue {
    * На вход — токен от Google, который проверяет сервер, а не мы.
    */
   readonly signInWithGoogle: (idToken: string) => Promise<void>
+  /**
+   * Вход через Telegram, шаг 1: получить одноразовую ссылку на бота.
+   * Шагов здесь два, потому что подтверждение приходит не из приложения,
+   * а из Telegram — возможно, с другого устройства.
+   */
+  readonly startTelegramLogin: () => Promise<TelegramLoginStartResult>
+  /** Шаг 2: спросить, подтвердил ли гость. При `READY` сессия уже установлена. */
+  readonly pollTelegramLogin: (
+    requestId: string,
+    claimSecret: string,
+  ) => Promise<TelegramLoginState>
   readonly signOut: () => void
   /** Запрос от имени гостя: подставляет токен, на 401 обновляет сессию и повторяет. */
   readonly authGet: <T>(path: string, schema: import('zod').ZodType<T>) => Promise<T>

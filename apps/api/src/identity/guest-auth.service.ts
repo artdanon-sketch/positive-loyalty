@@ -40,6 +40,19 @@ const GUEST_REFRESH_TTL_SECONDS = 30 * 24 * 60 * 60
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 
+/**
+ * Аккаунт у поставщика входа, приведённый к общему виду.
+ *
+ * Отличаются поставщики ровно почтой: Google отдаёт подтверждённую, LINE —
+ * иногда, Telegram — никогда. Поэтому поле есть, но допускает пустоту,
+ * и от неё зависит единственное — можно ли склеить карты автоматически.
+ */
+export interface SocialAccount {
+  readonly externalId: string
+  readonly email: string | null
+  readonly displayName: string | null
+}
+
 interface GuestRefreshClaims {
   readonly guestId: string
   readonly sessionId: string
@@ -223,10 +236,43 @@ export class GuestAuthService {
       })
     }
 
+    return this.signInWithIdentity('GOOGLE', account, 'en')
+  }
+
+  /**
+   * Вход через Telegram — вторая половина обмена, описанного в контракте
+   * `TelegramLoginStartResult`. Личность к этому моменту уже подтверждена:
+   * сообщение пришло от самого Telegram, а не от того, кто спрашивает.
+   *
+   * ПОЧТЫ У TELEGRAM НЕТ, и это не мелочь: склеить карту с уже существующей
+   * не по чему. Человек, вошедший вчера через Google, а сегодня через Telegram,
+   * получит две карты. Склейка таких карт — отдельная кнопка в приложении,
+   * и делать её догадкой по имени нельзя: совпадение имён встречается чаще,
+   * чем кажется, а ценой ошибки будет чужой баланс.
+   */
+  async loginWithTelegram(account: SocialAccount, locale: string): Promise<GuestAuthResult> {
+    return this.signInWithIdentity('TELEGRAM', account, locale)
+  }
+
+  /**
+   * Общая половина всех входов «через аккаунт»: поставщик уже подтвердил
+   * личность, дальше работа одна и та же независимо от того, кто это был.
+   *
+   * Вынесено сюда сознательно. Google и Telegram отличаются ровно двумя
+   * вещами — как проверяется подтверждение и есть ли почта; всё остальное
+   * (найти способ входа, склеить карты, завести гостя, выдать токены)
+   * совпадает до строчки. Две копии этого кода разъехались бы на первой же
+   * правке, причём разъехались бы молча.
+   */
+  private async signInWithIdentity(
+    provider: 'GOOGLE' | 'LINE' | 'TELEGRAM',
+    account: SocialAccount,
+    locale: string,
+  ): Promise<GuestAuthResult> {
     // Таблица способов входа адресуется самим аккаунтом и политикой не закрыта:
     // в этот момент гость ещё не объявлен, объявлять нечего.
     const known = await this.prisma.guestIdentity.findFirst({
-      where: { provider: 'GOOGLE', externalId: account.externalId },
+      where: { provider, externalId: account.externalId },
       select: { id: true, guestId: true },
     })
 
@@ -269,7 +315,7 @@ export class GuestAuthService {
                 id: guestId,
                 // Телефона нет и не будет спрошен — см. пояснение выше.
                 displayName: account.displayName,
-                locale: 'en',
+                locale,
               },
             })
           : await tx.guest.update({ where: { id: guestId }, data: { lastSeenAt: new Date() } })
@@ -277,7 +323,7 @@ export class GuestAuthService {
       await tx.guestIdentity.create({
         data: {
           guestId,
-          provider: 'GOOGLE',
+          provider,
           externalId: account.externalId,
           email: account.email,
           lastSeenAt: new Date(),
