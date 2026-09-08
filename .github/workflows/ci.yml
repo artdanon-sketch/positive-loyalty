@@ -156,8 +156,10 @@ jobs:
           # было бы лечением симптома: сканер начал бы пропускать целый класс
           # находок ради двух строк, которых вообще не должно существовать.
           APP_PASSWORD="$(openssl rand -hex 16)"
+          PLATFORM_PASSWORD="$(openssl rand -hex 16)"
           export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
           export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/positive_loyalty_test?schema=public"
+          export DATABASE_URL_TEST_PLATFORM_ROLE="postgresql://positive_platform:${PLATFORM_PASSWORD}@127.0.0.1:5432/positive_loyalty_test?schema=public"
 
           # Сервис создаёт только positive_loyalty (POSTGRES_DB). Тестовую заводим рядом.
           psql -h 127.0.0.1 -U postgres -d postgres -c 'CREATE DATABASE positive_loyalty_test;'
@@ -169,6 +171,10 @@ jobs:
           # Вход и пароль выдаём отдельным шагом: в миграции их быть не должно.
           psql -h 127.0.0.1 -U postgres -d positive_loyalty_test \
             -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
+
+          # Вторая роль — та, которой ходит админка платформы. Заводится той же
+          # миграцией и тоже без права входа; пароль выдаём здесь.
+          psql -h 127.0.0.1 -U postgres -d positive_loyalty_test -c "ALTER ROLE positive_platform LOGIN PASSWORD '${PLATFORM_PASSWORD}';"
 
           pnpm --filter @positive/api run test:integration
 
@@ -194,6 +200,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           APP_PASSWORD="$(openssl rand -hex 16)"
+          PLATFORM_PASSWORD="$(openssl rand -hex 16)"
           export ACCESS_TOKEN_SECRET="$(openssl rand -base64 36)"
 
           # ДВЕ РАЗНЫЕ БАЗЫ — по той же причине, что и в шаге выше. Сначала я
@@ -208,6 +215,7 @@ jobs:
           export DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/positive_loyalty_schema"
           export DATABASE_URL_TEST="postgresql://postgres:postgres@127.0.0.1:5432/${DB}"
           export DATABASE_URL_TEST_APP_ROLE="postgresql://positive_app:${APP_PASSWORD}@127.0.0.1:5432/${DB}"
+          export DATABASE_URL_TEST_PLATFORM_ROLE="postgresql://positive_platform:${PLATFORM_PASSWORD}@127.0.0.1:5432/${DB}"
 
           psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE ${DB};"
 
@@ -258,6 +266,10 @@ jobs:
           CHECK_PUBLIC "после наката миграций"
 
           psql -h 127.0.0.1 -U postgres -d "${DB}"             -c "ALTER ROLE positive_app LOGIN PASSWORD '${APP_PASSWORD}';"
+
+          # Вторая роль — та, которой ходит админка платформы. Заводится той же
+          # миграцией и тоже без права входа; пароль выдаём здесь.
+          psql -h 127.0.0.1 -U postgres -d "${DB}" -c "ALTER ROLE positive_platform LOGIN PASSWORD '${PLATFORM_PASSWORD}';"
 
           echo "── Наши таблицы обязаны быть в loyalty, а не у соседа ──"
           psql -h 127.0.0.1 -U postgres -d "${DB}" -tAc "
