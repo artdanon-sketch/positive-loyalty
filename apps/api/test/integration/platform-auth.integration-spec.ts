@@ -224,7 +224,12 @@ describe('Вход в админку платформы', () => {
    * добраться до десятой, подбирающему придётся честно выждать каждую паузу —
    * ровно за этим прогрессивные задержки и нужны.
    *
-   * Возвращает момент, когда жёсткая блокировка ещё действует.
+   * Возвращает момент ДЕСЯТОЙ попытки — то есть время, когда часовая блокировка
+   * уже наступила и ещё действует.
+   *
+   * Перематываем только МЕЖДУ попытками. Перемотать и после десятой означало бы
+   * выйти за край часовой блокировки, и следующий вход прошёл бы, сбросив
+   * счётчики, — именно на этом первая версия этой функции и провалилась в CI.
    */
   const driveToHardLock = async (email: string, secret: string): Promise<Date> => {
     let cursor = now
@@ -233,6 +238,10 @@ describe('Вход в админку платформы', () => {
       await expect(
         service.signIn(signInInput(email, 'неверный', secret, cursor)),
       ).rejects.toBeInstanceOf(PlatformSignInFailedError)
+
+      if (attempt === 10) {
+        break
+      }
 
       const state = await prisma.platformAdmin.findFirstOrThrow({ where: { email } })
 
