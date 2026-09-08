@@ -693,10 +693,16 @@ export class LedgerService {
    * целостности денег, по которому положен алерт critical.
    */
   async reconcile(membershipId: string, scope: TenantScope): Promise<BalanceReconciliation> {
-    const report = await reconcileMembershipBalance(this.prisma, {
-      membershipId,
-      tenantId: scope.tenantId,
-    })
+    // Через forTenant, а не базовым клиентом: сверка читает Membership и LedgerEntry,
+    // обе таблицы под RLS. Без объявленного тенанта обе вернули бы пусто, и сверка
+    // бодро отрапортовала бы «расхождений нет» — просто потому, что не увидела ничего.
+    // Молчаливое «всё хорошо» здесь опаснее ошибки: это сверка целостности денег.
+    const report = await this.prisma.forTenant(scope.tenantId, (tx) =>
+      reconcileMembershipBalance(tx, {
+        membershipId,
+        tenantId: scope.tenantId,
+      }),
+    )
 
     if (!report.consistent) {
       this.logger.error(
@@ -723,18 +729,22 @@ export class LedgerService {
    */
   private async commit(params: CommitParams): Promise<LedgerOperationResult> {
     try {
-      const { row, replayed } = await this.runSerializable(params.operation, async (tx) => {
-        const existing = await tx.ledgerEntry.findUnique({
-          where: { idempotencyKey: params.idempotencyKey },
-        })
+      const { row, replayed } = await this.runSerializable(
+        params.operation,
+        params.tenantId,
+        async (tx) => {
+          const existing = await tx.ledgerEntry.findUnique({
+            where: { idempotencyKey: params.idempotencyKey },
+          })
 
-        if (existing !== null) {
-          this.assertReplayMatches(existing, params)
-          return { row: existing, replayed: true }
-        }
+          if (existing !== null) {
+            this.assertReplayMatches(existing, params)
+            return { row: existing, replayed: true }
+          }
 
-        return { row: await params.write(tx), replayed: false }
-      })
+          return { row: await params.write(tx), replayed: false }
+        },
+      )
 
       if (replayed) {
         this.logReplay(params.operation, row.id)
@@ -831,20 +841,44 @@ export class LedgerService {
    *
    * Ретраится ТОЛЬКО конфликт сериализации. Доменные ошибки и нарушения UNIQUE
    * проходят наверх сразу: повторять «баллов не хватает» бессмысленно.
+   *
+   * ЗАЧЕМ ЗДЕСЬ tenantId. Транзакция открывается своя, а `SET LOCAL` живёт ровно
+   * внутри той транзакции, где выполнен. Значит объявить тенанта снаружи, обёрткой
+   * `forTenant`, невозможно в принципе: до этой транзакции то объявление не долетит.
+   * Без него политики RLS сравнивают `tenantId` с NULL, не совпадает ничего, и
+   * операция не «покажет лишнее», а не сделает НИЧЕГО: SELECT вернёт ноль строк,
+   * INSERT упадёт на WITH CHECK. Фильтр по tenantId в запросах — это первый рубеж,
+   * а вот второй, серверный, до этой правки в журнале отсутствовал.
    */
   private async runSerializable<T>(
     operation: string,
+    tenantId: string,
     work: (tx: TransactionClient) => Promise<T>,
   ): Promise<T> {
+    if (tenantId === '') {
+      throw new Error(
+        'runSerializable вызван без tenantId. Пустое значение оставило бы транзакцию ' +
+          'журнала без объявленного тенанта, и политики RLS отвергли бы запись.',
+      )
+    }
+
     let lastError: unknown
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await this.prisma.$transaction(work, {
-          isolationLevel: 'Serializable',
-          timeout: TRANSACTION_TIMEOUT_MS,
-          maxWait: TRANSACTION_MAX_WAIT_MS,
-        })
+        return await this.prisma.$transaction(
+          async (tx) => {
+            // Первым же запросом в транзакции — иначе любой запрос до этой строки
+            // уйдёт в базу без тенанта и попадёт под политику вслепую.
+            await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`
+            return work(tx)
+          },
+          {
+            isolationLevel: 'Serializable',
+            timeout: TRANSACTION_TIMEOUT_MS,
+            maxWait: TRANSACTION_MAX_WAIT_MS,
+          },
+        )
       } catch (error) {
         if (!isRetryableTransactionError(error)) {
           throw error
