@@ -802,3 +802,129 @@ model AuditLog {
   @@index([actorType, actorId, occurredAt(sort: Desc)])
   @@index([action, occurredAt(sort: Desc)])
 }
+
+// ─── Админка платформы: вход ─────────────────────────────────────────────────
+//
+// Отдельный контур, а не роль внутри Staff. Причина не в удобстве: Staff.tenantId
+// обязателен и является внешним ключом на Tenant, то есть сотрудник без заведения
+// в этой схеме невыразим. Админ платформы именно таков — он над всеми заведениями,
+// а не внутри одного.
+//
+// Права на эти четыре таблицы у positive_app ОТОБРАНЫ целиком (миграция
+// 20260909170000). Основное приложение, обслуживающее владельцев и кассиров,
+// не должно иметь возможности прочитать даже хеш пароля админа платформы,
+// не говоря о секрете второго фактора.
+
+/// Владелец платформы. Их единицы, и каждый видит данные всех заведений.
+model PlatformAdmin {
+  id          String @id @default(uuid())
+  email       String @unique
+  displayName String
+
+  /// scrypt в том же формате, что PIN сотрудника (apps/api/src/auth/pin.ts).
+  passwordHash String
+
+  /// Секрет TOTP, зашифрованный AES-256-GCM ключом из окружения.
+  /// Компрометация одной только базы не должна давать возможность
+  /// генерировать коды второго фактора.
+  totpSecretEnc String?
+
+  /// Пока null — второй фактор заведён, но ещё не подтверждён первым кодом.
+  /// Вход при этом запрещён: наполовину настроенная 2FA хуже отсутствующей.
+  totpConfirmedAt DateTime?
+
+  /// docs/05, раздел 2: прогрессивные задержки и блокировка после 10 попыток.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  /// Номер последнего ПРИНЯТОГО окна TOTP.
+  ///
+  /// RFC 6238, раздел 5.2 требует прямо: удачно проверенный код не принимается
+  /// второй раз. Без этого подсмотренный код живёт все 30 секунд своего окна,
+  /// а с допуском на расхождение часов — до полутора минут.
+  ///
+  /// Хранится номер окна, а не сам код: сравнение «пришедшее окно должно быть
+  /// строго больше принятого» отсекает и повтор, и попытку отмотать время назад.
+  lastTotpCounter BigInt?
+
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  devices       PlatformAdminDevice[]
+  sessions      PlatformSession[]
+  recoveryCodes PlatformRecoveryCode[]
+}
+
+/// Доверенное устройство.
+///
+/// Взяло на себя роль IP-allowlist, отменённого 9 сентября 2026 (docs/05,
+/// раздел 2). Список адресов и вход с телефона несовместимы, а привязка
+/// к устройству работает одинаково и на мобильном интернете, и дома.
+model PlatformAdminDevice {
+  id      String @id @default(uuid())
+  adminId String
+
+  /// Хеш идентификатора, а не сам идентификатор: украденная база не должна
+  /// давать готовое значение, которым можно притвориться доверенным устройством.
+  deviceIdHash String @unique
+
+  /// Человекочитаемо: «iPhone Артёма», чтобы отзывать осознанно.
+  label String
+
+  approvedAt DateTime  @default(now())
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([adminId, revokedAt])
+}
+
+/// Код восстановления на случай потерянного телефона.
+///
+/// Одноразовые: использованный помечается и больше не принимается. Хранятся
+/// хешами — распечатанный список у владельца, в базе только отпечатки.
+model PlatformRecoveryCode {
+  id       String @id @default(uuid())
+  adminId  String
+  codeHash String @unique
+
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([adminId, usedAt])
+}
+
+/// Сессия админа платформы.
+///
+/// Отдельно от Session по той же причине, что и сам админ отдельно от Staff:
+/// Session.tenantId обязателен и ссылается на Tenant.
+model PlatformSession {
+  id      String @id @default(uuid())
+  adminId String
+
+  /// Хеш refresh-токена. Ротация с обнаружением повтора — как у сотрудников.
+  refreshTokenHash String @unique
+
+  /// Цепочка ротаций: повторное использование отозванного гасит всю семью.
+  familyId String
+
+  /// Устройство, с которого выдана сессия. Хеш, не идентификатор.
+  deviceIdHash String?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  admin PlatformAdmin @relation(fields: [adminId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([adminId, revokedAt])
+  @@index([familyId])
+  @@index([expiresAt])
+}
