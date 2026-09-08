@@ -293,14 +293,35 @@ describe('Вход в админку платформы', () => {
     expect(second.failedAttempts).toBe(first.failedAttempts)
   })
 
-  it('не впускает, пока второй фактор не подтверждён', async () => {
+  it('первый вход подтверждает второй фактор, а не отвергается из-за него', async () => {
     const { admin, password, secret } = await createAdmin()
 
+    // Ровно то состояние, в котором учётку оставляет скрипт bootstrap-admin.
     await prisma.platformAdmin.update({
       where: { id: admin.id },
       data: { totpConfirmedAt: null },
     })
 
+    // Отдельного экрана «подтвердите аутентификатор» нет и быть не может:
+    // чтобы до него добраться, надо войти. Круг разрывает сам сошедшийся код —
+    // предъявить его может только тот, у кого секрет уже в телефоне.
+    const result = await service.signIn(signInInput(admin.email, password, secret, now))
+    expect(result.adminId).toBe(admin.id)
+
+    const after = await prisma.platformAdmin.findUniqueOrThrow({ where: { id: admin.id } })
+    expect(after.totpConfirmedAt, 'первый удачный вход обязан подтвердить фактор').not.toBeNull()
+  })
+
+  it('без секрета второго фактора не впускает даже с верным паролем', async () => {
+    const { admin, password, secret } = await createAdmin()
+
+    await prisma.platformAdmin.update({
+      where: { id: admin.id },
+      data: { totpSecretEnc: null, totpConfirmedAt: null },
+    })
+
+    // Секрета нет вовсе — значит второго фактора нет. Впустить по одному
+    // паролю учётную запись, видящую все заведения, нельзя ни при каких условиях.
     await expect(
       service.signIn(signInInput(admin.email, password, secret, now)),
     ).rejects.toBeInstanceOf(PlatformSignInFailedError)

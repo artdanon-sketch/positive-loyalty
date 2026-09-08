@@ -14,7 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --config vitest.integration.config.mts"
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "start:platform": "node dist/platform-main",
+    "dev:platform": "nest start --watch --entryFile platform-main",
+    "platform:create-admin": "node dist/platform/bootstrap-admin"
   },
   "dependencies": {
     "@nestjs/common": "10.4.22",

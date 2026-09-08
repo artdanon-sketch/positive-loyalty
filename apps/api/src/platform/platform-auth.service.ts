@@ -6,6 +6,7 @@ import { hashPin, verifyPin } from '../auth/pin'
 import { AuditService } from '../core/audit.service'
 
 import { PlatformPrismaService } from './platform-prisma.service'
+import { platformTokenSecret, signPlatformToken } from './platform-token'
 import { openSecret, keyFromEnv } from './secret-box'
 import { matchTotpCounter } from './totp'
 
@@ -81,6 +82,10 @@ export interface SignInInput {
 export interface SignInResult {
   readonly adminId: string
   readonly displayName: string
+  /** Короткоживущий токен доступа. Подписан ОТДЕЛЬНЫМ секретом — см. platform-token.ts. */
+  readonly accessToken: string
+  /** Секунды жизни accessToken: клиент не должен вычитывать это из самого токена. */
+  readonly expiresIn: number
   readonly refreshToken: string
   readonly sessionId: string
   /** Устройство завели прямо сейчас — экран входа должен об этом сказать. */
@@ -126,6 +131,9 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 
 /** Refresh живёт 30 дней — столько же, сколько у остальных субъектов системы. */
 const REFRESH_TTL_DAYS = 30
+
+/** 15 минут — docs/05, раздел 2: столько же, сколько у владельца заведения. */
+const ACCESS_TTL_SECONDS = 900
 
 @Injectable()
 export class PlatformAuthService {
@@ -174,12 +182,24 @@ export class PlatformAuthService {
       throw new PlatformSignInFailedError()
     }
 
-    if (admin.totpSecretEnc === null || admin.totpConfirmedAt === null) {
-      // Наполовину настроенный второй фактор хуже отсутствующего: он создаёт
-      // ощущение защиты, которой нет. Вход запрещён до подтверждения.
+    if (admin.totpSecretEnc === null) {
+      // Секрета нет вовсе — впустить по одному паролю нельзя ни при каких
+      // обстоятельствах: это учётная запись, видящая все заведения.
       await this.recordFailure(admin.id, email, 'ВТОРОЙ_ФАКТОР_НЕ_НАСТРОЕН', input)
       throw new PlatformSignInFailedError()
     }
+
+    // ПЕРВЫЙ УДАЧНЫЙ ВХОД И ЕСТЬ ПОДТВЕРЖДЕНИЕ ВТОРОГО ФАКТОРА.
+    //
+    // Секрет заводится скриптом bootstrap-admin и до первого входа помечен
+    // неподтверждённым. Отдельного экрана «подтвердите аутентификатор» нет
+    // и быть не может: чтобы до него добраться, надо войти, а вход требует
+    // подтверждённого фактора — замкнутый круг.
+    //
+    // Разрывается он тем, что сошедшийся код САМ является доказательством:
+    // предъявить его может только тот, у кого секрет уже в аутентификаторе.
+    // Безопасность при этом не страдает — код требуется в любом случае,
+    // и пароля в одиночку не хватает ни на одном шаге.
 
     const secret = openSecret(admin.totpSecretEnc, keyFromEnv(process.env['PLATFORM_TOTP_ENC_KEY']))
     const counter = matchTotpCounter(secret, input.totpCode, input.now.getTime())
@@ -205,7 +225,15 @@ export class PlatformAuthService {
       throw new PlatformSignInFailedError()
     }
 
-    return this.completeSignIn(admin.id, admin.displayName, counter, deviceIdHash, enrolled, input)
+    return this.completeSignIn(
+      admin.id,
+      admin.displayName,
+      counter,
+      deviceIdHash,
+      enrolled,
+      admin.totpConfirmedAt === null,
+      input,
+    )
   }
 
   /**
@@ -259,6 +287,7 @@ export class PlatformAuthService {
     counter: number,
     deviceIdHash: string,
     deviceEnrolled: boolean,
+    totpWasUnconfirmed: boolean,
     input: SignInInput,
   ): Promise<SignInResult> {
     const refreshToken = randomBytes(32).toString('base64url')
@@ -271,6 +300,9 @@ export class PlatformAuthService {
         lockedUntil: null,
         lastTotpCounter: BigInt(counter),
         lastSeenAt: input.now,
+        // Проставляется один раз: сошедшийся код доказал, что аутентификатор
+        // подключён. Повторные входы значение не трогают.
+        ...(totpWasUnconfirmed ? { totpConfirmedAt: input.now } : {}),
       },
     })
 
@@ -306,7 +338,21 @@ export class PlatformAuthService {
       userAgent: input.userAgent ?? null,
     })
 
-    return { adminId, displayName, refreshToken, sessionId: session.id, deviceEnrolled }
+    const accessToken = signPlatformToken(
+      { adminId, sessionId: session.id },
+      platformTokenSecret(),
+      ACCESS_TTL_SECONDS,
+    )
+
+    return {
+      adminId,
+      displayName,
+      accessToken,
+      expiresIn: ACCESS_TTL_SECONDS,
+      refreshToken,
+      sessionId: session.id,
+      deviceEnrolled,
+    }
   }
 
   /** Неудачная попытка: счётчик вверх, задержка, след в аудите. */
