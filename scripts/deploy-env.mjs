@@ -145,6 +145,22 @@ const corsOrigins = origins.map((o) => new URL(o).origin).join(',')
 
 const accessTokenSecret = randomBytes(48).toString('base64url')
 
+// ── Секреты админки платформы ────────────────────────────────────────────────
+//
+// ОТДЕЛЬНЫЕ ОТ ВЫШЕ, И ЭТО ГЛАВНОЕ. Панель платформы работает вторым процессом
+// и видит данные ВСЕХ заведений. Общий с основным API секрет подписи означал бы,
+// что скомпрометированная панель может выписать токен любого владельца.
+// А ключ шифрования второго фактора основному API не нужен вовсе.
+//
+// Каждый процесс получает ровно те секреты, которыми пользуется сам.
+
+const platformTokenSecret = randomBytes(48).toString('base64url')
+const platformTotpEncKey = randomBytes(32).toString('base64')
+
+// Строку подключения роли платформы берём из .env, а не выдумываем: пароль
+// этой роли выдавал администратор среды, и второго такого пароля не существует.
+const platformDatabaseUrl = envValue('DATABASE_URL_PLATFORM')
+
 // ── Файл ─────────────────────────────────────────────────────────────────────
 
 const lines = [
@@ -166,6 +182,33 @@ const lines = [
 
 writeFileSync(OUT_FILE, lines.join('\n'))
 
+// ── Файл для сервиса админки платформы ───────────────────────────────────────
+
+const PLATFORM_OUT_FILE = '.env.railway.platform'
+
+const platformLines = [
+  '# Переменные для ВТОРОГО сервиса Railway — админки платформы.',
+  '#',
+  '# Это НЕ те же настройки, что у сервиса api, и путать их нельзя:',
+  '#   • роль базы здесь positive_platform — она видит все заведения;',
+  '#   • секрет подписи свой, чтобы токены двух контуров были несовместимы;',
+  '#   • ACCESS_TOKEN_SECRET здесь НЕТ намеренно: панели он не нужен, а его',
+  '#     наличие позволило бы ей выписывать токены владельцев заведений.',
+  '#',
+  '# Куда вставлять:',
+  '#   проект → сервис platform → Variables → Raw Editor → вставить → Save.',
+  '',
+  'NODE_ENV=production',
+  `DATABASE_URL_PLATFORM=${platformDatabaseUrl ?? '<нет в .env — см. подсказку в терминале>'}`,
+  `DATABASE_SCHEMA=${schema}`,
+  `PLATFORM_ACCESS_TOKEN_SECRET=${platformTokenSecret}`,
+  `PLATFORM_TOTP_ENC_KEY=${platformTotpEncKey}`,
+  `CORS_ORIGINS=${corsOrigins}`,
+  '',
+]
+
+writeFileSync(PLATFORM_OUT_FILE, platformLines.join('\n'))
+
 say('')
 say('✓ Настройки для сервера собраны.')
 say('')
@@ -179,4 +222,23 @@ say('  Что делать: открой .env.railway, скопируй всё �
 say('  и вставь в Railway → сервис api → Variables → Raw Editor → Save.')
 say('')
 say('  Ни одного пароля на этот экран не выведено.')
+say('')
+say('─────────────────────────────────────────────────────────')
+say('')
+say('✓ Настройки для админки платформы собраны отдельно.')
+say('')
+say('  Файл:  .env.railway.platform')
+say('  База:  под ролью positive_platform — той, что видит все заведения')
+say('')
+if (platformDatabaseUrl === undefined || platformDatabaseUrl === '') {
+  say('  ВНИМАНИЕ: в .env нет DATABASE_URL_PLATFORM.')
+  say('  Роль заводится миграцией без права входа; пароль ей выдаёт')
+  say('  администратор среды одной командой:')
+  say("    ALTER ROLE positive_platform LOGIN PASSWORD '<пароль>';")
+  say('  Впиши строку подключения в .env и запусти скрипт заново.')
+  say('')
+}
+say('  ВАЖНО ПРО PLATFORM_TOTP_ENC_KEY: им зашифрованы секреты второго фактора.')
+say('  Потеря ключа = потеря 2FA у всех админов, восстановить будет нечем.')
+say('  Храни там же, где пароли базы.')
 say('')
