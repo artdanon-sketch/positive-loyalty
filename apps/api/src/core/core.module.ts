@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common'
 
+import { AuditService } from './audit.service'
 import { LedgerEventsService } from './ledger-events.service'
 import { LedgerService } from './ledger.service'
 import { PrismaService } from './prisma.service'
@@ -20,10 +21,16 @@ import { PrismaService } from './prisma.service'
  * зависимостей: журнал публикует событие, бэк-офис на него подписывается. Если бы
  * издатель лежал в `admin`, ядро зависело бы от прикладного модуля — и подписаться
  * на журнал из кассы или из воркера стало бы нельзя, не потащив за собой бэк-офис.
+ *
+ * `AuditService` — в ядре по той же причине, что и Prisma: писать в аудит обязаны
+ * все контуры без исключения. Касса при отмене операции, бэк-офис при правке
+ * конфига, будущая админка платформы при входе под владельцем. Модуль, в который
+ * аудит пришлось бы импортировать, рано или поздно забудут импортировать —
+ * и пропажа следа обнаружится ровно тогда, когда след понадобится.
  */
 @Global()
 @Module({
-  providers: [PrismaService, LedgerService, LedgerEventsService],
-  exports: [PrismaService, LedgerService, LedgerEventsService],
+  providers: [PrismaService, LedgerService, LedgerEventsService, AuditService],
+  exports: [PrismaService, LedgerService, LedgerEventsService, AuditService],
 })
 export class CoreModule {}

@@ -744,3 +744,61 @@ model TelegramLoginRequest {
 
   @@index([expiresAt])
 }
+
+/// Кто совершил действие, попавшее в аудит.
+///
+/// Повторяет Role и добавляет двух субъектов, которых в Role нет: SYSTEM для
+/// фоновых заданий и GUEST для действий самого гостя. Отдельное перечисление,
+/// а не общий ActorType: в ActorType нет PLATFORM_ADMIN и не должно быть —
+/// он живёт в LedgerEntry, где админу платформы делать нечего по матрице
+/// docs/05, раздел 3.
+enum AuditActorType {
+  SYSTEM
+  GUEST
+  CASHIER
+  MANAGER
+  OWNER
+  PLATFORM_ADMIN
+}
+
+/// След действий, которые docs/05 раздел 9 требует хранить 24 месяца.
+///
+/// ПРАВА НАОБОРОТ ОБЫЧНОГО: приложению выдан только INSERT. SELECT и UPDATE
+/// отобраны миграцией, DELETE не выдавался. Поэтому писать сюда через Prisma
+/// create() НЕЛЬЗЯ — он делает RETURNING, то есть читает строку обратно.
+/// Запись идёт через $executeRaw, см. AuditService.
+///
+/// Читать журнал будет админка платформы своей ролью Postgres — отдельной
+/// миграцией. Ошибка в обычном API не должна уметь выгрузить наблюдения.
+model AuditLog {
+  id         String   @id @default(uuid())
+  occurredAt DateTime @default(now())
+
+  /// NULL — действие вне заведения: вход админа платформы, правка общего прайсинга.
+  tenantId String?
+
+  actorType AuditActorType
+  actorId   String?
+
+  /// Машиночитаемо: IMPERSONATE_START, PHONE_REVEALED, BALANCE_ADJUSTED.
+  action String
+
+  entityType String?
+  entityId   String?
+
+  /// Форма зависит от действия — общая колонка под все случаи не описала бы ни один.
+  oldValue Json?
+  newValue Json?
+
+  /// Для impersonate обязательна (docs/02, раздел 6). Проверяется в коде:
+  /// обязательность зависит от action, а не от таблицы.
+  reason String?
+
+  ip        String?
+  userAgent String?
+  requestId String?
+
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([actorType, actorId, occurredAt(sort: Desc)])
+  @@index([action, occurredAt(sort: Desc)])
+}
