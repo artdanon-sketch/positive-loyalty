@@ -45,6 +45,16 @@ const DEFAULT_DIGITS = 6
 /** ±1 шаг: см. «зачем окно допуска» в шапке файла. */
 const DEFAULT_WINDOW = 1
 
+/**
+ * Потолок окна допуска.
+ *
+ * Окно существует ради расхождения часов телефона и сервера, а оно измеряется
+ * секундами, а не минутами. Три шага — это ±90 секунд, с запасом на любые живые
+ * часы. Всё, что шире, — уже не терпимость к часам, а перебор кодов в подарок:
+ * при окне 1000 одна попытка проверяет две тысячи вариантов вместо трёх.
+ */
+const MAX_WINDOW = 3
+
 /** Меньше шести цифр — это уже перебираемо за окно жизни кода; больше десяти не влезает в HMAC. */
 const MIN_DIGITS = 6
 const MAX_DIGITS = 10
@@ -170,20 +180,55 @@ export function verifyTotp(
   atMs: number,
   window: number = DEFAULT_WINDOW,
 ): boolean {
+  return matchTotpCounter(secret, code, atMs, window) !== null
+}
+
+/**
+ * То же, что verifyTotp, но возвращает НОМЕР совпавшего окна, а не «да/нет».
+ *
+ * ЗАЧЕМ. RFC 6238, раздел 5.2 требует не принимать удачно проверенный код второй
+ * раз. Чтобы это обеспечить, сервису входа мало ответа «код верный» — ему нужно
+ * знать, КАКОЕ окно совпало, чтобы сравнить его с последним принятым и запомнить.
+ *
+ * Здесь одна реализация на две функции сознательно: verifyTotp сведён к вызову
+ * этой. Две копии перебора окон разъехались бы на первой же правке, причём молча —
+ * такие расхождения не ловятся ничем, кроме внимательного чтения.
+ *
+ * Верхний потолок окна не декоративен: без него вызов с window: 1000 честно
+ * проверил бы две тысячи кодов, то есть превратил бы допуск на расхождение часов
+ * в готовый подбор.
+ */
+export function matchTotpCounter(
+  secret: string,
+  code: string,
+  atMs: number,
+  window: number = DEFAULT_WINDOW,
+): number | null {
   if (!Number.isInteger(window) || window < 0) {
-    throw new Error('verifyTotp: окно допуска должно быть целым неотрицательным числом шагов')
+    throw new Error('matchTotpCounter: окно допуска должно быть целым неотрицательным числом шагов')
+  }
+
+  if (window > MAX_WINDOW) {
+    throw new Error(
+      `matchTotpCounter: окно допуска ${window} шагов больше разумного потолка ${MAX_WINDOW}. ` +
+        'Широкое окно — это не «терпимость к часам», а подбор кода в подарок.',
+    )
   }
 
   // Аутентификаторы показывают код как «123 456», и ровно так его копируют.
   const candidate = code.replace(/\s/g, '')
 
   if (candidate.length !== DEFAULT_DIGITS || !/^\d+$/.test(candidate)) {
-    return false
+    // null, а не false: у этой функции тип возврата number | null, и false здесь
+    // молча прошёл бы проверку `!== null` в verifyTotp — то есть код неверной
+    // длины считался бы верным. Ровно эта ошибка и была допущена при переиспользовании
+    // кода; её поймали три существующих теста, а не чтение.
+    return null
   }
 
   const key = base32Decode(secret)
   const candidateBytes = Buffer.from(candidate, 'utf8')
-  let matched = false
+  let matchedCounter: number | null = null
 
   for (let shift = -window; shift <= window; shift += 1) {
     const counter = counterAt(atMs, DEFAULT_STEP_SECONDS) + shift
@@ -200,10 +245,15 @@ export function verifyTotp(
     //
     // Из цикла не выходим досрочно намеренно: ранний выход выдал бы по времени,
     // какое именно окно совпало, то есть насколько разошлись часы.
-    matched = timingSafeEqual(expected, candidateBytes) || matched
+    //
+    // Запоминание номера ранним выходом НЕ является: перебор идёт до конца,
+    // присваивание случается не более одного раза и цикл не укорачивает.
+    if (timingSafeEqual(expected, candidateBytes)) {
+      matchedCounter = counter
+    }
   }
 
-  return matched
+  return matchedCounter
 }
 
 /**

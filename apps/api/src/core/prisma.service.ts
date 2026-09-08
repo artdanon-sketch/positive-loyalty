@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, Optional } from '@nestjs/common'
 import type { OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { PrismaPg } from '@prisma/adapter-pg'
 
@@ -226,11 +226,26 @@ const createClientOptions = (): ConstructorParameters<typeof PrismaClient>[0] =>
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name)
 
-  constructor() {
+  /**
+   * Параметр нужен ровно одному наследнику — подключению админки платформы.
+   *
+   * Оно ходит в базу ДРУГОЙ ролью Postgres (positive_platform), но должно
+   * оставаться совместимым по типу: иначе AuditService, принимающий PrismaService,
+   * пришлось бы переделывать под интерфейс — то есть усложнять общий код ради
+   * одного случая. Умолчание сохраняет прежнее поведение для всех остальных.
+   */
+  constructor(
+    // @Optional() обязателен, а не украшение: без него Nest видит параметр
+    // конструктора, не находит для него провайдера и роняет ВЕСЬ модуль ядра
+    // с «can't resolve dependencies of the PrismaService». Значение по
+    // умолчанию его при этом не спасает — контейнер разбирает метаданные
+    // конструктора, а не сигнатуру TypeScript. Поймано тестом health e2e.
+    @Optional() options: ConstructorParameters<typeof PrismaClient>[0] = createClientOptions(),
+  ) {
     // Разбор конфигурации внутри аргумента super(), а не отдельной строкой выше:
     // так конструктор остаётся тривиальным, а неверная конфигурация роняет процесс
     // на этапе создания провайдера, до того как порт начнёт слушаться.
-    super(createClientOptions())
+    super(options)
   }
 
   async onModuleInit(): Promise<void> {
