@@ -148,7 +148,9 @@ export type CommitTransactionInput = z.infer<typeof CommitTransactionInput>
 - [ ] Работает в обеих темах (для UI)
 - [ ] Локализация: строки в JSON, не в коде (для UI)
 - [ ] Секретов в диффе нет
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` проходит локально
+- [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check` проходит локально
+
+`format:check` — это отдельный шаг в CI, и он валит сборку так же, как упавший тест. Если пропустить его локально, узнаешь о красной сборке уже в PR. `pnpm format` чинит форматирование на месте.
 
 ---
 
@@ -190,6 +192,8 @@ pnpm db:studio
 pnpm test             # все тесты
 pnpm test:e2e
 pnpm lint && pnpm typecheck
+pnpm format:check     # тот же контроль формата, что и в CI
+pnpm format           # починить формат на месте
 pnpm build
 ```
 
