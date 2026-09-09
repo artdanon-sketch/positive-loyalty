@@ -64,10 +64,13 @@ interface Scene {
   membership: string
   offerId: string
   termId: string
+  saleKindId: string
 }
 
 /** Студия, ресторан, гость с участием и активное условие между ними. */
-const seed = async (trigger?: unknown): Promise<Scene> => {
+const byAmount = (): unknown => ({ type: 'ON_PURCHASE', minAmount: 100_000 })
+
+const seed = async (trigger: (saleKindId: string) => unknown = byAmount): Promise<Scene> => {
   const studio = randomUUID()
   const resto = randomUUID()
   const guest = randomUUID()
@@ -75,6 +78,7 @@ const seed = async (trigger?: unknown): Promise<Scene> => {
   const offerId = randomUUID()
   const partnershipId = randomUUID()
   const termId = randomUUID()
+  const saleKindId = randomUUID()
 
   for (const id of [studio, resto]) {
     await owner.query(
@@ -85,6 +89,13 @@ const seed = async (trigger?: unknown): Promise<Scene> => {
   }
 
   await owner.query(`INSERT INTO "Guest" ("id") VALUES ($1)`, [guest])
+
+  // Справочник видов ведёт заведение-источник: это его абонемент.
+  await owner.query(`INSERT INTO "SaleKind" ("id","tenantId","name") VALUES ($1,$2,$3)`, [
+    saleKindId,
+    studio,
+    'Абонемент на 10 занятий',
+  ])
   await owner.query(`INSERT INTO "Membership" ("id","guestId","tenantId") VALUES ($1,$2,$3)`, [
     membership,
     guest,
@@ -114,27 +125,32 @@ const seed = async (trigger?: unknown): Promise<Scene> => {
       studio,
       resto,
       offerId,
-      JSON.stringify(trigger ?? { type: 'ON_PURCHASE', minAmount: 100_000 }),
+      JSON.stringify(trigger(saleKindId)),
       JSON.stringify({ kind: 'FREE_ITEM', itemName: 'Ролл Филадельфия', minCheck: 80_000 }),
       JSON.stringify({ totalGrants: null, perGuest: 5, dailyCap: null }),
     ],
   )
 
-  return { studio, resto, guest, membership, offerId, termId }
+  return { studio, resto, guest, membership, offerId, termId, saleKindId }
 }
 
 /** Запись журнала. Пишем владельцем: журнал наполняет ledger, а не этот тест. */
 const entry = async (
   scene: Scene,
-  over: { type?: string; refType?: string | null; basisAmount?: number | null } = {},
+  over: {
+    type?: string
+    refType?: string | null
+    basisAmount?: number | null
+    saleKindId?: string | null
+  } = {},
 ): Promise<string> => {
   const id = randomUUID()
 
   await owner.query(
     `INSERT INTO "LedgerEntry"
        ("id","tenantId","guestId","membershipId","type","amount","balanceAfter",
-        "basisAmount","source","refType","idempotencyKey","actorType")
-     VALUES ($1,$2,$3,$4,$5::"LedgerType",10,10,$6,'SIGNED_QR',$7,$8,'SYSTEM')`,
+        "basisAmount","source","refType","idempotencyKey","actorType","saleKindId")
+     VALUES ($1,$2,$3,$4,$5::"LedgerType",10,10,$6,'SIGNED_QR',$7,$8,'SYSTEM',$9)`,
     [
       id,
       scene.studio,
@@ -144,6 +160,7 @@ const entry = async (
       over.basisAmount === undefined ? 500_000 : over.basisAmount,
       over.refType === undefined ? 'receipt' : over.refType,
       randomUUID(),
+      over.saleKindId ?? null,
     ],
   )
 
@@ -286,8 +303,26 @@ describe('Разгребатель партнёрских триггеров', (
     ).rejects.toThrow()
   })
 
+  it('ПРИМЕР ИЗ ТЗ ЦЕЛИКОМ: абонемент в журнале — промокод от ресторана', async () => {
+    const scene = await seed((saleKindId) => ({
+      type: 'ON_SALE_KIND',
+      saleKindId,
+      minAmount: 500_000,
+    }))
+
+    // Ужин на ту же сумму: по деньгам неотличим, по виду — другой.
+    // Ради этого различения справочник и заводился.
+    await entry(scene, { saleKindId: null })
+    await sweep.tick()
+    expect(await grantCount(scene.offerId), 'продажа без вида — не абонемент').toBe(0)
+
+    await entry(scene, { saleKindId: scene.saleKindId })
+    await sweep.tick()
+    expect(await grantCount(scene.offerId), 'абонемент — подарок').toBe(1)
+  })
+
   it('СЧИТАЕТ ВИЗИТЫ ПО ЖУРНАЛУ: третий визит — третья запись', async () => {
-    const scene = await seed({ type: 'ON_NTH_VISIT', n: 3 })
+    const scene = await seed(() => ({ type: 'ON_NTH_VISIT', n: 3 }))
 
     // Поля «каким по счёту визит» в журнале нет; выборка считает его сама.
     // Если счёт собьётся, условие «третий визит» не сработает НИКОГДА,

@@ -181,6 +181,15 @@ export const EarnInput = z
     currency: CurrencyCode.optional(),
     /** Акция, по которой начислено, если начисление породил движок правил. */
     offerId: z.uuid().optional(),
+    /**
+     * ЧТО продали, если заведение ведёт список видов продаж.
+     *
+     * Не подменяет refType: тот отвечает «чем запись вызвана» (чек, промокод,
+     * реферал) и участвует в отмене чека и в отчётах по выручке. Здесь —
+     * «что заведение продало»: абонемент, разовое занятие, товар.
+     * Отсутствует — обычное дело: список ведут не все.
+     */
+    saleKindId: z.uuid().optional(),
     ...refShape,
     ...occurredAtShape,
     ...originShape,
@@ -211,6 +220,8 @@ export const RedeemInput = z
     currency: CurrencyCode.optional(),
     /** Акция или ваучер, по которому списываем. */
     offerId: z.uuid().optional(),
+    /** Вид продажи, к которой применено списание. См. EarnInput. */
+    saleKindId: z.uuid().optional(),
     ...refShape,
     ...occurredAtShape,
     ...originShape,

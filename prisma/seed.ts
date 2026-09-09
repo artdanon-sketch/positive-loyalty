@@ -58,11 +58,13 @@ import {
   buildGuests,
   buildMemberships,
   buildVisits,
+  SALE_KINDS,
   SEED_VERSION,
   STAFF,
   TENANTS,
   type GuestSeed,
   type MembershipSeed,
+  type SaleKindSeed,
   type TenantSeed,
   type VisitSeed,
 } from './demo-data.ts'
@@ -110,6 +112,27 @@ const upsertTenants = async (tenants: readonly TenantSeed[]): Promise<void> => {
         seasonMode: tenant.seasonMode,
         settings: tenant.settings,
       },
+    })
+  }
+}
+
+/**
+ * Справочник видов продаж.
+ *
+ * Upsert по id, а не создание: seed должен быть перезапускаемым, а два
+ * одноимённых вида в одном заведении база и так не пустит.
+ */
+const upsertSaleKinds = async (kinds: readonly SaleKindSeed[]): Promise<void> => {
+  for (const kind of kinds) {
+    await prisma.saleKind.upsert({
+      where: { id: kind.id },
+      create: {
+        id: kind.id,
+        tenantId: kind.tenantId,
+        name: kind.name,
+        sortOrder: kind.sortOrder,
+      },
+      update: { name: kind.name, sortOrder: kind.sortOrder },
     })
   }
 }
@@ -408,6 +431,9 @@ const seed = async (): Promise<void> => {
 
   await upsertMemberships(memberships)
   out(`Участий записано: ${memberships.length}`)
+
+  await upsertSaleKinds(SALE_KINDS)
+  out(`Видов продаж записано: ${SALE_KINDS.length}`)
 
   await upsertStaff()
   out(`Сотрудников записано: ${STAFF.length}, устройств: ${STAFF.length}`)

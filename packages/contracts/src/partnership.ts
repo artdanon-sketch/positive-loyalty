@@ -22,8 +22,24 @@ export const PartnershipTrigger = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ON_FIRST_VISIT') }),
   /** N-й визит. Со второго: первый — это ON_FIRST_VISIT. */
   z.object({ type: z.literal('ON_NTH_VISIT'), n: z.number().int().min(2) }),
-  /** Купил абонемент или пакет. Отличается от ON_PURCHASE происхождением записи. */
-  z.object({ type: z.literal('ON_PACKAGE_PURCHASE'), minAmount: z.number().int().min(0) }),
+  /**
+   * Купил определённый вид: абонемент, курс, недельную аренду.
+   *
+   * ЭТО И ЕСТЬ ГОЛОВНОЙ ПРИМЕР ТЗ — «клиент купил абонемент на 5 000 ฿».
+   * Раньше здесь стояло ON_PACKAGE_PURCHASE, отличавшееся от ON_PURCHASE
+   * происхождением записи в журнале. Сработать оно не могло никогда: журнал
+   * знает только чеки, и «абонемент» в нём ничем не помечался.
+   *
+   * saleKindId принадлежит заведению-ИСТОЧНИКУ: это его список видов
+   * продаж. Донор видит название по двусторонней политике партнёрства —
+   * иначе соглашался бы вслепую на идентификатор.
+   */
+  z.object({
+    type: z.literal('ON_SALE_KIND'),
+    saleKindId: z.uuid(),
+    /** Порог суммы. Ноль — любой абонемент, хоть пробный. */
+    minAmount: z.number().int().min(0).default(0),
+  }),
   /** Закрыл штамп-карту. */
   z.object({ type: z.literal('ON_STAMP_COMPLETE') }),
   /** Достиг статуса. */

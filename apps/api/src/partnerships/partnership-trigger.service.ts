@@ -56,8 +56,10 @@ export interface TriggerEvent {
   readonly guestId: string
   /** Запись журнала, породившая событие. Часть ключа идемпотентности. */
   readonly sourceEntryId: string
-  /** Происхождение записи: receipt | package | offer_grant | referral | promo. */
+  /** Происхождение записи: receipt | offer_grant | referral | promo. */
   readonly refType: string | null
+  /** ЧТО продали: вид продажи из списка заведения-источника. null — не сказано. */
+  readonly saleKindId: string | null
   /** Сумма чека в минорных единицах. */
   readonly basisAmount: number | null
   /** Каким по счёту стал этот визит гостя в это заведение. */
@@ -251,12 +253,27 @@ export class PartnershipTriggerService {
 export const matches = (trigger: PartnershipTrigger, event: TriggerEvent): boolean => {
   switch (trigger.type) {
     case 'ON_PURCHASE':
-      // Любая покупка по чеку. Абонемент сюда НЕ входит: у него своё условие,
-      // и смешивать их значило бы выдавать подарок дважды за одну продажу.
+      // Любая покупка по чеку — включая ту, у которой назван вид продажи:
+      // абонемент это тоже покупка. Разводить их значило бы, что заведение,
+      // заведя список видов, молча перестало бы срабатывать по сумме.
+      //
+      // Два условия на одну продажу дадут гостю два разных подарка — это
+      // не ошибка, а решение заведений: они сами согласовали оба.
       return event.refType === 'receipt' && (event.basisAmount ?? 0) >= trigger.minAmount
 
-    case 'ON_PACKAGE_PURCHASE':
-      return event.refType === 'package' && (event.basisAmount ?? 0) >= trigger.minAmount
+    case 'ON_SALE_KIND':
+      // Головной пример ТЗ: «купил абонемент на 5 000 ฿». Раньше здесь
+      // проверялось происхождение записи, и сработать это не могло никогда:
+      // журнал знает только чеки, и абонемент в нём ничем не помечался.
+      //
+      // Сравнение строгое: вид не назван — условие не сработало. Считать
+      // безымянную продажу подходящей значило бы выдавать подарки за всё
+      // подряд у заведений, которые список видов ещё не завели.
+      return (
+        event.saleKindId !== null &&
+        event.saleKindId === trigger.saleKindId &&
+        (event.basisAmount ?? 0) >= trigger.minAmount
+      )
 
     case 'ON_FIRST_VISIT':
       return event.visitsTotal === 1

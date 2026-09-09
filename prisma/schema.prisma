@@ -142,6 +142,7 @@ model Tenant {
   webhookEvents     WebhookEvent[]
   webhookDeliveries WebhookDelivery[]
   partnershipTriggerRuns PartnershipTriggerRun[]
+  saleKinds              SaleKind[]
   offers            Offer[]
   offerGrants       OfferGrant[]
 
@@ -244,6 +245,16 @@ model LedgerEntry {
   refType String? // receipt | offer_grant | referral | promo
   refId   String?
 
+  /// ЧТО именно продали, если заведение ведёт список видов продаж.
+  ///
+  /// Не то же самое, что refType. refType отвечает «чем эта запись вызвана»
+  /// (чек, промокод, реферал); saleKind — «что заведение продало»: абонемент,
+  /// разовое занятие, товар. Чек остаётся чеком: отмена, выручка и лента
+  /// в зале работают по-прежнему, а вид продажи лежит рядом.
+  ///
+  /// NULL — обычное дело: список ведут не все, и до его появления не вёл никто.
+  saleKindId String?
+
   /// Ключ идемпотентности. UNIQUE — последний рубеж: даже если приложение
   /// проспит гонку, вторую запись не пустит база.
   idempotencyKey String  @unique
@@ -274,6 +285,7 @@ model LedgerEntry {
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   guest      Guest      @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  saleKind   SaleKind?  @relation(fields: [saleKindId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   // Самоссылка «отмена → исходная операция».
   // Restrict с обеих сторон: SetNull по умолчанию означал бы UPDATE строки ledger,
@@ -1174,6 +1186,47 @@ model PartnershipTerm {
   @@index([triggerTenantId, status])
   @@index([rewardTenantId, status])
   @@index([partnershipId])
+}
+
+/// Вид продажи: что именно заведение продало гостю.
+///
+/// ЗАЧЕМ ОТДЕЛЬНАЯ СУЩНОСТЬ. Партнёрство «купил абонемент — получи ролл
+/// в подарок» невозможно построить на одной сумме: ужин на 5 000 ฿ и абонемент
+/// на 5 000 ฿ для журнала неотличимы, и ресторан-донор раздавал бы подарки
+/// за крупные счета, которых не ждал.
+///
+/// СПИСОК ВЕДЁТ САМО ЗАВЕДЕНИЕ, а не платформа. У студии танцев это «абонемент
+/// на 10 занятий» и «разовое занятие», у проката — «сутки» и «неделя».
+/// Общий справочник на всех означал бы, что каждый новый вид бизнеса ждёт
+/// нашего релиза, чтобы начать работать.
+///
+/// НЕ ЗАВИСИТ ОТ КАССЫ. Вид выбирает кассир, когда проводит начисление в нашем
+/// приложении. Партнёру не нужен POSitive POS: у него своя касса для денег,
+/// наше приложение — для лояльности.
+model SaleKind {
+  id       String @id @default(uuid())
+  tenantId String
+
+  /// Как это называет само заведение. Видит кассир в списке и партнёр
+  /// в условиях договорённости.
+  name String
+
+  /// Порядок в списке у кассира: часто продаваемое — наверх.
+  sortOrder Int @default(0)
+
+  /// Выключенный вид не предлагается кассиру, но остаётся в журнале.
+  /// Удаления нет вовсе: по журналу с исчезнувшими видами продаж
+  /// нельзя разобрать ни отчёт, ни спор.
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerEntries LedgerEntry[]
+
+  /// Два одинаковых названия в одном заведении — верный способ выбрать не то.
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive, sortOrder])
 }
 
 /// Отметка: эта операция журнала уже разобрана на партнёрские условия.

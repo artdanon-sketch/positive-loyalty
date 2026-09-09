@@ -13,6 +13,7 @@ import type {
   PosVoidResult,
   PreviewResult,
   ReversalReason,
+  SaleKind,
 } from '@positive/contracts'
 import { parseProgramConfig } from '@positive/contracts'
 
@@ -303,6 +304,7 @@ export class PosService {
     previewId: string
     receiptId: string
     paidBy?: string | undefined
+    saleKindId?: string | undefined
   }): Promise<CommitResult> {
     const { tenantId, actorId } = TenantContext.getOrThrow()
 
@@ -330,6 +332,8 @@ export class PosService {
         },
       })
     }
+
+    await this.assertSaleKindBelongsHere(tenantId, input.saleKindId)
 
     // Баланс мог измениться: гость потратил баллы в соседнем заведении сети,
     // пока кассир пробивал чек. Списывать по устаревшему расчёту нельзя.
@@ -385,6 +389,7 @@ export class PosService {
           // а отмена находит обе строки по одному refId.
           refType: 'receipt',
           refId: input.receiptId,
+          ...(input.saleKindId === undefined ? {} : { saleKindId: input.saleKindId }),
           ...origin,
         },
         scope,
@@ -413,6 +418,7 @@ export class PosService {
           // а отмена находит обе строки по одному refId.
           refType: 'receipt',
           refId: input.receiptId,
+          ...(input.saleKindId === undefined ? {} : { saleKindId: input.saleKindId }),
           ...origin,
         },
         scope,
@@ -639,6 +645,31 @@ export class PosService {
     }
   }
 
+  /**
+   * Что кассир может выбрать при проведении чека.
+   *
+   * ТОЛЬКО ВКЛЮЧЁННЫЕ. Выключенный вид остаётся в журнале ради истории, но
+   * предлагать его к выбору значило бы, что выключатель работает только
+   * в бэк-офисе, а на кассе — нет.
+   *
+   * Пустой список — норма, а не ошибка: справочник ведут не все заведения,
+   * и до его появления не вёл никто. Касса в этом случае просто не показывает
+   * выбор, а чек проводится как раньше.
+   */
+  async saleKinds(): Promise<SaleKind[]> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const rows = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.saleKind.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        select: { id: true, name: true, sortOrder: true, isActive: true },
+      }),
+    )
+
+    return rows
+  }
+
   private async findCompletedReversal(
     tenantId: string,
     transactionId: string,
@@ -699,6 +730,44 @@ export class PosService {
    * обязан вернуть тот самый первый ответ. Отмена — отдельная операция со
    * своим ответом.
    */
+  /**
+   * Вид продажи обязан принадлежать этому заведению и быть включённым.
+   *
+   * ПРОВЕРКА НУЖНА ИМЕННО ЗДЕСЬ, А НЕ В БАЗЕ. Внешний ключ есть, но он
+   * проверяет только существование строки — и делает это в обход политик RLS,
+   * потому что проверка ссылочной целостности идёт от имени системы. То есть
+   * кассир, подставивший в запрос идентификатор ЧУЖОГО вида продажи, получил бы
+   * успешную запись: журнал заведения ссылался бы на справочник соседа.
+   *
+   * Выключенный вид отвергается по другой причине: заведение выключило его,
+   * чтобы им перестали пользоваться. Разрешать выбирать его через API значило
+   * бы, что выключатель работает только в интерфейсе.
+   */
+  private async assertSaleKindBelongsHere(
+    tenantId: string,
+    saleKindId: string | undefined,
+  ): Promise<void> {
+    if (saleKindId === undefined) {
+      return
+    }
+
+    const kind = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.saleKind.findFirst({
+        where: { id: saleKindId, tenantId, isActive: true },
+        select: { id: true },
+      }),
+    )
+
+    if (kind === null) {
+      throw new BadRequestException({
+        error: {
+          code: 'SALE_KIND_NOT_FOUND',
+          message: 'Вид продажи не найден или выключен',
+        },
+      })
+    }
+  }
+
   private async findCommittedReceipt(
     tenantId: string,
     receiptId: string,

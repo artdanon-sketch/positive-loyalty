@@ -18,6 +18,7 @@ import type {
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  SaleKind,
 } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
@@ -41,6 +42,18 @@ export class PosController {
   @ApiOkResponse({ description: 'Что касса обязана знать до ввода суммы' })
   async config(): Promise<PosConfig> {
     return this.posService.config()
+  }
+
+  @Get('sale-kinds')
+  @ApiOperation({
+    summary: 'Виды продаж заведения',
+    description:
+      'Только включённые: выключенный вид остаётся в истории, но выбирать его нельзя. ' +
+      'Пустой список — норма: справочник ведут не все заведения.',
+  })
+  @ApiOkResponse({ description: 'Что можно выбрать при проведении чека' })
+  async saleKinds(): Promise<SaleKind[]> {
+    return this.posService.saleKinds()
   }
 
   @Get('guest')

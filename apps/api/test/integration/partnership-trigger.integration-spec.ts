@@ -66,6 +66,8 @@ const seed = async (
   options: {
     trigger?: unknown
     limits?: unknown
+    /** Условие про вид продажи, а не про сумму: головной пример ТЗ. */
+    bySaleKind?: boolean
   } = {},
 ) => {
   const studio = randomUUID()
@@ -74,6 +76,7 @@ const seed = async (
   const offerId = randomUUID()
   const partnershipId = randomUUID()
   const termId = randomUUID()
+  const saleKindId = randomUUID()
 
   for (const [id, name] of [
     [studio, 'Студия'],
@@ -87,6 +90,13 @@ const seed = async (
   }
 
   await owner.query(`INSERT INTO "Guest" ("id") VALUES ($1)`, [guest])
+
+  // Справочник ведёт само заведение-источник: это его абонемент, а не наш.
+  await owner.query(`INSERT INTO "SaleKind" ("id","tenantId","name") VALUES ($1,$2,$3)`, [
+    saleKindId,
+    studio,
+    'Абонемент на 10 занятий',
+  ])
 
   // Акция принадлежит ДОНОРУ: подарок оплачивает тот, кто его даёт.
   await owner.query(
@@ -112,20 +122,26 @@ const seed = async (
       studio,
       resto,
       offerId,
-      JSON.stringify(options.trigger ?? { type: 'ON_PACKAGE_PURCHASE', minAmount: 500_000 }),
+      JSON.stringify(
+        options.trigger ??
+          (options.bySaleKind === true
+            ? { type: 'ON_SALE_KIND', saleKindId, minAmount: 500_000 }
+            : { type: 'ON_PURCHASE', minAmount: 100_000 }),
+      ),
       JSON.stringify({ kind: 'FREE_ITEM', itemName: 'Ролл Филадельфия', minCheck: 80_000 }),
       JSON.stringify(options.limits ?? { totalGrants: null, perGuest: 1, dailyCap: null }),
     ],
   )
 
-  return { studio, resto, guest, offerId, termId }
+  return { studio, resto, guest, offerId, termId, saleKindId }
 }
 
 const purchase = (
   over: Partial<TriggerEvent> & { tenantId: string; guestId: string },
 ): TriggerEvent => ({
   sourceEntryId: randomUUID(),
-  refType: 'package',
+  refType: 'receipt',
+  saleKindId: null,
   basisAmount: 500_000,
   visitsTotal: 1,
   membershipCreated: false,
@@ -164,9 +180,9 @@ describe('Партнёрский триггер: событие у одного 
   })
 
   it('ПРИМЕР ИЗ ТЗ: абонемент в студии → промокод от ресторана', async () => {
-    const { studio, resto, guest, termId } = await seed()
+    const { studio, resto, guest, termId, saleKindId } = await seed({ bySaleKind: true })
 
-    const issued = await service.handle(purchase({ tenantId: studio, guestId: guest }))
+    const issued = await service.handle(purchase({ tenantId: studio, guestId: guest, saleKindId }))
 
     expect(issued).toHaveLength(1)
     expect(issued[0]?.rewardTenantId, 'промокод выдаёт донор, а не источник').toBe(resto)
