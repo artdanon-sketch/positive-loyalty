@@ -134,7 +134,7 @@ const entry = async (
     `INSERT INTO "LedgerEntry"
        ("id","tenantId","guestId","membershipId","type","amount","balanceAfter",
         "basisAmount","source","refType","idempotencyKey","actorType")
-     VALUES ($1,$2,$3,$4,$5::"LedgerType",10,10,$6,'POS',$7,$8,'SYSTEM')`,
+     VALUES ($1,$2,$3,$4,$5::"LedgerType",10,10,$6,'SIGNED_QR',$7,$8,'SYSTEM')`,
     [
       id,
       scene.studio,
