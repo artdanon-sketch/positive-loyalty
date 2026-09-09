@@ -167,6 +167,39 @@ button:disabled { opacity: .55; cursor: default; }
 .done { text-align: center; }
 .done .who { margin: 12px 0 4px; font-size: 18px; font-weight: 600; }
 .done .badge { color: var(--ok); font-size: 13px; }
+
+/* ── Экран заведений ─────────────────────────────────────────────────────── */
+
+body.panel { display: block; padding: 0; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 28px 24px 64px; }
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.top h1 { font-size: 20px; }
+.top .me { color: var(--muted); font-size: 13px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.tile { padding: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.tile .k { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 14px; }
+th, td { padding: 12px 14px; text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--line); }
+tbody tr + tr td { border-top: 1px solid var(--line); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.brand { font-weight: 600; }
+.dim { color: var(--muted); font-size: 12px; }
+
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); }
+.pill.ACTIVE { color: var(--ok); border-color: rgba(74,222,128,.35); }
+.pill.TRIAL { color: #fbbf24; border-color: rgba(251,191,36,.35); }
+.pill.PAUSED, .pill.CHURNED { color: var(--muted); }
+
+.gap { margin: 28px 0 0; padding: 16px 18px; background: rgba(108,140,255,.07);
+       border: 1px solid rgba(108,140,255,.25); border-radius: 12px; font-size: 13px; }
+.gap h2 { margin: 0 0 8px; font-size: 14px; }
+.gap ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+.gap li { margin-bottom: 4px; }
 `
 
 /**
@@ -266,23 +299,100 @@ const PAGE_JS = `(function () {
     // Токен доступа — только в памяти этой вкладки.
     window.__platformToken = session.accessToken;
 
-    fetch('/v1/platform/auth/me', {
-      headers: { Authorization: 'Bearer ' + session.accessToken }
-    }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
-      var enrolled = session.deviceEnrolled
-        ? '<p class="note">Это устройство запомнено как доверенное. С других входить не получится, пока вы их не разрешите.</p>'
-        : '<p class="note">Вход с уже доверенного устройства.</p>';
+    card.className = 'card done';
+    card.innerHTML = '<h1>Вы вошли</h1><p class="note">Загружаем заведения…</p>';
 
-      card.className = 'card done';
+    fetch('/v1/platform/tenants', {
+      headers: { Authorization: 'Bearer ' + session.accessToken }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      renderPanel(session, data);
+    }).catch(function () {
       card.innerHTML =
         '<h1>Вы вошли</h1>' +
         '<p class="who">' + escapeHtml(session.displayName) + '</p>' +
-        '<p class="badge">Второй фактор подтверждён</p>' +
-        (me ? '<p class="note">' + escapeHtml(me.email) + '</p>' : '') +
-        enrolled +
-        '<p class="note">Экраны панели — подписки, обороты, партнёрства — появятся следующим шагом. ' +
-        'Сейчас проверен сам вход.</p>';
+        '<p class="note">Заведения загрузить не удалось. Обновите страницу.</p>';
     });
+  }
+
+  /** Деньги в базе — целые сатанги. Делим только на выводе (железное правило 4). */
+  function money(satang) {
+    return (satang / 100).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ฿';
+  }
+
+  function whenAgo(iso) {
+    if (!iso) return '—';
+    var days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (days <= 0) return 'сегодня';
+    if (days === 1) return 'вчера';
+    if (days < 30) return days + ' дн. назад';
+    return Math.floor(days / 30) + ' мес. назад';
+  }
+
+  function renderPanel(session, data) {
+    document.body.className = 'panel';
+
+    var rows = data.tenants.map(function (t) {
+      return '<tr>' +
+        '<td><div class="brand">' + escapeHtml(t.brandName) + '</div>' +
+            '<div class="dim">' + escapeHtml(t.vertical) + '</div></td>' +
+        '<td><span class="pill ' + escapeHtml(t.status) + '">' + escapeHtml(t.status) + '</span>' +
+            (t.seasonMode ? ' <span class="dim">низкий сезон</span>' : '') + '</td>' +
+        '<td>' + escapeHtml(t.plan) + '</td>' +
+        '<td class="num">' + t.guests + '</td>' +
+        '<td class="num">' + money(t.spentTotal) + '</td>' +
+        '<td class="num">' + t.pointsOutstanding.toLocaleString('ru-RU') + '</td>' +
+        '<td class="num">' + t.operations30d + '</td>' +
+        '<td class="dim">' + whenAgo(t.lastVisitAt) + '</td>' +
+      '</tr>';
+    }).join('');
+
+    var empty = '<tr><td colspan="8" class="dim">Заведений пока нет.</td></tr>';
+
+    document.body.innerHTML =
+      '<div class="wrap">' +
+        '<div class="top">' +
+          '<h1>Заведения</h1>' +
+          '<div class="me">' + escapeHtml(session.displayName) + '</div>' +
+        '</div>' +
+
+        '<div class="tiles">' +
+          tile('Заведений', data.totals.tenants) +
+          tile('Платящих', data.totals.paying) +
+          tile('В пробном периоде', data.totals.trial) +
+          tile('Гостей всего', data.totals.guests) +
+          tile('Оборот по программе', money(data.totals.spentTotal)) +
+        '</div>' +
+
+        '<div class="scroll"><table>' +
+          '<thead><tr>' +
+            '<th>Заведение</th><th>Статус</th><th>Тариф</th>' +
+            '<th class="num">Гостей</th><th class="num">Оборот</th>' +
+            '<th class="num">Баллов на руках</th><th class="num">Операций за 30 дней</th>' +
+            '<th>Активность</th>' +
+          '</tr></thead>' +
+          '<tbody>' + (rows || empty) + '</tbody>' +
+        '</table></div>' +
+
+        '<div class="gap">' +
+          '<h2>Чего здесь ещё нет — и почему</h2>' +
+          'Не забыто: под это в базе пока нет таблиц, а показывать выдуманные ' +
+          'числа в панели, по которой принимают решения, нельзя.' +
+          '<ul>' +
+            '<li><b>Подписки и платежи.</b> Видны тариф и статус, но истории ' +
+              'платежей, цены и даты следующего списания взять неоткуда.</li>' +
+            '<li><b>Партнёрства.</b> Таблицы нет вовсе.</li>' +
+            '<li><b>Акции.</b> Таблицы нет вовсе.</li>' +
+          '</ul>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function tile(label, value) {
+    return '<div class="tile"><div class="k">' + escapeHtml(label) + '</div>' +
+           '<div class="v">' + escapeHtml(String(value)) + '</div></div>';
   }
 
   function escapeHtml(value) {

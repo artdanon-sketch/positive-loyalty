@@ -76,3 +76,70 @@ export const PlatformMeResult = z
   .strict()
 
 export type PlatformMeResult = z.infer<typeof PlatformMeResult>
+
+/**
+ * Строка списка заведений.
+ *
+ * ─── ЧТО СЮДА НЕ ПОПАЛО И ПОЧЕМУ ─────────────────────────────────────────────
+ *
+ * Подписок, платежей, партнёрств и акций здесь нет не по забывчивости: таблиц
+ * под них в схеме не существует. Показать «сколько платит» сегодня нечем —
+ * у заведения есть лишь поле `plan`, которое перезаписывается на месте, без
+ * истории, цены и даты следующего списания.
+ *
+ * Выдумывать эти цифры на экране нельзя: панель владельца платформы — то место,
+ * где решения принимают по числам, и правдоподобное число хуже отсутствующего.
+ *
+ * ─── ПОЧЕМУ ЗДЕСЬ НЕТ ИМЁН И ТЕЛЕФОНОВ ───────────────────────────────────────
+ *
+ * Их не отдаст сама база: роль positive_platform не имеет прав на эти колонки
+ * (миграция 20260909140000). Счёт гостей возможен, знакомство с ними — нет.
+ */
+export const PlatformTenantRow = z
+  .object({
+    id: z.string().uuid(),
+    brandName: z.string(),
+    vertical: z.string(),
+    /** TRIAL | ACTIVE | PAUSED | CHURNED — то, что есть в схеме сегодня. */
+    status: z.string(),
+    /** FREE | PRO | NETWORK. Без истории и цены: их негде взять. */
+    plan: z.string(),
+    seasonMode: z.boolean(),
+    currency: z.string(),
+    createdAt: z.string().datetime(),
+
+    /** Сколько гостей участвует в программе этого заведения. */
+    guests: z.number().int().nonnegative(),
+    /** Оборот по программе, в минорных единицах (сатангах). Железное правило 4. */
+    spentTotal: z.number().int().nonnegative(),
+    /** Баллов на руках у гостей — обязательство заведения. Тоже в минорных единицах. */
+    pointsOutstanding: z.number().int(),
+    visits: z.number().int().nonnegative(),
+    /** Когда в этом заведении в последний раз что-то происходило. */
+    lastVisitAt: z.string().datetime().nullable(),
+    /** Операций за последние 30 дней — признак «живое или затухло». */
+    operations30d: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type PlatformTenantRow = z.infer<typeof PlatformTenantRow>
+
+export const PlatformTenantsResult = z
+  .object({
+    tenants: z.array(PlatformTenantRow),
+    /** Сводка по всем заведениям сразу — чтобы не складывать глазами. */
+    totals: z
+      .object({
+        tenants: z.number().int().nonnegative(),
+        paying: z.number().int().nonnegative(),
+        trial: z.number().int().nonnegative(),
+        guests: z.number().int().nonnegative(),
+        spentTotal: z.number().int().nonnegative(),
+      })
+      .strict(),
+    /** Момент, на который посчитано. Цифры живые, но снимок всё же на миг. */
+    asOf: z.string().datetime(),
+  })
+  .strict()
+
+export type PlatformTenantsResult = z.infer<typeof PlatformTenantsResult>
