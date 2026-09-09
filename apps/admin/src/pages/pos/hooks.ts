@@ -6,6 +6,7 @@ import type {
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  SaleKind,
 } from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
@@ -31,6 +32,25 @@ export function usePosConfig(): UseQueryResult<PosConfig, Error> {
   return useQuery({
     queryKey: ['pos', 'config'],
     queryFn: () => authFetch<PosConfig>('/pos/config'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * Виды продаж заведения — то, из чего кассир выбирает «что продали».
+ *
+ * Запросом, а не мутацией: побочных действий нет, и держать список
+ * на всю смену правильно — владелец правит справочник в бэк-офисе,
+ * а не посреди чека. Тот же срок жизни, что и у правил кассы.
+ *
+ * Пустой список — норма, а не ошибка: справочник ведут не все заведения.
+ */
+export function usePosSaleKinds(): UseQueryResult<SaleKind[], Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['pos', 'sale-kinds'],
+    queryFn: () => authFetch<SaleKind[]>('/pos/sale-kinds'),
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -74,7 +94,7 @@ export function usePreview(): UseMutationResult<
 export function useCommit(): UseMutationResult<
   CommitResult,
   Error,
-  { previewId: string; receiptId: string }
+  { previewId: string; receiptId: string; saleKindId?: string }
 > {
   const { authFetch } = useAuth()
   const queryClient = useQueryClient()

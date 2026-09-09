@@ -94,6 +94,32 @@ const DASHBOARD_EMPTY = {
   isEmpty: true,
 }
 
+/**
+ * Виды продаж заведения. Выключенный в списке НАМЕРЕННО: бэк-офис обязан
+ * его показывать (чтобы вернуть в работу), а касса — не предлагать.
+ */
+const ABONEMENT = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  name: 'Абонемент на 10 занятий',
+  sortOrder: 0,
+  isActive: true,
+}
+
+const SALE_KINDS = [
+  ABONEMENT,
+  {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    name: 'Разовое занятие',
+    sortOrder: 1,
+    isActive: true,
+  },
+]
+
+const SALE_KINDS_WITH_OFF = [
+  ...SALE_KINDS,
+  { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Сертификат', sortOrder: 2, isActive: false },
+]
+
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), {
     status,
@@ -200,6 +226,12 @@ const stubApi = (
     }
     if (path.startsWith('/v1/admin/guests')) {
       return Promise.resolve(json({ items: [], total: 0 }))
+    }
+    if (path.startsWith('/v1/admin/sale-kinds')) {
+      return Promise.resolve(json(SALE_KINDS_WITH_OFF))
+    }
+    if (path.startsWith('/v1/pos/sale-kinds')) {
+      return Promise.resolve(json(SALE_KINDS))
     }
 
     return Promise.resolve(
@@ -446,6 +478,142 @@ describe('Касса', () => {
     // Экран успеха показывает, ЧТО ИМЕННО получил гость, а не галочку.
     expect(await screen.findByText('+62,50 ฿')).toBeInTheDocument()
     expect(screen.getByText('364,25 ฿')).toBeInTheDocument()
+  })
+
+  it('КАССИР ВЫБИРАЕТ ВИД ПРОДАЖИ, И ОН УХОДИТ НА СЕРВЕР', async () => {
+    // Ради этого поля заведён весь справочник: без него партнёрское условие
+    // «купил абонемент» не отличит абонемент от ужина на ту же сумму.
+    const fetchMock = stubApi({ '/v1/auth/staff/pin': () => json(CASHIER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('pos.amount.label')), { target: { value: '1250' } })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'A-2001' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+
+    const select = await screen.findByLabelText(t('pos.saleKind.label'))
+    fireEvent.change(select, { target: { value: ABONEMENT.id } })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    await waitFor(() => {
+      const commit = fetchMock.mock.calls.find(([input]) =>
+        requestOf(input as RequestInfo | URL).includes('/transactions/commit'),
+      )
+      expect(commit).toBeDefined()
+      const body = JSON.parse((commit?.[1] as RequestInit).body as string) as {
+        saleKindId?: string
+      }
+      expect(body.saleKindId).toBe(ABONEMENT.id)
+    })
+  })
+
+  it('без выбора вида чек уходит БЕЗ поля, а не с пустой строкой', async () => {
+    // Пустая строка не uuid: сервер отверг бы такой чек валидацией, и кассир
+    // получил бы отказ за то, что просто ничего не выбрал.
+    const fetchMock = stubApi({ '/v1/auth/staff/pin': () => json(CASHIER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('pos.amount.label')), { target: { value: '1250' } })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'A-2002' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+
+    expect(await screen.findByLabelText(t('pos.saleKind.label'))).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    await waitFor(() => {
+      const commit = fetchMock.mock.calls.find(([input]) =>
+        requestOf(input as RequestInfo | URL).includes('/transactions/commit'),
+      )
+      expect(commit).toBeDefined()
+      const body = JSON.parse((commit?.[1] as RequestInit).body as string) as Record<
+        string,
+        unknown
+      >
+      expect('saleKindId' in body).toBe(false)
+    })
+  })
+
+  it('где справочника нет, касса выбор не показывает вовсе', async () => {
+    // Пустой список — норма, а не ошибка. Пустой выпадающий список посреди
+    // кассы был бы вопросом без ответов.
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/sale-kinds': () => json([]),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('pos.amount.label')), { target: { value: '1250' } })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'A-2003' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+
+    expect(await screen.findByRole('button', { name: t('pos.confirm.submit') })).toBeInTheDocument()
+    expect(screen.queryByLabelText(t('pos.saleKind.label'))).not.toBeInTheDocument()
+  })
+
+  it('бэк-офис показывает и выключенные виды продаж', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.saleKinds') }))
+
+    expect(await screen.findByText('Абонемент на 10 занятий')).toBeInTheDocument()
+    // Выключенный обязан быть виден: иначе его нельзя вернуть в работу,
+    // и владелец заведёт второй такой же под тем же именем — а UNIQUE не даст.
+    expect(screen.getByText('Сертификат')).toBeInTheDocument()
+    expect(screen.getByText(t('saleKinds.state.off'))).toBeInTheDocument()
+  })
+
+  it('ПОЛЕ НОВОГО ВИДА НЕ ОЧИЩАЕТСЯ, ЕСЛИ СЕРВЕР ОТКАЗАЛ', async () => {
+    // Название занято — человек правит одно слово, а не набирает всё заново.
+    stubApi({
+      '/v1/admin/sale-kinds': (init) =>
+        init?.method === 'POST'
+          ? json({ error: { code: 'SALE_KIND_EXISTS', message: 'Такое название уже есть' } }, 400)
+          : json(SALE_KINDS_WITH_OFF),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.saleKinds') }))
+
+    const input = await screen.findByLabelText(t('saleKinds.new.label'))
+    fireEvent.change(input, { target: { value: 'Абонемент на 10 занятий' } })
+    fireEvent.click(screen.getByRole('button', { name: t('saleKinds.new.submit') }))
+
+    expect(await screen.findByText('Такое название уже есть')).toBeInTheDocument()
+    expect(input).toHaveValue('Абонемент на 10 занятий')
   })
 
   it('отменяет проведённый чек в своём окне', async () => {

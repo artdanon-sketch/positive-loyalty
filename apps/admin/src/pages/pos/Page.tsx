@@ -12,6 +12,7 @@ import type { OfflineQueueState } from './use-offline-queue'
 import {
   generateReceiptId,
   useCommit,
+  usePosSaleKinds,
   useFindGuest,
   usePosConfig,
   usePreview,
@@ -591,6 +592,13 @@ function ConfirmStep({
 }): ReactElement {
   const t = useT()
   const commit = useCommit()
+  const saleKinds = usePosSaleKinds()
+  const [saleKindId, setSaleKindId] = useState('')
+
+  // Справочник ведут не все заведения. Где его нет — выбора нет вовсе,
+  // и чек проводится ровно как раньше: лишний пустой список посреди кассы
+  // был бы вопросом без ответов.
+  const kinds = saleKinds.data ?? []
 
   return (
     <div className="pos__step">
@@ -617,6 +625,29 @@ function ConfirmStep({
         <p className="pos__notice">{t('pos.confirm.control')}</p>
       ) : null}
 
+      {kinds.length === 0 ? null : (
+        <label className="field">
+          <span className="field__label">{t('pos.saleKind.label')}</span>
+          <select
+            className="field__input"
+            value={saleKindId}
+            onChange={(event) => {
+              setSaleKindId(event.target.value)
+            }}
+          >
+            {/* Пустой пункт первым и выбран по умолчанию: обязательным вид
+                продажи не является, и подставлять первый попавшийся значило бы
+                записывать в журнал догадку кассы вместо ответа кассира. */}
+            <option value="">{t('pos.saleKind.none')}</option>
+            {kinds.map((kind) => (
+              <option key={kind.id} value={kind.id}>
+                {kind.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <div className="pos__actions">
         <button className="button button--ghost" type="button" onClick={onBack}>
           {t('pos.back')}
@@ -627,7 +658,11 @@ function ConfirmStep({
           disabled={commit.isPending}
           onClick={() => {
             commit.mutate(
-              { previewId: preview.previewId, receiptId },
+              {
+                previewId: preview.previewId,
+                receiptId,
+                ...(saleKindId === '' ? {} : { saleKindId }),
+              },
               {
                 onSuccess: onDone,
                 onError: (error) => {
@@ -644,6 +679,14 @@ function ConfirmStep({
                       receiptId,
                       target: { kind: 'MEMBERSHIP', membershipId: guest.membershipId },
                       amount: preview.amount,
+                      // ВИД ПРОДАЖИ В ОЧЕРЕДЬ НЕ КЛАДЁТСЯ, И ЭТО НАРОЧНО.
+                      // Пока чек лежит в очереди, владелец может выключить
+                      // этот вид в бэк-офисе — и повтор получил бы отказ
+                      // SALE_KIND_NOT_FOUND, то есть чек застрял бы навсегда,
+                      // а гость остался без баллов. Баллы важнее подарка:
+                      // отложенный чек уходит без вида, партнёрская награда
+                      // по нему не выдаётся.
+                      //
                       // Номер чека обязателен у части заведений: без него
                       // отложенный чек застрянет на первом же повторе.
                       ...(receiptNumber === undefined ? {} : { receiptNumber }),
