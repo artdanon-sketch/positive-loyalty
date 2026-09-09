@@ -291,6 +291,9 @@ export const LedgerEntryRecord = z
     idempotencyKey: IdempotencyKey,
     reversalOfId: z.uuid().nullable(),
     offerId: z.uuid().nullable(),
+    /** Что продали. Колонку обязан знать и выход: схема строгая, и запись
+     *  журнала с неизвестным полем не пройдёт разбор вовсе. */
+    saleKindId: z.uuid().nullable(),
 
     actorType: ActorType,
     actorId: z.uuid().nullable(),
