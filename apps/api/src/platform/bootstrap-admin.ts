@@ -53,10 +53,50 @@ const RECOVERY_CODES = 10
  */
 const generatePassword = (): string => randomBytes(24).toString('base64url')
 
-/** Код восстановления в виде, который не стыдно распечатать: 4-4-4. */
+/**
+ * Алфавит кодов восстановления.
+ *
+ * Без 0, O, 1, I и L: коды печатают на бумаге и вводят руками с неё, а эти
+ * символы в большинстве шрифтов различаются хуже, чем хотелось бы человеку,
+ * который уже потерял телефон и нервничает.
+ */
+const RECOVERY_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+
+/**
+ * Код восстановления: РОВНО двенадцать знаков, разбитых на 4-4-4.
+ *
+ * Ровно — не косметика. Сначала здесь бралась случайная строка base64url,
+ * из неё вырезались «-» и «_», и остаток обрезался до двенадцати. Сколько
+ * символов выпадет, зависело от случая: пробный запуск выдал коды из десяти
+ * и одиннадцати знаков вперемешку с двенадцатью. То есть стойкость кода
+ * тоже определялась случайностью, а не замыслом — на два знака короче
+ * означает в тысячу раз меньше вариантов.
+ *
+ * Теперь символы берутся по одному из алфавита, и длина не зависит ни от чего.
+ * Смещения выборки нет: длина алфавита 31, и байты, попавшие в неполный
+ * последний диапазон, отбрасываются, а не сворачиваются остатком.
+ */
 const generateRecoveryCode = (): string => {
-  const raw = randomBytes(9).toString('base64url').replace(/[-_]/g, '').toUpperCase().slice(0, 12)
-  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`
+  const need = 12
+  const out: string[] = []
+  const limit = Math.floor(256 / RECOVERY_ALPHABET.length) * RECOVERY_ALPHABET.length
+
+  while (out.length < need) {
+    for (const byte of randomBytes(need)) {
+      if (byte >= limit) {
+        continue
+      }
+
+      out.push(RECOVERY_ALPHABET.charAt(byte % RECOVERY_ALPHABET.length))
+
+      if (out.length === need) {
+        break
+      }
+    }
+  }
+
+  const code = out.join('')
+  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
 }
 
 const main = async (): Promise<void> => {
