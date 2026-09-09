@@ -71,4 +71,20 @@ export class PlatformPrismaService extends PrismaService {
   constructor() {
     super(createPlatformClientOptions())
   }
+
+  /**
+   * Своё подключение, без предупреждения родителя про DATABASE_URL.
+   *
+   * PrismaService на старте проверяет DATABASE_URL и, не найдя её, пишет
+   * красным «обращения к базе будут падать». Для ЭТОГО клиента предупреждение
+   * ложное: он ходит по DATABASE_URL_PLATFORM, и её отсутствие уже проверено
+   * в resolvePlatformUrl — громко и до создания клиента.
+   *
+   * Оставить как есть значило бы приучать читателя логов не верить красному.
+   * Особенно скверно это выглядело в выводе bootstrap-admin: красная ошибка
+   * прямо перед паролем и кодами восстановления, при полностью успешной работе.
+   */
+  override async onModuleInit(): Promise<void> {
+    await this.$connect()
+  }
 }
