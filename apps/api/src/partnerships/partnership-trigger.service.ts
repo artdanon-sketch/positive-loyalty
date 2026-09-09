@@ -77,9 +77,8 @@ export interface TriggeredGrant {
   readonly replayed: boolean
 }
 
-/** Почему условие не сработало. Уходит в лог, наружу не показывается. */
-type SkipReason =
-  'ТРИГГЕР_НЕ_СОВПАЛ' | 'НЕТ_АКЦИИ' | 'ЛИМИТ_НА_ГОСТЯ' | 'ЛИМИТ_ЗА_СУТКИ' | 'ЛИМИТ_ВСЕГО'
+/** Какой лимит закрыл выдачу. Уходит в лог, наружу не показывается. */
+type SkipReason = 'ЛИМИТ_НА_ГОСТЯ' | 'ЛИМИТ_ЗА_СУТКИ' | 'ЛИМИТ_ВСЕГО'
 
 @Injectable()
 export class PartnershipTriggerService {
@@ -116,14 +115,54 @@ export class PartnershipTriggerService {
     const issued: TriggeredGrant[] = []
 
     for (const term of terms) {
-      const skip = await this.evaluate(term, event)
-
-      if (skip !== null) {
-        this.logger.debug(`Условие ${term.id} не сработало: ${skip}`)
+      if (term.offerId === null) {
+        // Условие принято, но акция ещё не создана: активации не было.
+        this.logger.debug(`Условие ${term.id} не сработало: НЕТ_АКЦИИ`)
         continue
       }
 
-      if (term.offerId === null) {
+      const trigger = PartnershipTrigger.safeParse(term.trigger)
+
+      if (!trigger.success || !matches(trigger.data, event)) {
+        this.logger.debug(`Условие ${term.id} не сработало: ТРИГГЕР_НЕ_СОВПАЛ`)
+        continue
+      }
+
+      const key = idempotencyKey(term.id, event.guestId, event.sourceEntryId)
+
+      // ИДЕМПОТЕНТНОСТЬ ПРОВЕРЯЕТСЯ РАНЬШЕ ЛИМИТОВ, И ЭТО НЕ ПОРЯДОК УДОБСТВА.
+      //
+      // Лимит на гостя обычно равен единице. На повторе события гость уже
+      // держит выданный промокод — и лимит упирается в него самого. Проверь
+      // мы лимиты первыми, повтор возвращал бы ПУСТО, то есть «ничего не
+      // выдано» вместо «выдано вот это». Касса или очередь, переспросившая
+      // после таймаута, решила бы, что награды нет, и сказала бы гостю «нет».
+      //
+      // Поймано интеграционным тестом на повтор, а не рассуждением.
+      const already = await this.grants.findByIdempotencyKey(term.rewardTenantId, key)
+
+      if (already !== null) {
+        issued.push({
+          termId: term.id,
+          grantId: already.id,
+          code: already.code,
+          rewardTenantId: term.rewardTenantId,
+          replayed: true,
+        })
+        continue
+      }
+
+      const limits = PartnershipLimits.safeParse(term.limits)
+      // Разбитые лимиты трактуем как самые строгие из разумных, а не как
+      // «ограничений нет»: ошибка в данных не должна открывать кран.
+      const bounds = limits.success
+        ? limits.data
+        : { totalGrants: null, perGuest: 1, dailyCap: null }
+
+      const skip = await this.checkLimits(term.offerId, term.rewardTenantId, bounds, event)
+
+      if (skip !== null) {
+        this.logger.debug(`Условие ${term.id} не сработало: ${skip}`)
         continue
       }
 
@@ -134,13 +173,13 @@ export class PartnershipTriggerService {
         guestId: event.guestId,
         tenantId: term.rewardTenantId,
         validityDays: term.validityDays,
-        idempotencyKey: idempotencyKey(term.id, event.guestId, event.sourceEntryId),
+        idempotencyKey: key,
         now: event.occurredAt,
       })
 
-      // Счётчик поднимаем только на НОВОЙ выдаче. Повтор события не должен
-      // раздувать статистику — иначе лимит «всего 200» исчерпается доставками,
-      // а не гостями.
+      // Счётчик поднимаем только на НОВОЙ выдаче. Проверка выше ловит повтор
+      // в спокойном случае, а эта — гонку: два одинаковых события пришли
+      // одновременно, оба не нашли строки, и одно упёрлось в UNIQUE.
       if (!grant.replayed) {
         await this.prisma.forTenant(term.rewardTenantId, async (tx) =>
           tx.partnershipTerm.update({
@@ -160,36 +199,6 @@ export class PartnershipTriggerService {
     }
 
     return issued
-  }
-
-  /** `null` — условие сработало. Иначе причина отказа. */
-  private async evaluate(
-    term: {
-      id: string
-      offerId: string | null
-      rewardTenantId: string
-      trigger: unknown
-      limits: unknown
-    },
-    event: TriggerEvent,
-  ): Promise<SkipReason | null> {
-    if (term.offerId === null) {
-      // Условие принято, но акция ещё не создана: активации не было.
-      return 'НЕТ_АКЦИИ'
-    }
-
-    const trigger = PartnershipTrigger.safeParse(term.trigger)
-
-    if (!trigger.success || !matches(trigger.data, event)) {
-      return 'ТРИГГЕР_НЕ_СОВПАЛ'
-    }
-
-    const limits = PartnershipLimits.safeParse(term.limits)
-    // Разбитые лимиты трактуем как самые строгие из разумных, а не как
-    // «ограничений нет»: ошибка в данных не должна открывать кран.
-    const bounds = limits.success ? limits.data : { totalGrants: null, perGuest: 1, dailyCap: null }
-
-    return this.checkLimits(term.offerId, term.rewardTenantId, bounds, event)
   }
 
   private async checkLimits(

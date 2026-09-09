@@ -188,6 +188,27 @@ export class OfferGrantService {
   }
 
   /**
+   * Найти уже выданный промокод по ключу идемпотентности.
+   *
+   * Нужен вызывающему, чтобы отличить «выдавать нечего» от «уже выдано».
+   * Без него повторное событие упирается в лимит на гостя — в тот самый
+   * промокод, который сам же и создал, — и повтор выглядит как отказ.
+   *
+   * Возвращает `replayed: true` всегда: если строка нашлась, значит она уже
+   * была, и это по определению повтор.
+   */
+  async findByIdempotencyKey(tenantId: string, idempotencyKey: string): Promise<GrantView | null> {
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const existing = await tx.offerGrant.findUnique({
+        where: { nonce: idempotencyKey },
+        select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
+      })
+
+      return existing === null ? null : { ...existing, replayed: true }
+    })
+  }
+
+  /**
    * Погасить промокод на кассе.
    *
    * Возвращает погашенный промокод. Повторное погашение того же кода —
