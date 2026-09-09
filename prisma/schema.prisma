@@ -1250,7 +1250,10 @@ model PartnershipPricing {
   /// Гость не должен утонуть в чужих ваучерах.
   maxActivePartnerships Int @default(20)
 
-  updatedAt DateTime @updatedAt
+  /// Умолчание в базе намеренно: @updatedAt у Prisma работает только на стороне
+  /// клиента, и запись сырым SQL — из миграции, seed или скрипта — падала бы
+  /// на not-null. Поймано красным CI, а не рассуждением.
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([vertical])
 }
