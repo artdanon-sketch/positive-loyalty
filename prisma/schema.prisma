@@ -143,6 +143,12 @@ model Tenant {
   webhookDeliveries WebhookDelivery[]
   offers            Offer[]
   offerGrants       OfferGrant[]
+
+  partnershipsInitiated Partnership[] @relation("PartnershipInitiator")
+  partnershipsReceived  Partnership[] @relation("PartnershipPartner")
+  inviteQuotas          InviteQuota[]
+  invitesBlocked        InviteBlock[] @relation("InviteBlocker")
+  invitesBlockedBy      InviteBlock[] @relation("InviteBlocked")
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -1008,8 +1014,9 @@ model Offer {
 
   createdAt DateTime @default(now())
 
-  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  grants OfferGrant[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  grants          OfferGrant[]
+  partnershipTerm PartnershipTerm?
 
   @@index([tenantId, status])
 }
@@ -1055,4 +1062,198 @@ model OfferGrant {
   @@index([offerId, state])
   @@index([tenantId, state])
   @@index([expiresAt])
+}
+
+// ─── Партнёрства между заведениями ───────────────────────────────────────────
+//
+// docs/07. Два заведения договариваются напрямую и дают бонусы гостям друг
+// друга. Платформа в договорённости не участвует и денег между ними не гоняет
+// никогда — иначе это расчёты и регуляторный риск.
+//
+// ИЗОЛЯЦИЯ ЗДЕСЬ УСТРОЕНА ИНАЧЕ, ЧЕМ ВЕЗДЕ. У всех прежних таблиц один хозяин,
+// и политика сравнивает одну колонку. У партнёрства хозяев ДВА, и обе стороны
+// обязаны видеть строку. Значит политика проверяет ДВЕ колонки через ИЛИ —
+// и это единственное место в базе, где так. Ошибиться тут легко: забыть вторую
+// половину условия означает, что партнёр не видит собственного партнёрства.
+
+enum PartnershipStatus {
+  PROPOSED
+  NEGOTIATING
+  ACTIVE
+  PAUSED
+  ENDED
+  DECLINED
+}
+
+enum TermStatus {
+  DRAFT
+  PROPOSED
+  ACCEPTED
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum MessageKind {
+  INVITE
+  TEXT
+  TERM_PROPOSED
+  TERM_ACCEPTED
+  TERM_REJECTED
+  SYSTEM
+}
+
+/// Связь двух заведений: контейнер для условий и переписки.
+model Partnership {
+  id                String @id @default(uuid())
+  initiatorTenantId String
+  partnerTenantId   String
+
+  status PartnershipStatus @default(PROPOSED)
+
+  proposedAt DateTime  @default(now())
+  acceptedAt DateTime?
+  /// null — бессрочно.
+  endsAt     DateTime?
+  endedBy    String?
+  endReason  String?
+
+  initiator Tenant @relation("PartnershipInitiator", fields: [initiatorTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  partner   Tenant @relation("PartnershipPartner", fields: [partnerTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  terms    PartnershipTerm[]
+  messages PartnershipMessage[]
+
+  /// Одна пара — одно партнёрство (docs/07, раздел 6.2: нельзя долбить одно заведение).
+  @@unique([initiatorTenantId, partnerTenantId])
+  @@index([partnerTenantId, status])
+  @@index([initiatorTenantId, status])
+}
+
+/// Одностороннее обязательство: «B даёт награду X гостям A при событии Y».
+///
+/// Направление всегда явное. Встречное условие — другое Term с обратными
+/// ролями. Партнёрство может быть и односторонним.
+model PartnershipTerm {
+  id            String @id @default(uuid())
+  partnershipId String
+
+  /// Где происходит событие.
+  triggerTenantId String
+  /// Кто даёт награду — и у кого появится Offer.
+  rewardTenantId  String
+
+  /// Порождённый Offer у rewardTenant. Появляется при активации, не раньше:
+  /// до согласия обеих сторон акции быть не должно.
+  offerId String? @unique
+
+  /// Что должно произойти. Форма — docs/07, раздел 4.1.
+  trigger Json
+  /// Что гость получит. Форма — docs/07, раздел 4.2.
+  reward  Json
+
+  /// Сколько живёт выданный промокод.
+  validityDays Int  @default(7)
+  /// {totalGrants, perGuest, dailyCap}
+  limits       Json
+
+  status TermStatus @default(DRAFT)
+
+  /// Кто предложил и кто принял — tenantId, а не сотрудник: договариваются заведения.
+  proposedBy String
+  acceptedBy String?
+  acceptedAt DateTime?
+
+  grantsIssued   Int @default(0)
+  grantsRedeemed Int @default(0)
+
+  partnership Partnership @relation(fields: [partnershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  offer       Offer?      @relation(fields: [offerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([triggerTenantId, status])
+  @@index([rewardTenantId, status])
+  @@index([partnershipId])
+}
+
+/// Сообщение в переписке двух заведений.
+model PartnershipMessage {
+  id            String @id @default(uuid())
+  partnershipId String
+
+  fromTenantId String
+  /// ЕСТЬ, ХОТЯ В НАБРОСКЕ ТЗ ЕГО НЕТ.
+  ///
+  /// Без получателя политику RLS пришлось бы писать подзапросом к Partnership —
+  /// а адресат сообщения и так нужен: по нему считаются непрочитанные и шлются
+  /// уведомления. Поле не служебное, оно по существу.
+  toTenantId   String
+
+  kind         MessageKind
+  /// Оригинал, как написал отправитель.
+  text         String
+  /// Язык оригинала — по нему решают, нужен ли перевод.
+  sourceLang   String
+  /// {"th": "...", "en": "..."} — кэш перевода, чтобы не платить за него дважды.
+  translations Json
+
+  termId String?
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+
+  partnership Partnership @relation(fields: [partnershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([partnershipId, createdAt])
+  @@index([toTenantId, readAt])
+}
+
+/// Сколько приглашений заведение отправило за сутки.
+///
+/// Сутки — по таймзоне ЗАВЕДЕНИЯ, а не сервера: владелец на Пхукете не должен
+/// обнаруживать, что его квота обнулилась в семь вечера.
+model InviteQuota {
+  tenantId String
+  /// Дата в таймзоне заведения.
+  date     DateTime @db.Date
+  freeUsed Int      @default(0)
+  paidUsed Int      @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([tenantId, date])
+}
+
+/// Заведение навсегда закрылось от приглашений другого.
+model InviteBlock {
+  blockerTenantId String
+  blockedTenantId String
+  reason          String?
+  createdAt       DateTime @default(now())
+
+  blocker Tenant @relation("InviteBlocker", fields: [blockerTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  blocked Tenant @relation("InviteBlocked", fields: [blockedTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([blockerTenantId, blockedTenantId])
+  @@index([blockedTenantId])
+}
+
+/// Квоты и цены приглашений. Настраивает админ платформы.
+model PartnershipPricing {
+  id String @id @default(uuid())
+
+  /// null — умолчание для всех вертикалей.
+  vertical Vertical?
+
+  freeInvitesPerDay     Int @default(3)
+  /// В минорных единицах (сатангах). 0 — сверх квоты бесплатно.
+  extraInvitePrice      Int @default(0)
+  /// Гость не должен утонуть в чужих ваучерах.
+  maxActivePartnerships Int @default(20)
+
+  /// Умолчание в базе намеренно: @updatedAt у Prisma работает только на стороне
+  /// клиента, и запись сырым SQL — из миграции, seed или скрипта — падала бы
+  /// на not-null. Поймано красным CI, а не рассуждением.
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([vertical])
 }
