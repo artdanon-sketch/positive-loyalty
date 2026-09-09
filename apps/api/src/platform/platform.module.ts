@@ -3,8 +3,10 @@ import { Module } from '@nestjs/common'
 import { AuditService } from '../core/audit.service'
 
 import { PlatformAuthController } from './platform-auth.controller'
+import { PlatformTenantsController } from './platform-tenants.controller'
 import { PlatformAuthService } from './platform-auth.service'
 import { PlatformPrismaService } from './platform-prisma.service'
+import { PlatformStatsService } from './platform-stats.service'
 import { PlatformGuard } from './platform.guard'
 
 /**
@@ -33,7 +35,7 @@ import { PlatformGuard } from './platform.guard'
  * у кого есть SELECT на AuditLog.
  */
 @Module({
-  controllers: [PlatformAuthController],
+  controllers: [PlatformAuthController, PlatformTenantsController],
   providers: [
     PlatformPrismaService,
     PlatformGuard,
@@ -43,6 +45,7 @@ import { PlatformGuard } from './platform.guard'
       inject: [PlatformPrismaService],
     },
     PlatformAuthService,
+    PlatformStatsService,
   ],
   exports: [PlatformPrismaService, PlatformAuthService],
 })

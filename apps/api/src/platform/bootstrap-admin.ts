@@ -3,6 +3,7 @@ import 'reflect-metadata'
 import { createHash, randomBytes } from 'node:crypto'
 
 import { hashPin } from '../auth/pin'
+import { AuditService } from '../core/audit.service'
 
 import { PlatformPrismaService } from './platform-prisma.service'
 import { keyFromEnv, sealSecret } from './secret-box'
@@ -38,6 +39,23 @@ import { generateSecret, otpauthUrl } from './totp'
  *   node apps/api/dist/platform/bootstrap-admin.js "почта@пример.рф" "Имя Фамилия"
  *
  * Нужны переменные DATABASE_URL_PLATFORM и PLATFORM_TOTP_ENC_KEY.
+ *
+ * ─── ПЕРЕВЫПУСК, ЕСЛИ ПАРОЛЬ ПОТЕРЯН ────────────────────────────────────────
+ *
+ *   ... bootstrap-admin.js "почта@пример.рф" "Имя Фамилия" --reset
+ *
+ * Пароль показывается единожды, и потерять его — обычное дело, а не редкость.
+ * Поэтому нужен предусмотренный выход, а не разбор руками в базе.
+ *
+ * Перевыпуск НИЧЕГО НЕ УДАЛЯЕТ. Старые коды восстановления помечаются
+ * использованными, устройства и сессии — отозванными, и всё это остаётся
+ * в таблицах. Причина не в аккуратности: по учётной записи, из которой можно
+ * стереть следы, нельзя разобрать инцидент. К тому же роли positive_platform
+ * право удалять намеренно не выдано вовсе (миграция 20260909170000).
+ *
+ * Отзыв устройств здесь обязателен. Иначе перевыпущенный доступ остался бы
+ * привязан к устройству, с которого входили раньше, — а перевыпускают его
+ * как раз тогда, когда со старым что-то не так.
  */
 
 /** Сколько кодов восстановления выдаём. Десять — стандартная практика. */
@@ -99,14 +117,86 @@ const generateRecoveryCode = (): string => {
   return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
 }
 
+/**
+ * Перевыпуск доступа существующему админу.
+ *
+ * НИЧЕГО НЕ УДАЛЯЕТ, и это не осторожность ради осторожности. Роли
+ * positive_platform право удалять не выдано вовсе (миграция 20260909170000):
+ * по учётной записи, из которой можно стереть следы, нельзя разобрать инцидент.
+ * Поэтому старое ГАСИТСЯ пометками, а не исчезает.
+ *
+ * Что перестаёт работать и почему именно это:
+ *
+ *   пароль и секрет      заменяются — ради них перевыпуск и затевался;
+ *   коды восстановления  помечаются использованными: распечатка старых кодов
+ *                        может лежать где угодно, и она больше не ключ;
+ *   доверенные устройства отзываются — иначе новый доступ остался бы привязан
+ *                        к устройству, с которым как раз что-то и не так;
+ *   открытые сессии      гасятся: перевыпуск не должен оставлять в живых
+ *                        вкладку, открытую до него.
+ *
+ * Второй фактор снова помечается неподтверждённым: секрет новый, и старый
+ * аутентификатор к нему не подойдёт. Подтвердится первым удачным входом.
+ */
+const reissue = async (
+  prisma: PlatformPrismaService,
+  adminId: string,
+  next: {
+    displayName: string
+    passwordHash: string
+    totpSecretEnc: string
+    codeRows: Array<{ codeHash: string }>
+  },
+): Promise<{ id: string }> => {
+  const now = new Date()
+
+  await prisma.platformRecoveryCode.updateMany({
+    where: { adminId, usedAt: null },
+    data: { usedAt: now },
+  })
+
+  await prisma.platformAdminDevice.updateMany({
+    where: { adminId, revokedAt: null },
+    data: { revokedAt: now },
+  })
+
+  await prisma.platformSession.updateMany({
+    where: { adminId, revokedAt: null },
+    data: { revokedAt: now },
+  })
+
+  await prisma.platformRecoveryCode.createMany({
+    data: next.codeRows.map((row) => ({ adminId, codeHash: row.codeHash })),
+  })
+
+  return prisma.platformAdmin.update({
+    where: { id: adminId },
+    data: {
+      displayName: next.displayName,
+      passwordHash: next.passwordHash,
+      totpSecretEnc: next.totpSecretEnc,
+      totpConfirmedAt: null,
+      lastTotpCounter: null,
+      failedAttempts: 0,
+      lockedUntil: null,
+    },
+    select: { id: true },
+  })
+}
+
 const main = async (): Promise<void> => {
-  const email = process.argv[2]?.trim().toLowerCase()
-  const displayName = process.argv[3]?.trim()
+  const args = process.argv.slice(2)
+  const reset = args.includes('--reset')
+  const positional = args.filter((value) => !value.startsWith('--'))
+
+  const email = positional[0]?.trim().toLowerCase()
+  const displayName = positional[1]?.trim()
 
   if (email === undefined || email === '' || displayName === undefined || displayName === '') {
     throw new Error(
       'Нужны два аргумента: почта и имя.\n' +
-        '  node apps/api/dist/platform/bootstrap-admin.js "почта@пример.рф" "Имя Фамилия"',
+        '  node apps/api/dist/platform/bootstrap-admin.js "почта@пример.рф" "Имя Фамилия"' +
+        '\nЧтобы перевыпустить доступ существующему админу, добавьте --reset',
     )
   }
 
@@ -120,11 +210,14 @@ const main = async (): Promise<void> => {
   try {
     const existing = await prisma.platformAdmin.findUnique({ where: { email } })
 
-    if (existing !== null) {
+    if (existing !== null && !reset) {
       throw new Error(
         `Админ с почтой ${email} уже заведён. Скрипт намеренно не переписывает ` +
           'существующие учётные данные: молча сменить пароль администратору, ' +
-          'который сейчас работает, — плохая идея.',
+          'который сейчас работает, — плохая идея.' +
+          '\n\nЕсли пароль потерян и доступ нужно перевыпустить — добавьте --reset. ' +
+          'Тогда старый пароль, второй фактор, коды восстановления и доверенные ' +
+          'устройства перестанут работать, и вы получите новые.',
       )
     }
 
@@ -132,22 +225,40 @@ const main = async (): Promise<void> => {
     const secret = generateSecret()
     const recoveryCodes = Array.from({ length: RECOVERY_CODES }, generateRecoveryCode)
 
-    const admin = await prisma.platformAdmin.create({
-      data: {
-        email,
-        displayName,
-        passwordHash: await hashPin(password),
-        totpSecretEnc: sealSecret(secret, encKey),
-        // Второй фактор НЕ подтверждён: вход будет отклоняться, пока владелец
-        // не подключит аутентификатор и не подтвердит первым кодом. Иначе
-        // учётка с ненастроенной 2FA впускала бы по одному лишь паролю.
-        totpConfirmedAt: null,
-        recoveryCodes: {
-          create: recoveryCodes.map((code) => ({
-            codeHash: createHash('sha256').update(code).digest('hex'),
-          })),
-        },
-      },
+    const codeRows = recoveryCodes.map((code) => ({
+      codeHash: createHash('sha256').update(code).digest('hex'),
+    }))
+
+    const admin =
+      existing === null
+        ? await prisma.platformAdmin.create({
+            data: {
+              email,
+              displayName,
+              passwordHash: await hashPin(password),
+              totpSecretEnc: sealSecret(secret, encKey),
+              // Второй фактор НЕ подтверждён: подтвердится первым удачным входом.
+              totpConfirmedAt: null,
+              recoveryCodes: { create: codeRows },
+            },
+          })
+        : await reissue(prisma, existing.id, {
+            displayName,
+            passwordHash: await hashPin(password),
+            totpSecretEnc: sealSecret(secret, encKey),
+            codeRows,
+          })
+
+    // След остаётся ВСЕГДА: перевыпуск доступа к учётной записи, видящей все
+    // заведения, — событие того же веса, что и вход под владельцем.
+    await new AuditService(prisma).write({
+      action: 'PLATFORM_CREDENTIALS_REISSUED',
+      actorType: 'PLATFORM_ADMIN',
+      actorId: admin.id,
+      tenantId: null,
+      entityType: 'PlatformAdmin',
+      entityId: admin.id,
+      newValue: { режим: existing === null ? 'создание' : 'перевыпуск' },
     })
 
     const url = otpauthUrl({ secret, account: email, issuer: 'POSitive Loyalty' })
@@ -156,7 +267,7 @@ const main = async (): Promise<void> => {
       [
         '',
         '════════════════════════════════════════════════════════════════',
-        '  АДМИН ПЛАТФОРМЫ ЗАВЕДЁН',
+        existing === null ? '  АДМИН ПЛАТФОРМЫ ЗАВЕДЁН' : '  ДОСТУП ПЕРЕВЫПУЩЕН',
         '════════════════════════════════════════════════════════════════',
         '',
         `  Почта:  ${email}`,
@@ -176,6 +287,16 @@ const main = async (): Promise<void> => {
         '',
         `      ${secret}`,
         '',
+        ...(existing === null
+          ? []
+          : [
+              '  ЧТО ПЕРЕСТАЛО РАБОТАТЬ ПРЯМО СЕЙЧАС:',
+              '    • прежний пароль;',
+              '    • прежний аутентификатор — подключите заново по ссылке выше;',
+              '    • прежние коды восстановления, включая распечатанные;',
+              '    • прежние доверенные устройства и открытые сессии.',
+              '',
+            ]),
         '  КОДЫ ВОССТАНОВЛЕНИЯ (на случай потерянного телефона).',
         '  Распечатайте и уберите отдельно от пароля. Каждый работает один раз:',
         '',

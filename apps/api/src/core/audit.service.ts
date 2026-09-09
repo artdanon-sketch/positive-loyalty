@@ -61,6 +61,8 @@ export type AuditAction =
   | 'DATABASE_EXPORTED'
   /** Вход админа платформы в свой контур. */
   | 'PLATFORM_ADMIN_SIGNED_IN'
+  /** Перевыпуск доступа админа платформы: пароль, второй фактор, коды. */
+  | 'PLATFORM_CREDENTIALS_REISSUED'
 
 export interface AuditEntry {
   readonly action: AuditAction
