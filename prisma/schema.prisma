@@ -141,6 +141,8 @@ model Tenant {
   posLinks          PosLink[]
   webhookEvents     WebhookEvent[]
   webhookDeliveries WebhookDelivery[]
+  offers            Offer[]
+  offerGrants       OfferGrant[]
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -176,6 +178,7 @@ model Guest {
   guestSessions GuestSession[]
   identities    GuestIdentity[]
   ledgerEntries LedgerEntry[]
+  offerGrants   OfferGrant[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -926,5 +929,130 @@ model PlatformSession {
 
   @@index([adminId, revokedAt])
   @@index([familyId])
+  @@index([expiresAt])
+}
+
+// ─── Акции и промокоды ───────────────────────────────────────────────────────
+//
+// docs/01, раздел 4.5. Основная механика лояльности после баллов — и то, на чём
+// стоят партнёрства: PartnershipTerm при активации порождает Offer, а выдача
+// и погашение идут через этот же конвейер (CLAUDE.md, железное правило 6).
+
+/// Вид акции. Список из docs/01, раздел 4.5 — дословно, чтобы не разошёлся.
+enum OfferType {
+  CASHBACK
+  PROMO_ON_CHECK
+  FLASH_1DAY
+  TIME_WINDOW
+  STAMP_CARD
+  NETWORK_VOUCHER
+  REFERRAL
+  BIRTHDAY
+  WINBACK
+  PACKAGE
+  GIFT_CARD
+}
+
+enum OfferStatus {
+  DRAFT
+  SCHEDULED
+  LIVE
+  PAUSED
+  ENDED
+}
+
+/// Кому акция видна.
+///
+/// PARTNER заведён сразу, хотя партнёрств ещё нет: docs/07 добавляет именно это
+/// значение, и вводить его отдельной миграцией по перечислению — лишний риск
+/// на ровном месте. Пустое значение перечисления никому не мешает.
+enum Visibility {
+  VENUE_ONLY
+  NETWORK
+  PARTNER
+}
+
+enum GrantState {
+  ISSUED
+  REDEEMED
+  EXPIRED
+  VOID
+}
+
+/// Акция заведения.
+model Offer {
+  id       String @id @default(uuid())
+  tenantId String
+
+  type   OfferType
+  status OfferStatus @default(DRAFT)
+
+  /// Порядок применения в движке правил: меньше — раньше.
+  priority  Int     @default(100)
+  /// Можно ли складывать с другими. Нестекируемая обрывает цепочку.
+  stackable Boolean @default(false)
+
+  /// ALL | TOURIST | RESIDENT | NEW | SLEEPING | segmentId — docs/01, раздел 4.5.
+  audience Json
+  /// {startsAt, endsAt, weekdays[], timeWindow{from,to}}
+  schedule Json
+  /// {totalQty, perGuestQty, minCheck, maxDiscount} — суммы в минорных единицах.
+  limits   Json
+  /// {kind, value} — что именно получает гость.
+  reward   Json
+
+  visibility Visibility @default(VENUE_ONLY)
+
+  /// {ru:{title,desc}, en:{...}, th:{...}, zh:{...}} — строки в данных, не в коде.
+  i18n Json
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  grants OfferGrant[]
+
+  @@index([tenantId, status])
+}
+
+/// Выданный гостю промокод.
+model OfferGrant {
+  id      String @id @default(uuid())
+  offerId String
+
+  /// НЕТ В НАБРОСКЕ ТЗ, И ДОБАВЛЕНО ОСОЗНАННО.
+  ///
+  /// Без него RLS на этой таблице пришлось бы писать подзапросом к Offer —
+  /// а все остальные политики в базе сравнивают колонку напрямую. Разнобой
+  /// в способе изоляции опаснее одной денормализованной колонки: именно такие
+  /// исключения потом и протекают.
+  ///
+  /// Плюс сам ТЗ требует при погашении проверить, что «тенант совпадает»
+  /// (docs/02, раздел 3.4) — то есть грант обязан знать своё заведение.
+  tenantId String
+
+  guestId String
+
+  /// Не меньше восьми символов, криптостойкий (docs/01, раздел 4.5).
+  code String @unique
+
+  state GrantState @default(ISSUED)
+
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime
+  redeemedAt DateTime?
+  /// Кто погасил: сотрудник на кассе.
+  redeemedBy String?
+
+  /// Одноразовость на уровне базы, отдельно от кода: код показывают гостю,
+  /// nonce не показывают никому.
+  nonce String @unique
+
+  offer  Offer  @relation(fields: [offerId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([guestId, state])
+  @@index([offerId, state])
+  @@index([tenantId, state])
   @@index([expiresAt])
 }
