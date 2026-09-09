@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common'
 import { PlatformMeResult, PlatformSignInInput, PlatformSignInResult } from '@positive/contracts'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 
@@ -44,15 +54,33 @@ export class PlatformAuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Вход админа платформы: пароль, код 2FA, устройство' })
   @ApiResponse({ status: 200, description: 'Впущен: токены выданы' })
+  @ApiResponse({ status: 400, description: 'Тело запроса не соответствует контракту' })
   @ApiResponse({ status: 401, description: 'Отказ. Причина намеренно не раскрывается' })
-  async signIn(@Body() body: PlatformSignInInput): Promise<PlatformSignInResult> {
+  async signIn(@Body() body: unknown): Promise<PlatformSignInResult> {
+    // Разбор ЯВНЫЙ, как у соседних контроллеров, а не через типизацию параметра.
+    //
+    // Тип в сигнатуре не проверяет ничего: он стирается при сборке, и тело
+    // приходит как есть. Полагаясь на него, я получил 500 на пустом теле вместо
+    // 400 — сервис падал на обращении к отсутствующему полю. Поймано проверкой
+    // живого сервиса, а не тестом: у контроллера его не было.
+    const parsed = PlatformSignInInput.safeParse(body)
+
+    if (!parsed.success) {
+      // Перечисляем ИМЕНА полей, но не значения: в теле пароль и код.
+      throw new BadRequestException({
+        code: 'VALIDATION_FAILED',
+        message: 'Тело запроса не соответствует контракту',
+        details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+      })
+    }
+
     try {
       const result = await this.auth.signIn({
-        email: body.email,
-        password: body.password,
-        totpCode: body.totpCode,
-        deviceId: body.deviceId,
-        deviceLabel: body.deviceLabel,
+        email: parsed.data.email,
+        password: parsed.data.password,
+        totpCode: parsed.data.totpCode,
+        deviceId: parsed.data.deviceId,
+        deviceLabel: parsed.data.deviceLabel,
         now: new Date(),
       })
 
