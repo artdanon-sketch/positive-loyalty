@@ -9,6 +9,7 @@ import { ZodValidationPipe } from 'nestjs-zod'
 
 import { getEnv } from './common/config/env'
 import { PlatformHealthController } from './platform/platform-health.controller'
+import { PlatformLoginController } from './platform/platform-login.controller'
 import { PlatformModule } from './platform/platform.module'
 
 /**
@@ -42,12 +43,21 @@ import { PlatformModule } from './platform/platform.module'
  * соединений под обычной ролью в этом процессе — именно то, чего мы избегаем.
  */
 
-const HEALTH_ROUTE = 'health'
 const GLOBAL_PREFIX = 'v1'
+
+/**
+ * Маршруты ВНЕ префикса версии.
+ *
+ * `health` — на него смотрит Railway, и он не должен переезжать вместе
+ * с версией API. Остальные три — страница входа и её файлы: человек набирает
+ * адрес панели руками, и заставлять его помнить «/v1» ради формы входа
+ * бессмысленно.
+ */
+const UNVERSIONED = ['health', '', 'login.css', 'login.js']
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true }), PlatformModule],
-  controllers: [PlatformHealthController],
+  controllers: [PlatformHealthController, PlatformLoginController],
 })
 class PlatformAppModule {}
 
@@ -73,7 +83,7 @@ const bootstrap = async (): Promise<void> => {
   })
 
   app.setGlobalPrefix(GLOBAL_PREFIX, {
-    exclude: [{ path: HEALTH_ROUTE, method: RequestMethod.GET }],
+    exclude: UNVERSIONED.map((path) => ({ path, method: RequestMethod.GET })),
   })
 
   app.useGlobalPipes(new ZodValidationPipe())
