@@ -60,6 +60,18 @@ export interface IssueGrantInput {
   readonly tenantId: string
   /** Сколько дней живёт код. Партнёрства передают своё значение из Term. */
   readonly validityDays: number
+  /**
+   * Ключ идемпотентности. Повтор с тем же ключом вернёт ПЕРВЫЙ промокод,
+   * а не выдаст второй.
+   *
+   * Нужен партнёрствам: событие кассы может прийти дважды — при повторной
+   * доставке, при перезапуске обработчика, при ретрае. Гость не должен
+   * получить два подарка за одну покупку, а заведение-донор — платить дважды.
+   *
+   * Ложится в колонку nonce, у которой уже есть UNIQUE. Гарантию даёт база,
+   * а не проверка в коде: два одновременных события прошли бы проверку оба.
+   */
+  readonly idempotencyKey?: string
   readonly now: Date
 }
 
@@ -77,6 +89,14 @@ export interface GrantView {
   readonly offerId: string
   readonly guestId: string
   readonly expiresAt: Date
+  /**
+   * Промокод не выдан заново, а возвращён по ключу идемпотентности.
+   *
+   * Вызывающему это важно: партнёрства не должны поднимать счётчик выдач
+   * на повторе, иначе лимит «всего 200» исчерпается доставками событий,
+   * а не гостями.
+   */
+  readonly replayed: boolean
 }
 
 /**
@@ -125,20 +145,45 @@ export class OfferGrantService {
 
       const expiresAt = new Date(input.now.getTime() + input.validityDays * 24 * 60 * 60 * 1000)
 
-      const grant = await tx.offerGrant.create({
-        data: {
-          offerId: input.offerId,
-          tenantId: input.tenantId,
-          guestId: input.guestId,
-          code: generateCode(),
-          nonce: randomUUID(),
-          issuedAt: input.now,
-          expiresAt,
-        },
-        select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
-      })
+      const nonce = input.idempotencyKey ?? randomUUID()
 
-      return grant
+      try {
+        const created = await tx.offerGrant.create({
+          data: {
+            offerId: input.offerId,
+            tenantId: input.tenantId,
+            guestId: input.guestId,
+            code: generateCode(),
+            nonce,
+            issuedAt: input.now,
+            expiresAt,
+          },
+          select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
+        })
+
+        return { ...created, replayed: false }
+      } catch (error) {
+        // Повтор по ключу — не ошибка, а норма: событие пришло дважды.
+        // Возвращаем ПЕРВЫЙ промокод, как это делает журнал баллов с
+        // idempotencyKey (docs/02, раздел 0).
+        if (input.idempotencyKey === undefined || !isUniqueViolation(error)) {
+          throw error
+        }
+
+        const existing = await tx.offerGrant.findUnique({
+          where: { nonce },
+          select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
+        })
+
+        if (existing === null) {
+          // Нарушен другой UNIQUE — например, код случайно совпал.
+          // Проглотить это значило бы выдать вместо промокода загадку.
+          throw error
+        }
+
+        this.logger.debug(`Повтор выдачи по ключу: возвращён промокод ${existing.id}`)
+        return { ...existing, replayed: true }
+      }
     })
   }
 
@@ -221,9 +266,28 @@ export class OfferGrantService {
         offerId: grant.offerId,
         guestId: grant.guestId,
         expiresAt: grant.expiresAt,
+        // Погашение не бывает повтором: второе отвергается выше.
+        replayed: false,
       }
     })
   }
+}
+
+/**
+ * Нарушение UNIQUE — по коду Prisma или по коду PostgreSQL.
+ *
+ * Проверяются оба: адаптер драйвера не всегда доносит код Postgres наверх,
+ * и полагаться на что-то одно означает, что повтор однажды перестанет
+ * распознаваться и превратится в отказ на ровном месте.
+ */
+const isUniqueViolation = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) {
+    return false
+  }
+
+  const record = error as { code?: unknown; cause?: { code?: unknown } }
+
+  return record.code === 'P2002' || record.code === '23505' || record.cause?.code === '23505'
 }
 
 /** Криптостойкий код без смещения выборки: байты из неполного диапазона отброшены. */
