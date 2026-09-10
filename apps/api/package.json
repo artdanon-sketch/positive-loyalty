@@ -8,7 +8,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "nest build && node scripts/migrations-manifest.mjs",
     "start": "node dist/main",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",

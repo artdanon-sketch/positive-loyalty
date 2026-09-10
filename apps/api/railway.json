@@ -5,6 +5,7 @@
     "buildCommand": "corepack enable && pnpm run build:packages && pnpm --filter @positive/api run build"
   },
   "deploy": {
+    "preDeployCommand": "node prisma/scripts/predeploy.mjs",
     "startCommand": "pnpm --filter @positive/api run start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 60,
