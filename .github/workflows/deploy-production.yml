@@ -80,9 +80,23 @@ jobs:
       # Отсюда правило из CLAUDE.md: колонку не удаляем в одном релизе с кодом,
       # который перестал её использовать. Между ними — минимум один деплой.
       # Шаг включается в Задаче 2, когда появится prisma/schema.prisma.
+      #
+      # ШАГ ПАДАЕТ, ЕСЛИ АДРЕСА БАЗЫ НЕТ, А ДЕПЛОЙ НАСТРОЕН. Молчаливый пропуск —
+      # это ровно то, что здесь и стояло: заглушка печатала TODO, job был
+      # зелёный, код уезжал в бой без миграций. Один раз это уже стоило живого
+      # API: колонка появилась в коде и не появилась в базе, и каждое чтение
+      # журнала падало, пока миграцию не накатили руками.
       - name: Apply migrations (production)
         if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
-        run: echo "TODO(Задача 2) — prisma migrate deploy на боевую базу, ДО деплоя кода"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Деплой настроен, но секрета DATABASE_URL_PRODUCTION нет."
+            echo "::error::Выкатывать код без миграций нельзя — это ломает бой молча."
+            exit 1
+          fi
+          pnpm db:deploy
 
       # ── Railway: api и worker ──────────────────────────────────────────────
       - name: Install Railway CLI
