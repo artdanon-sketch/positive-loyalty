@@ -27,7 +27,21 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import process from 'node:process'
+
+/**
+ * Пути считаются от САМОГО ФАЙЛА, а не от текущего каталога.
+ *
+ * Команда перед выкаткой выполняется в отдельном контейнере, и с каким рабочим
+ * каталогом он запустится — не наше решение. Prisma ищет схему относительно
+ * текущего каталога, поэтому «обычно работает» здесь означает «однажды молча
+ * не сработает».
+ */
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
+const schema = join(root, 'prisma', 'schema.prisma')
 
 const url = process.env['DATABASE_URL']
 
@@ -39,7 +53,26 @@ if (typeof url !== 'string' || url.trim() === '') {
   process.exit(0)
 }
 
-process.stdout.write('[predeploy] Применяю миграции: prisma migrate deploy\n')
+/**
+ * Схема должна лежать в образе. Если её нет, дальше идти незачем: prisma
+ * упадёт со своей ошибкой, из которой не видно, что именно не так.
+ *
+ * Падаем, а не пропускаем. Пропуск здесь означал бы «код едет, миграции нет» —
+ * ровно то, ради чего команда и заведена. Сообщение говорит, что делать.
+ */
+if (!existsSync(schema)) {
+  process.stderr.write(
+    `[predeploy] Схема Prisma не найдена: ${schema}\n` +
+      '[predeploy] Значит каталог prisma в образ не попал, и применить миграции ' +
+      'отсюда нельзя.\n' +
+      '[predeploy] Выкатка остановлена намеренно. Чтобы разблокировать: очистите поле ' +
+      'Pre-deploy Command в настройках сервиса и применяйте миграции командой ' +
+      'pnpm db:deploy с рабочей машины.\n',
+  )
+  process.exit(1)
+}
+
+process.stdout.write(`[predeploy] Применяю миграции: prisma migrate deploy (${schema})\n`)
 
 /**
  * Через npx с ЗАКРЕПЛЁННОЙ версией, а не через локальный бинарник.
@@ -50,10 +83,11 @@ process.stdout.write('[predeploy] Применяю миграции: prisma migr
  * что и в package.json: миграции обязан применять тот же Prisma, который
  * их писал.
  */
-const result = spawnSync('npx', ['--yes', 'prisma@7.9.1', 'migrate', 'deploy'], {
-  stdio: 'inherit',
-  shell: process.platform === 'win32',
-})
+const result = spawnSync(
+  'npx',
+  ['--yes', 'prisma@7.9.1', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'],
+  { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' },
+)
 
 if (result.error !== undefined) {
   process.stderr.write(`[predeploy] Не удалось запустить prisma: ${result.error.message}\n`)
