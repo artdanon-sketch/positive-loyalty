@@ -8,7 +8,9 @@ import helmet from 'helmet'
 import { ZodValidationPipe } from 'nestjs-zod'
 
 import { AppModule } from './app.module'
+import { assertMigrated } from './common/config/assert-migrated'
 import { getEnv } from './common/config/env'
+import { PrismaService } from './core/prisma.service'
 
 const HEALTH_ROUTE = 'health'
 const GLOBAL_PREFIX = 'v1'
@@ -78,6 +80,14 @@ const bootstrap = async (): Promise<void> => {
 
   app.useGlobalPipes(new ZodValidationPipe())
   app.enableShutdownHooks()
+
+  // ДО НАЧАЛА ПРИЁМА ЗАПРОСОВ. Порт, открытый над базой, которая отстала
+  // от кода, — это сервис, отвечающий «ok» на /health и падающий на каждом
+  // обращении к журналу. Ровно так и вышло 10 сентября.
+  //
+  // Ошибка здесь долетает до обработчика внизу файла и роняет процесс. Для
+  // Railway это неудачная выкатка: прежняя версия продолжает работать.
+  await assertMigrated(async (sql) => app.get(PrismaService).$queryRawUnsafe(sql))
 
   if (env.nodeEnv !== 'production') {
     const openApiConfig = new DocumentBuilder()

@@ -7,7 +7,9 @@ import type { NestExpressApplication } from '@nestjs/platform-express'
 import helmet from 'helmet'
 import { ZodValidationPipe } from 'nestjs-zod'
 
+import { assertMigrated } from './common/config/assert-migrated'
 import { getEnv } from './common/config/env'
+import { PlatformPrismaService } from './platform/platform-prisma.service'
 import { PlatformHealthController } from './platform/platform-health.controller'
 import { PlatformLoginController } from './platform/platform-login.controller'
 import { PlatformModule } from './platform/platform.module'
@@ -88,6 +90,10 @@ const bootstrap = async (): Promise<void> => {
 
   app.useGlobalPipes(new ZodValidationPipe())
   app.enableShutdownHooks()
+
+  // Тот же довод, что в main.ts: панель — второй процесс над той же схемой,
+  // и код, уехавший вперёд базы, ломает её так же тихо.
+  await assertMigrated(async (sql) => app.get(PlatformPrismaService).$queryRawUnsafe(sql))
 
   await app.listen(env.port, '0.0.0.0')
 
