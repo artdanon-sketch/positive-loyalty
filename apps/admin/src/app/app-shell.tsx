@@ -65,6 +65,9 @@ export function AppShell(): ReactElement {
               <NavLink className={navClass} to="/guests">
                 {t('nav.guests')}
               </NavLink>
+              <NavLink className={navClass} to="/sale-kinds">
+                {t('nav.saleKinds')}
+              </NavLink>
             </>
           )}
           {/* Касса доступна всем: у владельца в мобильной версии это
