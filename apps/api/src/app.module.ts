@@ -11,6 +11,7 @@ import { CoreModule } from './core/core.module'
 import { HealthModule } from './health/health.module'
 import { IdentityModule } from './identity/identity.module'
 import { IntegrationsModule } from './integrations/integrations.module'
+import { PartnershipsModule } from './partnerships/partnerships.module'
 import { PosModule } from './pos/pos.module'
 
 /**
@@ -34,6 +35,7 @@ import { PosModule } from './pos/pos.module'
     AuthModule,
     IdentityModule,
     AdminModule,
+    PartnershipsModule,
     PosModule,
     IntegrationsModule,
   ],
