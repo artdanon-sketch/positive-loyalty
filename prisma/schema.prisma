@@ -141,6 +141,7 @@ model Tenant {
   posLinks          PosLink[]
   webhookEvents     WebhookEvent[]
   webhookDeliveries WebhookDelivery[]
+  partnershipTriggerRuns PartnershipTriggerRun[]
   offers            Offer[]
   offerGrants       OfferGrant[]
 
@@ -1173,6 +1174,36 @@ model PartnershipTerm {
   @@index([triggerTenantId, status])
   @@index([rewardTenantId, status])
   @@index([partnershipId])
+}
+
+/// Отметка: эта операция журнала уже разобрана на партнёрские условия.
+///
+/// СОБЫТИЕ ВЫВОДИТСЯ ИЗ ЖУРНАЛА, А НЕ ПИШЕТСЯ РЯДОМ С НИМ — тем же способом,
+/// что и исходящие к кассе (WebhookDelivery). Разгребатель сам находит
+/// операции, которых ещё не видел, а ядро про партнёрства не знает вовсе.
+///
+/// Отметка ставится ПОСЛЕ выдачи наград, а не до. Падение между выдачей
+/// и отметкой приводит к повторному разбору — а он безвреден: промокод
+/// выдаётся по ключу идемпотентности и второй раз не родится. Обратный
+/// порядок терял бы награду молча, и узнать об этом было бы неоткуда.
+model PartnershipTriggerRun {
+  id String @id @default(uuid())
+
+  /// Заведение-источник: у него произошло событие.
+  tenantId String
+
+  /// Разобранная операция. UNIQUE работает и маркером, и защитой от гонки:
+  /// два прохода, столкнувшись на одной операции, не разберут её дважды.
+  ledgerEntryId String @unique
+
+  /// Сколько наград родилось. Ноль — обычное дело: условия могли не совпасть.
+  grantsIssued Int @default(0)
+
+  processedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, processedAt])
 }
 
 /// Сообщение в переписке двух заведений.

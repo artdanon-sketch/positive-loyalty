@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common'
 
+import { PartnershipSweepService } from './partnership-sweep.service'
+import { PartnershipSweeper } from './partnership-sweeper'
 import { PartnershipTriggerService } from './partnership-trigger.service'
 
 /**
@@ -12,7 +14,7 @@ import { PartnershipTriggerService } from './partnership-trigger.service'
  * PrismaService и OfferGrantService приходят из CoreModule — он @Global.
  */
 @Module({
-  providers: [PartnershipTriggerService],
-  exports: [PartnershipTriggerService],
+  providers: [PartnershipTriggerService, PartnershipSweepService, PartnershipSweeper],
+  exports: [PartnershipTriggerService, PartnershipSweepService],
 })
 export class PartnershipsModule {}
