@@ -86,7 +86,17 @@ jobs:
       # Шаг включается в Задаче 2, когда появится prisma/schema.prisma.
       - name: Apply migrations (staging)
         if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
-        run: echo "TODO(Задача 2) — prisma migrate deploy на базу staging"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+        run: |
+          # Тот же порядок, что и в проде, и по той же причине: код, уехавший
+          # раньше миграции, ломает окружение молча. Разница только в том,
+          # что здесь это ловят до боя — ради этого staging и существует.
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Деплой настроен, но секрета DATABASE_URL_STAGING нет."
+            exit 1
+          fi
+          pnpm db:deploy
 
       # ── Railway: api и worker ──────────────────────────────────────────────
       - name: Install Railway CLI
