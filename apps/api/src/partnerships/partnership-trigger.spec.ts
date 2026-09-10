@@ -15,6 +15,7 @@ const event = (over: Partial<TriggerEvent> = {}): TriggerEvent => ({
   guestId: 'anna',
   sourceEntryId: 'entry-1',
   refType: 'receipt',
+  saleKindId: null,
   basisAmount: 100_000,
   visitsTotal: 1,
   membershipCreated: false,
@@ -36,27 +37,35 @@ describe('Совпадение триггера партнёрства', () => {
       expect(matches(trigger, event({ basisAmount: 99_999 }))).toBe(false)
     })
 
-    it('НЕ СРАБАТЫВАЕТ НА АБОНЕМЕНТЕ', () => {
-      // У абонемента своё условие. Смешать их — значит выдать гостю два
-      // подарка за одну продажу: один по ON_PURCHASE, другой по пакету.
-      expect(matches(trigger, event({ refType: 'package', basisAmount: 500_000 }))).toBe(false)
-    })
-
     it('не срабатывает без суммы', () => {
       expect(matches(trigger, event({ basisAmount: null }))).toBe(false)
     })
   })
 
-  describe('ON_PACKAGE_PURCHASE', () => {
-    const trigger = { type: 'ON_PACKAGE_PURCHASE', minAmount: 500_000 } as const
+  describe('ON_SALE_KIND — головной пример ТЗ', () => {
+    const abonement = '2f1c1e64-0f4a-4f6f-9b1a-2f7d1c0b9a11'
+    const massage = '9a7b6c5d-4e3f-42a1-8b0c-1d2e3f4a5b6c'
+    const trigger = { type: 'ON_SALE_KIND', saleKindId: abonement, minAmount: 500_000 } as const
 
-    it('срабатывает на абонементе от порога — пример из ТЗ', () => {
+    it('срабатывает на своём виде от порога', () => {
       // «Клиент купил абонемент на 5 000 ฿» — docs/07, раздел 4.3.
-      expect(matches(trigger, event({ refType: 'package', basisAmount: 500_000 }))).toBe(true)
+      expect(matches(trigger, event({ saleKindId: abonement, basisAmount: 500_000 }))).toBe(true)
     })
 
-    it('не срабатывает на обычном чеке той же суммы', () => {
-      expect(matches(trigger, event({ refType: 'receipt', basisAmount: 500_000 }))).toBe(false)
+    it('НЕ СРАБАТЫВАЕТ НА ДРУГОМ ВИДЕ ТОЙ ЖЕ СУММЫ', () => {
+      // Ради этого различения таблица видов и заводилась: массаж на 5 000 ฿
+      // и абонемент на 5 000 ฿ по сумме неотличимы.
+      expect(matches(trigger, event({ saleKindId: massage, basisAmount: 500_000 }))).toBe(false)
+    })
+
+    it('не срабатывает, когда вид не назван', () => {
+      // Заведение справочник не ведёт. Считать безымянную продажу подходящей
+      // значило бы выдавать подарки за всё подряд.
+      expect(matches(trigger, event({ saleKindId: null, basisAmount: 500_000 }))).toBe(false)
+    })
+
+    it('не срабатывает на сатанг ниже порога', () => {
+      expect(matches(trigger, event({ saleKindId: abonement, basisAmount: 499_999 }))).toBe(false)
     })
   })
 

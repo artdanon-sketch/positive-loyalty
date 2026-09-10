@@ -45,6 +45,7 @@ interface AwaitingEntry {
   tenantId: string
   guestId: string
   refType: string | null
+  saleKindId: string | null
   basisAmount: number | null
   visitsTotal: number | null
   membershipCreated: boolean
@@ -83,6 +84,7 @@ export class PartnershipSweepService {
         guestId: row.guestId,
         sourceEntryId: row.id,
         refType: row.refType,
+        saleKindId: row.saleKindId,
         basisAmount: row.basisAmount,
         visitsTotal: row.visitsTotal,
         membershipCreated: row.membershipCreated,

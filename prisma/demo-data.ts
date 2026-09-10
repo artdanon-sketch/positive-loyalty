@@ -693,6 +693,44 @@ const TENANT_SLUGS: Readonly<Record<string, string>> = {
   'Phuket Ride': 'ride',
 }
 
+/**
+ * Виды продаж заведения: что именно оно продаёт гостю.
+ *
+ * НУЖНЫ ДЛЯ ПАРТНЁРСТВ. Условие «купил абонемент — получи ролл в подарок»
+ * невозможно построить на одной сумме: ужин на 5 000 ฿ и абонемент на 5 000 ฿
+ * для журнала неотличимы. Без справочника на полигоне головной пример docs/07
+ * не на чем показать.
+ *
+ * Названия РАЗНЫЕ У РАЗНЫХ ВЕРТИКАЛЕЙ — в этом и смысл того, что список ведёт
+ * заведение: у спа абонемент, у проката сутки и неделя, у ресторана зал
+ * и доставка. Общий справочник на всех был бы бесполезен всем троим.
+ *
+ * Историческим операциям вид НЕ проставляется: они родились до справочника,
+ * и NULL у них — правда, а не пробел. Заодно на полигоне видно, как система
+ * ведёт себя с обеими разновидностями записей.
+ */
+export interface SaleKindSeed {
+  readonly id: string
+  readonly tenantId: string
+  readonly name: string
+  readonly sortOrder: number
+}
+
+const SALE_KIND_NAMES: Readonly<Record<'RESTAURANT' | 'SPA' | 'RENTAL', readonly string[]>> = {
+  RESTAURANT: ['Ужин в зале', 'Доставка', 'Депозит на компанию'],
+  SPA: ['Абонемент на 10 сеансов', 'Разовый сеанс', 'Подарочный сертификат'],
+  RENTAL: ['Аренда на сутки', 'Аренда на неделю', 'Аренда на месяц'],
+}
+
+export const SALE_KINDS: readonly SaleKindSeed[] = TENANTS.flatMap((tenant, tenantIndex) =>
+  SALE_KIND_NAMES[tenant.vertical].map((name, nameIndex) => ({
+    id: uuidFromIndex('50000000', tenantIndex * 10 + nameIndex + 1),
+    tenantId: tenant.id,
+    name,
+    sortOrder: nameIndex,
+  })),
+)
+
 export const STAFF: readonly StaffSeed[] = TENANTS.flatMap((tenant, tenantIndex) => {
   const slug = TENANT_SLUGS[tenant.brandName] ?? `t${tenantIndex + 1}`
 

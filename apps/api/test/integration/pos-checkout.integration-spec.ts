@@ -364,6 +364,115 @@ describe('Проведение чека', () => {
   })
 })
 
+describe('Вид продажи на чеке', () => {
+  it('доезжает от кассы до журнала', async () => {
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+
+    const kind = await prisma.forTenant(tenantId, async (tx) =>
+      tx.saleKind.create({
+        data: { tenantId, name: `Абонемент ${Date.now()}` },
+        select: { id: true },
+      }),
+    )
+
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set(...auth())
+      .send({ membershipId: fixture.membershipId, amount: 500_000 })
+      .expect(200)
+
+    const receiptId = `rcpt-kind-${Date.now()}`
+    await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send({
+        previewId: (preview.body as PreviewBody).previewId,
+        receiptId,
+        saleKindId: kind.id,
+      })
+      .expect(200)
+
+    const entries = await prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({ where: { tenantId, refId: receiptId } }),
+    )
+
+    // Без этого партнёрское условие «купил абонемент» не сработает никогда:
+    // разгребатель читает вид продажи именно из журнала.
+    expect(entries[0]?.saleKindId).toBe(kind.id)
+    // Чек остаётся чеком: отмена и отчёты по выручке ищут по refType.
+    expect(entries[0]?.refType).toBe('receipt')
+  })
+
+  it('ЧУЖОЙ ВИД ПРОДАЖИ ОТВЕРГАЕТСЯ, А НЕ ЗАПИСЫВАЕТСЯ', async () => {
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+
+    // Справочник соседнего заведения. Внешний ключ его существование
+    // подтвердит — проверка ссылочной целостности идёт от имени системы
+    // и политики RLS обходит. Значит запрет обязан стоять в приложении,
+    // иначе журнал заведения сослался бы на справочник соседа.
+    const alien = await createMembershipFixture(prisma)
+    const alienKind = await prisma.forTenant(alien.tenantId, async (tx) =>
+      tx.saleKind.create({
+        data: { tenantId: alien.tenantId, name: 'Чужой абонемент' },
+        select: { id: true },
+      }),
+    )
+
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set(...auth())
+      .send({ membershipId: fixture.membershipId, amount: 200_000 })
+      .expect(200)
+
+    const receiptId = `rcpt-alien-${Date.now()}`
+    const response = await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send({
+        previewId: (preview.body as PreviewBody).previewId,
+        receiptId,
+        saleKindId: alienKind.id,
+      })
+      .expect(400)
+
+    expect((response.body as { error: { code: string } }).error.code).toBe('SALE_KIND_NOT_FOUND')
+
+    // Чек не проведён вовсе: отказ до записи, а не после.
+    const entries = await prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({ where: { tenantId, refId: receiptId } }),
+    )
+    expect(entries).toHaveLength(0)
+  })
+
+  it('выключенный вид выбрать нельзя', async () => {
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+
+    const kind = await prisma.forTenant(tenantId, async (tx) =>
+      tx.saleKind.create({
+        data: { tenantId, name: `Снятый с продажи ${Date.now()}`, isActive: false },
+        select: { id: true },
+      }),
+    )
+
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set(...auth())
+      .send({ membershipId: fixture.membershipId, amount: 200_000 })
+      .expect(200)
+
+    // Иначе выключатель работал бы только в интерфейсе бэк-офиса.
+    await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set(...auth())
+      .send({
+        previewId: (preview.body as PreviewBody).previewId,
+        receiptId: `rcpt-off-${Date.now()}`,
+        saleKindId: kind.id,
+      })
+      .expect(400)
+  })
+})
+
 describe('Контрольная группа', () => {
   it('визит записывается нулевым начислением: баланс нулевой, визит посчитан', async () => {
     const fixture = await createMembershipFixture(prisma, { tenantId })

@@ -65,6 +65,7 @@ const validRecord = {
   idempotencyKey: 'pos_rcpt_99182',
   reversalOfId: null,
   offerId: null,
+  saleKindId: null,
   actorType: 'SYSTEM',
   actorId: null,
   locationId: LOCATION_ID,
