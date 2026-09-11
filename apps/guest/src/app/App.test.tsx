@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { dictionaries } from '../shared/i18n/dictionaries'
@@ -56,7 +56,34 @@ const WALLET_RESPONSE = {
       isControlGroup: true,
     },
   ],
+  vouchers: [
+    {
+      grantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      offerId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      tenantId: '33333333-3333-4333-8333-333333333333',
+      venue: 'Kata Beach Kitchen',
+      title: 'Ролл Филадельфия в подарок',
+      code: 'KATA-200-9K2P',
+      expiresAt: '2026-09-20T23:59:59.000Z',
+      expiresInDays: 9,
+      howTo: ['Закажите на 800 ฿ или больше', 'Покажите код кассиру'],
+    },
+    {
+      grantId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      offerId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      tenantId: '44444444-4444-4444-8444-444444444444',
+      venue: 'Sabai Thai Massage',
+      title: null,
+      code: 'SABAI-1DAY',
+      expiresAt: '2026-09-12T23:59:59.000Z',
+      expiresInDays: 0,
+      howTo: [],
+    },
+  ],
 }
+
+/** Кошелёк без подарков — обычное состояние: партнёрств у заведения может не быть. */
+const WALLET_WITHOUT_VOUCHERS = { ...WALLET_RESPONSE, vouchers: [] }
 
 const QR_RESPONSE = { token: 'guest-qr-token', expiresIn: 300 }
 
@@ -147,9 +174,15 @@ describe('Гостевое приложение', () => {
     // Баллы показаны в батах, хотя приходят целыми в сатангах.
     expect(await screen.findByText('425,00 ฿')).toBeInTheDocument()
     expect(screen.getByText('301,75 ฿')).toBeInTheDocument()
-    expect(screen.getByText('Kata Beach Kitchen')).toBeInTheDocument()
+
+    // Заведение ищем В СПИСКЕ «где у вас баллы»: с появлением подарков то же
+    // имя встречается на экране дважды, и проверка без границы прошла бы
+    // по карточке подарка, ничего не сказав про список заведений.
+    const venues = within(screen.getByRole('region', { name: t('card.venues.title') }))
+
+    expect(venues.getByText('Kata Beach Kitchen')).toBeInTheDocument()
     // Контрольная группа помечена — гость видит, почему баллов не прибавляется.
-    expect(screen.getByText(t('card.venues.control'))).toBeInTheDocument()
+    expect(venues.getByText(t('card.venues.control'))).toBeInTheDocument()
     expect(await screen.findByRole('img', { name: t('card.qr.alt') })).toBeInTheDocument()
   })
 
@@ -193,6 +226,52 @@ describe('Гостевое приложение', () => {
       'Кошелёк временно недоступен',
     )
     expect(screen.getByRole('button', { name: t('card.error.retry') })).toBeInTheDocument()
+  })
+
+  it('ПОКАЗЫВАЕТ ПОДАРОК С КОДОМ, ЗАВЕДЕНИЕМ И СРОКОМ', async () => {
+    // Ради этого экрана и строилась партнёрская механика: до сих пор подарок
+    // существовал только в базе, и гость о нём не знал.
+    stubApi()
+    render(<App />)
+
+    await signIn()
+
+    expect(await screen.findByText('Ролл Филадельфия в подарок')).toBeInTheDocument()
+
+    // Смотрим ИМЕННО в раздел подарков: то же заведение есть и в списке
+    // «где у вас баллы», и проверка без границы прошла бы по чужой строке.
+    const gifts = within(screen.getByRole('region', { name: t('card.vouchers.title') }))
+
+    // Код — главное на экране: его показывают кассиру.
+    expect(gifts.getByText('KATA-200-9K2P')).toBeInTheDocument()
+    expect(gifts.getByText('Kata Beach Kitchen')).toBeInTheDocument()
+    // Шаги приходят с сервера, а не собираются здесь: иначе языки разъедутся.
+    expect(gifts.getByText('Закажите на 800 ฿ или больше')).toBeInTheDocument()
+  })
+
+  it('ПОДАРОК БЕЗ НАЗВАНИЯ ВСЁ РАВНО ПОКАЗЫВАЕТСЯ', async () => {
+    // У акции может не быть текстов. Скрыть такой подарок значило бы отобрать
+    // у гостя то, что ему уже выдали, из-за незаполненного поля.
+    stubApi()
+    render(<App />)
+
+    await signIn()
+
+    expect(await screen.findByText('SABAI-1DAY')).toBeInTheDocument()
+    expect(screen.getByText(t('card.vouchers.noTitle'))).toBeInTheDocument()
+    // Последний день назван словами, а не числом «0».
+    expect(screen.getByText(t('card.vouchers.lastDay'))).toBeInTheDocument()
+  })
+
+  it('без подарков раздела нет вовсе', async () => {
+    // Пустой раздел «Ваши подарки» выглядел бы как поломка, а не как норма.
+    stubApi({ '/v1/guest/wallet': () => json(WALLET_WITHOUT_VOUCHERS) })
+    render(<App />)
+
+    await signIn()
+
+    expect(await screen.findByText('Kata Beach Kitchen')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: t('card.vouchers.title') })).not.toBeInTheDocument()
   })
 
   it('переключает тему на противоположную', async () => {
