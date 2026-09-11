@@ -50,5 +50,9 @@
   "signin.telegram.waiting": "Нажмите в боте «Запустить» и возвращайтесь сюда — вход завершится сам.",
   "signin.telegram.expired": "Ссылка устарела. Начните вход заново.",
   "signin.telegram.failed": "Не удалось начать вход через Telegram. Попробуйте ещё раз.",
-  "signin.telegram.cancel": "Отменить"
+  "signin.telegram.cancel": "Отменить",
+  "card.vouchers.title": "Ваши подарки",
+  "card.vouchers.noTitle": "Подарок",
+  "card.vouchers.daysLeft": "Сгорит через дней:",
+  "card.vouchers.lastDay": "Сегодня последний день"
 }

@@ -7,6 +7,7 @@ import { CardEmpty } from './components/card-empty'
 import { CardError } from './components/card-error'
 import { CardLoading } from './components/card-loading'
 import { QrCode } from './components/qr-code'
+import { VoucherList } from './components/voucher-list'
 import { useQrToken, useWallet } from './hooks'
 
 /** 12 000 сатангов → «120,00 ฿». Хранение целое, форматирование на выводе. */
@@ -76,11 +77,21 @@ export function Page(): ReactElement {
             )}
           </section>
 
+          {/* Подарки — ВЫШЕ списка заведений и сразу под кодом на кассе.
+              Это то, ради чего гость открыл приложение у стойки: баллы он
+              смотрит дома, а подарок предъявляет здесь и сейчас. */}
+          {wallet.data.vouchers.length > 0 ? <VoucherList vouchers={wallet.data.vouchers} /> : null}
+
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />
           ) : (
-            <section className="card__venues">
-              <h2 className="card__sectionTitle">{t('card.venues.title')}</h2>
+            // aria-labelledby, а не просто section: у экрана два одинаковых
+            // по структуре списка, и без имени они неразличимы ни для чтения
+            // с экрана, ни для теста — заведение встречается и там, и там.
+            <section className="card__venues" aria-labelledby="card-venues-title">
+              <h2 className="card__sectionTitle" id="card-venues-title">
+                {t('card.venues.title')}
+              </h2>
               <ul className="venue-list">
                 {wallet.data.memberships.map((membership) => (
                   <li className="venue" key={membership.tenantId}>

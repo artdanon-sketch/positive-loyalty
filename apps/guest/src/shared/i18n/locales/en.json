@@ -50,5 +50,9 @@
   "signin.telegram.waiting": "Tap Start in the bot and come back — the sign-in finishes on its own.",
   "signin.telegram.expired": "The link has expired. Start again.",
   "signin.telegram.failed": "Could not start Telegram sign-in. Please try again.",
-  "signin.telegram.cancel": "Cancel"
+  "signin.telegram.cancel": "Cancel",
+  "card.vouchers.title": "Your gifts",
+  "card.vouchers.noTitle": "Gift",
+  "card.vouchers.daysLeft": "Days left:",
+  "card.vouchers.lastDay": "Last day today"
 }

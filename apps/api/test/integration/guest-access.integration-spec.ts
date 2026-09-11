@@ -193,6 +193,103 @@ describe('Гостевое API', () => {
     expect(moved.id).toBe(second.membershipId)
   })
 
+  it('КОШЕЛЁК ПОКАЗЫВАЕТ ПОДАРКИ, НО ТОЛЬКО ЖИВЫЕ И ТОЛЬКО СВОИ', async () => {
+    // Ради этого блока и затевалась вся партнёрская механика: гость должен
+    // увидеть у себя то, что ему выдали. До сих пор кошелёк про промокоды
+    // не знал вовсе, и подарок существовал только в базе.
+    const mine = await createMembershipFixture(prisma)
+    const stranger = await createMembershipFixture(prisma)
+
+    const makeOffer = async (tenantId: string, title: string): Promise<string> => {
+      const offer = await prisma.forTenant(tenantId, async (tx) =>
+        tx.offer.create({
+          data: {
+            tenantId,
+            type: 'NETWORK_VOUCHER',
+            status: 'LIVE',
+            audience: {},
+            schedule: {},
+            limits: {},
+            reward: {},
+            visibility: 'PARTNER',
+            i18n: { title: { ru: title }, howTo: { ru: ['Покажите код на кассе'] } },
+          },
+          select: { id: true },
+        }),
+      )
+
+      return offer.id
+    }
+
+    const grant = async (
+      tenantId: string,
+      guestId: string,
+      offerId: string,
+      options: { days: number; state?: 'ISSUED' | 'REDEEMED' },
+    ): Promise<string> => {
+      const code = `W-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+
+      await prisma.forTenant(tenantId, async (tx) =>
+        tx.offerGrant.create({
+          data: {
+            offerId,
+            tenantId,
+            guestId,
+            code,
+            nonce: `nonce-${code}`,
+            state: options.state ?? 'ISSUED',
+            expiresAt: new Date(Date.now() + options.days * 24 * 60 * 60 * 1000),
+          },
+        }),
+      )
+
+      return code
+    }
+
+    const myOffer = await makeOffer(mine.tenantId, 'Ролл в подарок')
+    const alienOffer = await makeOffer(stranger.tenantId, 'Чужой подарок')
+
+    const live = await grant(mine.tenantId, mine.guestId, myOffer, { days: 5 })
+    const expired = await grant(mine.tenantId, mine.guestId, myOffer, { days: -1 })
+    const used = await grant(mine.tenantId, mine.guestId, myOffer, {
+      days: 5,
+      state: 'REDEEMED',
+    })
+    const alien = await grant(stranger.tenantId, stranger.guestId, alienOffer, { days: 5 })
+
+    const auth = await loginGuest(mine.guestPhone)
+
+    const wallet = await request(server())
+      .get('/v1/guest/wallet')
+      .set('Authorization', `Bearer ${auth.accessToken}`)
+      .expect(200)
+
+    const body = wallet.body as {
+      vouchers: Array<{
+        code: string
+        title: string | null
+        expiresInDays: number
+        howTo: string[]
+      }>
+    }
+
+    const codes = body.vouchers.map((voucher) => voucher.code)
+
+    expect(codes).toContain(live)
+    // Просроченный в списке — обещание, которое не выполнят у стойки.
+    expect(codes).not.toContain(expired)
+    // Погашенный тоже: кошелёк отвечает «что я могу получить сейчас».
+    expect(codes).not.toContain(used)
+    // И главное — чужой подарок не виден. Границу держит политика базы.
+    expect(codes).not.toContain(alien)
+
+    const shown = body.vouchers.find((voucher) => voucher.code === live)
+    expect(shown?.title).toBe('Ролл в подарок')
+    expect(shown?.howTo).toEqual(['Покажите код на кассе'])
+    // Срок считает сервер: часы телефона можно перевести.
+    expect(shown?.expiresInDays).toBe(5)
+  })
+
   it('staff-токен в гостевое API не проходит, гостевой — в бэк-офис', async () => {
     const fixture = await createMembershipFixture(prisma)
     const staffToken = signAccessToken(

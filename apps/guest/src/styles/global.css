@@ -378,6 +378,78 @@ output {
   padding: 2px 8px;
 }
 
+.voucher-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Подарок выделен рамкой цвета акцента: среди списка заведений он должен
+   читаться как другое — не «где у меня баллы», а «что мне должны». */
+.voucher {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--surf);
+  border: 1px solid color-mix(in srgb, var(--mint) 40%, var(--line));
+}
+
+.voucher__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.voucher__title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.voucher__venue {
+  font-size: 12.5px;
+  color: var(--tx-2);
+}
+
+/* Код показывают кассиру с экрана: крупно, моноширинно, с разрядкой —
+   чтобы не перепутать ноль с буквой O при чтении вслух. */
+.voucher__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  user-select: all;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surf-2, var(--bg));
+  text-align: center;
+}
+
+.voucher__expiry {
+  font-size: 12.5px;
+  color: var(--tx-2);
+}
+
+.voucher__expiry--soon {
+  color: var(--warn, var(--bad));
+  font-weight: 650;
+}
+
+.voucher__steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--tx-2);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
 .card__state {
   padding: 22px;
   border-radius: 22px;
