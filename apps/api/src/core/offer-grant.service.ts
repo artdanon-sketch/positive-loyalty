@@ -80,6 +80,17 @@ export interface RedeemGrantInput {
   readonly tenantId: string
   /** Кто гасит: сотрудник на кассе. Попадает в grant.redeemedBy. */
   readonly redeemedBy?: string | null
+  /**
+   * Чек, в котором гасят. КЛЮЧ ИДЕМПОТЕНТНОСТИ, а не украшение.
+   *
+   * Повтор с тем же номером возвращает первый ответ вместо отказа
+   * «код уже погашен». Без него касса, потерявшая связь после успешного
+   * погашения, при повторе решила бы, что операция не прошла, — и подарок
+   * гостю не отдала бы, хотя код в базе уже сгорел.
+   *
+   * Не передан — повтор идемпотентным не будет: сопоставить его не с чем.
+   */
+  readonly receiptId?: string | null
   readonly now: Date
 }
 
@@ -234,6 +245,7 @@ export class OfferGrantService {
           tenantId: true,
           state: true,
           expiresAt: true,
+          redeemedReceiptId: true,
           offer: { select: { schedule: true } },
         },
       })
@@ -251,6 +263,32 @@ export class OfferGrantService {
       }
 
       if (grant.state !== 'ISSUED') {
+        // ПОВТОР ТОГО ЖЕ ЧЕКА — НЕ ОШИБКА, А ПЕРВЫЙ ОТВЕТ (железное правило 3).
+        //
+        // Проверяется здесь, до отказа, по той же причине, что и на проведении
+        // чека: путь повтора не имеет права заново оценивать состояние,
+        // которое изменил первый вызов. Иначе касса, переспросившая после
+        // таймаута, получает «уже погашен» и не отдаёт гостю подарок.
+        //
+        // Сверяется именно чек, а не факт погашения вообще: чужой чек,
+        // предъявивший тот же код, обязан получить отказ — это второй гость
+        // с чужим кодом, а не повтор.
+        if (
+          grant.state === 'REDEEMED' &&
+          typeof input.receiptId === 'string' &&
+          input.receiptId !== '' &&
+          grant.redeemedReceiptId === input.receiptId
+        ) {
+          return {
+            id: grant.id,
+            code: grant.code,
+            offerId: grant.offerId,
+            guestId: grant.guestId,
+            expiresAt: grant.expiresAt,
+            replayed: true,
+          }
+        }
+
         throw new GrantRedeemError(
           'GRANT_ALREADY_USED',
           grant.state === 'REDEEMED' ? 'Код уже погашен' : 'Код аннулирован',
@@ -273,7 +311,12 @@ export class OfferGrantService {
       // пройдут проверки — но обновит строку ровно один.
       const updated = await tx.offerGrant.updateMany({
         where: { id: grant.id, state: 'ISSUED' },
-        data: { state: 'REDEEMED', redeemedAt: input.now, redeemedBy: input.redeemedBy ?? null },
+        data: {
+          state: 'REDEEMED',
+          redeemedAt: input.now,
+          redeemedBy: input.redeemedBy ?? null,
+          redeemedReceiptId: input.receiptId ?? null,
+        },
       })
 
       if (updated.count !== 1) {
@@ -287,7 +330,7 @@ export class OfferGrantService {
         offerId: grant.offerId,
         guestId: grant.guestId,
         expiresAt: grant.expiresAt,
-        // Погашение не бывает повтором: второе отвергается выше.
+        // Здесь — всегда первое погашение: повтор того же чека вернулся выше.
         replayed: false,
       }
     })

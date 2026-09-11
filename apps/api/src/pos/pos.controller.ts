@@ -11,13 +11,20 @@ import {
   Query,
 } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
-import { CommitInput, PosGuestQuery, PosVoidInput, PreviewInput } from '@positive/contracts'
+import {
+  CommitInput,
+  PosGuestQuery,
+  PosVoidInput,
+  PreviewInput,
+  RedeemGrantInput,
+} from '@positive/contracts'
 import type {
   CommitResult,
   PosConfig,
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  RedeemGrantResult,
   SaleKind,
 } from '@positive/contracts'
 
@@ -127,6 +134,31 @@ export class PosController {
     }
 
     return this.posService.commit(parsed.data)
+  }
+
+  @Post('grants/redeem')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Погасить промокод',
+    description:
+      'Гасит код гостя. Повтор с тем же receiptId возвращает первый ответ, ' +
+      'а не отказ «код уже погашен»: иначе касса, потерявшая связь, не отдала бы подарок.',
+  })
+  @ApiOkResponse({ description: 'Код погашен — что отдать гостю' })
+  async redeemGrant(@Body() body: unknown): Promise<RedeemGrantResult> {
+    const parsed = RedeemGrantInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.redeemGrant(parsed.data)
   }
 
   @Post('transactions/:transactionId/void')

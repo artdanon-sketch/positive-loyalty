@@ -473,6 +473,142 @@ describe('Вид продажи на чеке', () => {
   })
 })
 
+describe('Погашение промокода на кассе', () => {
+  /** Акция заведения и выданный по ней промокод. */
+  const issueGrant = async (
+    options: { tenant?: string; expiresAt?: Date; title?: string } = {},
+  ): Promise<{ code: string; offerId: string; grantId: string }> => {
+    const owner = options.tenant ?? tenantId
+    const fixture = await createMembershipFixture(prisma, { tenantId: owner })
+
+    const offer = await prisma.forTenant(owner, async (tx) =>
+      tx.offer.create({
+        data: {
+          tenantId: owner,
+          type: 'NETWORK_VOUCHER',
+          status: 'LIVE',
+          audience: {},
+          schedule: {},
+          limits: {},
+          reward: {},
+          visibility: 'PARTNER',
+          i18n: options.title === undefined ? {} : { title: { ru: options.title } },
+        },
+        select: { id: true },
+      }),
+    )
+
+    const code = `TEST-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+
+    const grant = await prisma.forTenant(owner, async (tx) =>
+      tx.offerGrant.create({
+        data: {
+          offerId: offer.id,
+          tenantId: owner,
+          guestId: fixture.guestId,
+          code,
+          nonce: `nonce-${code}`,
+          expiresAt: options.expiresAt ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+        select: { id: true },
+      }),
+    )
+
+    return { code, offerId: offer.id, grantId: grant.id }
+  }
+
+  const redeem = (body: Record<string, unknown>) =>
+    request(server())
+      .post('/v1/pos/grants/redeem')
+      .set(...auth())
+      .send(body)
+
+  it('ГАСИТ КОД И ГОВОРИТ, ЧТО ОТДАТЬ ГОСТЮ', async () => {
+    const { code, grantId } = await issueGrant({ title: 'Ролл Филадельфия в подарок' })
+
+    const response = await redeem({ code, receiptId: `rcpt-${Date.now()}` }).expect(200)
+    const body = response.body as { grantId: string; title: string | null; replayed: boolean }
+
+    expect(body.grantId).toBe(grantId)
+    // Кассиру мало «ок»: он должен знать, что именно выдать.
+    expect(body.title).toBe('Ролл Филадельфия в подарок')
+    expect(body.replayed).toBe(false)
+
+    const after = await prisma.forTenant(tenantId, async (tx) =>
+      tx.offerGrant.findFirst({ where: { id: grantId }, select: { state: true } }),
+    )
+    expect(after?.state).toBe('REDEEMED')
+  })
+
+  it('ПОВТОР ТОГО ЖЕ ЧЕКА ВОЗВРАЩАЕТ ПЕРВЫЙ ОТВЕТ, А НЕ ОТКАЗ', async () => {
+    // Самый опасный случай: сервер погасил, ответ потерялся в сети. Касса
+    // повторяет. Откажи мы здесь — кассир решит, что не прошло, и подарок
+    // гостю не отдаст, хотя код уже сгорел.
+    const { code, grantId } = await issueGrant()
+    const receiptId = `rcpt-replay-${Date.now()}`
+
+    await redeem({ code, receiptId }).expect(200)
+    const second = await redeem({ code, receiptId }).expect(200)
+
+    const body = second.body as { grantId: string; replayed: boolean }
+    expect(body.grantId).toBe(grantId)
+    expect(body.replayed).toBe(true)
+  })
+
+  it('ДРУГОЙ ЧЕК С ТЕМ ЖЕ КОДОМ — ОТКАЗ', async () => {
+    // Это не повтор, а второй гость с чужим кодом. Пропустить значило бы
+    // отдать подарок дважды.
+    const { code } = await issueGrant()
+
+    await redeem({ code, receiptId: `rcpt-a-${Date.now()}` }).expect(200)
+    const second = await redeem({ code, receiptId: `rcpt-b-${Date.now()}` }).expect(400)
+
+    expect((second.body as { error: { code: string } }).error.code).toBe('GRANT_ALREADY_USED')
+  })
+
+  it('без номера чека повтор честно отвергается', async () => {
+    // Сопоставить повтор не с чем, и делать вид, что это тот же чек, нельзя.
+    const { code } = await issueGrant()
+
+    await redeem({ code }).expect(200)
+    const second = await redeem({ code }).expect(400)
+
+    expect((second.body as { error: { code: string } }).error.code).toBe('GRANT_ALREADY_USED')
+  })
+
+  it('истёкший код не гасится', async () => {
+    const { code } = await issueGrant({ expiresAt: new Date(Date.now() - 60_000) })
+
+    const response = await redeem({ code, receiptId: `rcpt-old-${Date.now()}` }).expect(400)
+
+    expect((response.body as { error: { code: string } }).error.code).toBe('GRANT_EXPIRED')
+  })
+
+  it('ЧУЖОЙ КОД НЕ ГАСИТСЯ И НЕ ВЫДАЁТ СВОЁ СУЩЕСТВОВАНИЕ', async () => {
+    // Изоляция заведений: чужую строку политика не отдаёт вовсе, поэтому
+    // ответ такой же, как на несуществующий код. Иначе касса превратилась бы
+    // в способ проверять, какие акции идут у соседа.
+    const alien = await createMembershipFixture(prisma)
+    const { code } = await issueGrant({ tenant: alien.tenantId })
+
+    const response = await redeem({ code, receiptId: `rcpt-alien-${Date.now()}` }).expect(400)
+
+    expect((response.body as { error: { code: string } }).error.code).toBe('GRANT_NOT_FOUND')
+
+    // И код остался непогашенным: чужая касса не должна его трогать.
+    const after = await prisma.forTenant(alien.tenantId, async (tx) =>
+      tx.offerGrant.findFirst({ where: { code }, select: { state: true } }),
+    )
+    expect(after?.state).toBe('ISSUED')
+  })
+
+  it('несуществующий код отвергается', async () => {
+    const response = await redeem({ code: 'NETTAKOGO', receiptId: 'r1' }).expect(400)
+
+    expect((response.body as { error: { code: string } }).error.code).toBe('GRANT_NOT_FOUND')
+  })
+})
+
 describe('Контрольная группа', () => {
   it('визит записывается нулевым начислением: баланс нулевой, визит посчитан', async () => {
     const fixture = await createMembershipFixture(prisma, { tenantId })

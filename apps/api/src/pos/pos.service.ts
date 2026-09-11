@@ -12,10 +12,11 @@ import type {
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  RedeemGrantResult,
   ReversalReason,
   SaleKind,
 } from '@positive/contracts'
-import { parseProgramConfig } from '@positive/contracts'
+import { offerTitle, parseProgramConfig } from '@positive/contracts'
 
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
@@ -23,6 +24,7 @@ import { AccessTokenInvalidError } from '../common/tenant/tenant.errors'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError } from '../core/ledger.errors'
 import { LedgerService } from '../core/ledger.service'
+import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
 import { PrismaService } from '../core/prisma.service'
 
 /**
@@ -49,6 +51,7 @@ export class PosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
+    private readonly grants: OfferGrantService,
   ) {}
 
   /**
@@ -668,6 +671,62 @@ export class PosService {
     )
 
     return rows
+  }
+
+  /**
+   * Погашение промокода на кассе. docs/02, раздел 3.4.
+   *
+   * ПОЧЕМУ ЗДЕСЬ ТОНКО, А ВСЯ РАБОТА В OfferGrantService. Железное правило 6
+   * (CLAUDE.md) требует, чтобы партнёрские награды гасились через тот же
+   * сервис, что и обычные промокоды, без «отдельных партнёрских кодов».
+   * Значит этот метод — дверь снаружи, а не вторая реализация погашения:
+   * атомарность, порядок проверок и коды ошибок живут в одном месте.
+   *
+   * КОДЫ ОШИБОК ДОХОДЯТ ДО КАССЫ КАК ЕСТЬ. Кассир должен понимать, что
+   * сказать гостю: «код уже погашен», «срок истёк» и «не то время суток» —
+   * три разных разговора. Это сознательно иначе, чем во входе в панель
+   * платформы, где все причины отказа слиты в одну: там ответ читает тот,
+   * кто подбирает, здесь — тот, кто обслуживает.
+   */
+  async redeemGrant(input: {
+    code: string
+    receiptId?: string | undefined
+  }): Promise<RedeemGrantResult> {
+    const { tenantId, actorId } = TenantContext.getOrThrow()
+    const now = new Date()
+
+    let grant
+    try {
+      grant = await this.grants.redeem({
+        code: input.code,
+        tenantId,
+        redeemedBy: actorId,
+        receiptId: input.receiptId ?? null,
+        now,
+      })
+    } catch (error) {
+      if (!(error instanceof GrantRedeemError)) {
+        throw error
+      }
+
+      throw new BadRequestException({ error: { code: error.code, message: error.message } })
+    }
+
+    // Название читаем ОТДЕЛЬНЫМ запросом, а не внутри погашения: погашение
+    // обязано быть коротким и атомарным, а название — украшение ответа.
+    // Его отсутствие не повод откатывать уже погашенный код.
+    const offer = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.offer.findFirst({ where: { id: grant.offerId, tenantId }, select: { i18n: true } }),
+    )
+
+    return {
+      grantId: grant.id,
+      code: grant.code,
+      offerId: grant.offerId,
+      title: offer === null ? null : offerTitle(offer.i18n, 'ru'),
+      redeemedAt: now.toISOString(),
+      replayed: grant.replayed,
+    }
   }
 
   private async findCompletedReversal(

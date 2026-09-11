@@ -166,6 +166,48 @@ export type CommitResult = z.infer<typeof CommitResult>
  * Причина — тот же перечень, что у компенсаций журнала: второй список
  * «кассовых причин» разъехался бы с первым на первой же правке.
  */
+/**
+ * Погашение промокода на кассе. docs/02, раздел 3.4.
+ *
+ * Код гость показывает с экрана телефона, кассир вводит или сканирует.
+ * Регистр и пробелы не важны: код читают глазами, а «KATA-200» и «kata 200»
+ * для человека одно и то же.
+ */
+export const RedeemGrantInput = z
+  .object({
+    code: z.string().trim().min(4).max(32),
+    /**
+     * Чек, в котором гасят. КЛЮЧ ИДЕМПОТЕНТНОСТИ, а не справка.
+     *
+     * Повтор с тем же номером возвращает первый ответ вместо «код уже
+     * погашен». Без него касса, потерявшая связь после успешного погашения,
+     * решила бы, что операция не прошла, — и подарок гостю не отдала.
+     *
+     * Необязателен: гость может предъявить код и без чека, до заказа.
+     * Тогда повтор идемпотентным не будет, и это честно — сопоставить его
+     * не с чем.
+     */
+    receiptId: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict()
+
+export type RedeemGrantInput = z.infer<typeof RedeemGrantInput>
+
+export const RedeemGrantResult = z
+  .object({
+    grantId: z.uuid(),
+    code: z.string(),
+    offerId: z.uuid(),
+    /** Что именно отдать гостю. Пусто, если у акции нет названия. */
+    title: z.string().nullable(),
+    redeemedAt: z.iso.datetime(),
+    /** Повтор того же чека: код уже был погашен этим же чеком. */
+    replayed: z.boolean(),
+  })
+  .strict()
+
+export type RedeemGrantResult = z.infer<typeof RedeemGrantResult>
+
 export const PosVoidInput = z
   .object({
     reason: ReversalReason,
