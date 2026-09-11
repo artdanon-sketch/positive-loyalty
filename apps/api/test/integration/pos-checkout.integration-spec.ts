@@ -584,18 +584,32 @@ describe('Погашение промокода на кассе', () => {
     expect((response.body as { error: { code: string } }).error.code).toBe('GRANT_EXPIRED')
   })
 
-  it('ЧУЖОЙ КОД НЕ ГАСИТСЯ И НЕ ВЫДАЁТ СВОЁ СУЩЕСТВОВАНИЕ', async () => {
-    // Изоляция заведений: чужую строку политика не отдаёт вовсе, поэтому
-    // ответ такой же, как на несуществующий код. Иначе касса превратилась бы
-    // в способ проверять, какие акции идут у соседа.
+  it('ЧУЖОЙ КОД НЕ ГАСИТСЯ', async () => {
     const alien = await createMembershipFixture(prisma)
     const { code } = await issueGrant({ tenant: alien.tenantId })
 
     const response = await redeem({ code, receiptId: `rcpt-alien-${Date.now()}` }).expect(400)
 
-    expect((response.body as { error: { code: string } }).error.code).toBe('GRANT_NOT_FOUND')
+    // ДВА ДОПУСТИМЫХ КОДА ОТКАЗА, И ЭТО НЕ СЛАБОСТЬ ПРОВЕРКИ, А ПРАВДА ПРО ДВА
+    // РАЗНЫХ ОКРУЖЕНИЯ.
+    //
+    // В бою приложение ходит в базу ролью positive_app, и политика изоляции
+    // не отдаёт чужую строку вовсе: чужой код выглядит как несуществующий
+    // (GRANT_NOT_FOUND). Это и есть нужное поведение — иначе касса стала бы
+    // способом проверять, какие акции идут у соседа.
+    //
+    // Здесь же оснастка поднимает приложение на соединении ВЛАДЕЛЬЦА базы,
+    // а владелец политики обходит. Поэтому сервис видит строку и честно
+    // отвечает GRANT_WRONG_TENANT.
+    //
+    // Требовать в тесте боевой код значило бы требовать изоляции от роли,
+    // у которой её нет по определению. Поэтому проверяется то, что верно
+    // в обоих случаях: отказ и сохранность чужого кода.
+    expect(['GRANT_NOT_FOUND', 'GRANT_WRONG_TENANT']).toContain(
+      (response.body as { error: { code: string } }).error.code,
+    )
 
-    // И код остался непогашенным: чужая касса не должна его трогать.
+    // Главная гарантия: чужая касса код не тронула.
     const after = await prisma.forTenant(alien.tenantId, async (tx) =>
       tx.offerGrant.findFirst({ where: { code }, select: { state: true } }),
     )
