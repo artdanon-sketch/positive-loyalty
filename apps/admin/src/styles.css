@@ -1274,6 +1274,104 @@ body {
   font-size: var(--fs-secondary-lg);
 }
 
+/* ── Настройки программы ──────────────────────────────────────────────────── */
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 760px;
+}
+
+.settings__cap {
+  max-width: 320px;
+}
+
+.field__hint--error {
+  color: var(--bad);
+}
+
+/* Переключатель с подписью: чекбокс слева, смысл справа, объяснение под ним. */
+.toggle {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--mint);
+}
+
+.toggle__hint {
+  margin: -8px 0 4px 30px;
+  max-width: 62ch;
+}
+
+/* Пример на чеке: деньги вместо процентов. */
+.example {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm-lg);
+  background: var(--surf-2);
+}
+
+.example__title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+.example__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+.example__grid dt {
+  font-size: var(--fs-secondary);
+  color: var(--tx-2);
+}
+
+.example__grid dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.example__accent {
+  color: var(--mint);
+}
+
+.example__note {
+  display: block;
+  font-size: var(--fs-secondary);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--tx-3);
+}
+
+.save-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.save-bar__ok {
+  margin: 0;
+  color: var(--good);
+  font-size: var(--fs-secondary-lg);
+}
+
 /* ── Действия в строке таблицы ────────────────────────────────────────────── */
 
 .row-actions {

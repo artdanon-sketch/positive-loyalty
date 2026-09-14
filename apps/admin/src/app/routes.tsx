@@ -7,6 +7,7 @@ import { OperationsPage } from '../pages/operations/Page'
 import { OverviewPage } from '../pages/overview/Page'
 import { PosPage } from '../pages/pos/Page'
 import { SaleKindsPage } from '../pages/sale-kinds/Page'
+import { SettingsPage } from '../pages/settings/Page'
 import { TeamPage } from '../pages/team/Page'
 import { isCashierApp } from '../shared/config/product'
 import { useAuth } from '../shared/auth/auth-context'
@@ -82,6 +83,7 @@ export function AppRoutes(): ReactElement {
         <Route path="guests" element={<GuestsPage />} />
         <Route path="sale-kinds" element={<SaleKindsPage />} />
         <Route path="team" element={<TeamPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         {/* Неизвестный адрес возвращает на домашний экран роли, а не в пустоту. */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

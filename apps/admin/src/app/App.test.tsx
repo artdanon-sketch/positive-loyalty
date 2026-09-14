@@ -1062,3 +1062,111 @@ describe('Команда', () => {
     expect(screen.getAllByRole('button', { name: t('team.action.disable') })).toHaveLength(1)
   })
 })
+
+const PROGRAM_SETTINGS = {
+  baseEarnRate: 5,
+  baseRedeemRate: 20,
+  cashierRules: { requireReceiptNumber: true, maxManualAmount: null, allowManualEntry: true },
+}
+
+describe('Настройки программы', () => {
+  const openSettings = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    await screen.findByLabelText(t('settings.earn.label'))
+  }
+
+  it('менеджеру пункта «Настройки» нет — процент начисления это деньги владельца', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByRole('link', { name: t('nav.guests') })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('nav.settings') })).not.toBeInTheDocument()
+  })
+
+  it('ПРИМЕР НА ЧЕКЕ ПЕРЕСЧИТЫВАЕТСЯ, ПОКА ВЛАДЕЛЕЦ МЕНЯЕТ ПРОЦЕНТ', async () => {
+    // «5%» — это число. «Гость получит 50 ฿» — это деньги, и решение о деньгах
+    // принимают, глядя на деньги.
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    // 5% от 1 000 ฿ и 20% оплаты баллами.
+    expect(screen.getByText('50,00 ฿')).toBeInTheDocument()
+    expect(screen.getByText('200,00 ฿')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('settings.earn.label')), { target: { value: '10' } })
+
+    expect(await screen.findByText('100,00 ฿')).toBeInTheDocument()
+  })
+
+  it('ПОТОЛОК ЧЕКА УХОДИТ В САТАНГАХ, А НЕ В БАТАХ', async () => {
+    // Владелец пишет «3000» и думает батами. Касса считает сатангами. Перепутать
+    // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program': (init) =>
+        init?.method === 'PUT'
+          ? json({
+              ...PROGRAM_SETTINGS,
+              cashierRules: { ...PROGRAM_SETTINGS.cashierRules, maxManualAmount: 300_000 },
+            })
+          : json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    fireEvent.change(screen.getByLabelText(t('settings.cap.label')), { target: { value: '3000' } })
+    fireEvent.click(screen.getByRole('button', { name: t('settings.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      const body = JSON.parse((put?.[1] as RequestInit).body as string) as {
+        cashierRules: { maxManualAmount: number | null }
+      }
+      expect(body.cashierRules.maxManualAmount).toBe(300_000)
+    })
+
+    expect(await screen.findByText(t('settings.saved'))).toBeInTheDocument()
+  })
+
+  it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    fireEvent.change(screen.getByLabelText(t('settings.earn.label')), { target: { value: '80' } })
+
+    expect(screen.getByText(t('settings.invalid.earn'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('settings.save') })).toBeDisabled()
+    expect(
+      fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'),
+    ).toBe(false)
+  })
+
+  it('без изменений сохранять нечего — кнопка неактивна', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    expect(screen.getByRole('button', { name: t('settings.save') })).toBeDisabled()
+  })
+})

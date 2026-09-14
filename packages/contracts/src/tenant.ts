@@ -125,3 +125,40 @@ export type ProgramConfig = z.infer<typeof ProgramConfig>
  */
 export const parseProgramConfig = (settings: unknown): ProgramConfig =>
   ProgramConfig.parse(settings ?? {})
+
+/**
+ * Настройки программы, которые владелец меняет из бэк-офиса. docs/02, раздел 5.6.
+ *
+ * ТОЛЬКО ТО, ЧТО КАССА УЖЕ СОБЛЮДАЕТ. ProgramConfig описывает больше: режим
+ * «скидка», срок жизни баллов, приветственные баллы, статусы. Схема у них есть,
+ * механики нет — касса считает начисление по baseEarnRate и ничего не знает
+ * о сгорании или статусах. Переключатель, который ничего не делает, хуже
+ * отсутствующего: владелец включит «сгорание через год» и будет уверен,
+ * что баллы сгорают.
+ *
+ * Поэтому здесь три поля, и каждое проверено тем, что его читает касса:
+ * pos.service (начисление, потолок оплаты баллами, правила ввода) и
+ * pos-webhook.service (начисление по чеку из кассы POSitive).
+ *
+ * Поля ОБЯЗАТЕЛЬНЫ, а не со значениями по умолчанию: это замена трёх настроек
+ * целиком. Необязательное поле здесь молча превращало бы «не прислал» в
+ * «сбросить на пять процентов».
+ */
+export const ProgramSettings = z
+  .object({
+    /** Процент начисления от суммы, оплаченной деньгами. */
+    baseEarnRate: z.number().min(0).max(50),
+    /** Какую долю чека гость может оплатить баллами. */
+    baseRedeemRate: z.number().min(0).max(100),
+    cashierRules: z
+      .object({
+        requireReceiptNumber: z.boolean(),
+        /** Потолок суммы ручного ввода в минорных единицах. null — без потолка. */
+        maxManualAmount: z.number().int().positive().max(2_147_483_647).nullable(),
+        allowManualEntry: z.boolean(),
+      })
+      .strict(),
+  })
+  .strict()
+
+export type ProgramSettings = z.infer<typeof ProgramSettings>
