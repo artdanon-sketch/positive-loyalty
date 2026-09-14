@@ -475,5 +475,12 @@
   "pos.stuckList.discard": "Убрать",
   "pos.stuckList.confirm": "Убрать чек из очереди? Если его не провели заново, гость не получит по нему баллы.",
   "pos.stuckList.keep": "Оставить",
-  "pos.stuckList.discardYes": "Да, убрать"
+  "pos.stuckList.discardYes": "Да, убрать",
+  "overview.advice.partnersWaiting.text": "Партнёры ждут вашего ответа — приглашений: {invites}, условий: {terms}",
+  "overview.advice.partnersWaiting.action": "Открыть партнёров",
+  "overview.advice.reciprocate.one": "{partner}: {n} гость пришёл к вам по подарку за месяц — предложите ответное условие",
+  "overview.advice.reciprocate.few": "{partner}: {n} гостя пришли к вам по подарку за месяц — предложите ответное условие",
+  "overview.advice.reciprocate.many": "{partner}: {n} гостей пришли к вам по подарку за месяц — предложите ответное условие",
+  "overview.advice.reciprocate.other": "{partner}: {n} гостей пришли к вам по подарку за месяц — предложите ответное условие",
+  "overview.advice.reciprocate.action": "Предложить ответное"
 }

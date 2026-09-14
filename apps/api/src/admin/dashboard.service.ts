@@ -74,6 +74,15 @@ const EXPIRING_WINDOW_DAYS = 7
 /** Один сгорающий подарок — не повод отвлекать владельца, три — уже да. */
 const EXPIRING_GIFTS_ADVICE_FROM = 3
 
+/** «Партнёр прислал гостей»: столько разных гостей партнёра погасили у нас подарок. */
+const RECIPROCATE_GUESTS_FROM = 10
+
+/** Окно, за которое считаются гости от партнёра. */
+const RECIPROCATE_WINDOW_DAYS = 30
+
+/** Партнёрство, в котором уже можно обсуждать условия. */
+const ENGAGED_PARTNERSHIP = ['NEGOTIATING', 'ACTIVE', 'PAUSED'] as const
+
 /**
  * Минимальный размер контрольной группы для показа инкрементальности.
  * Требование ТЗ (docs/02, раздел 5.1): меньше — статистики нет.
@@ -151,6 +160,12 @@ interface IncrementalRow {
   controlSize: unknown
 }
 
+interface PartnerAdviceInput {
+  readonly invites: number
+  readonly terms: number
+  readonly reciprocate: { partnershipId: string; partnerName: string; guests: number } | null
+}
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
@@ -171,14 +186,16 @@ export class DashboardService {
 
     const zone = tenant.timezone
 
-    const [summary, series, hourly, incremental, expiringGifts, stuckReceipts] = await Promise.all([
-      this.loadSummary(tenantId, zone, days),
-      this.loadSeries(tenantId, zone, days),
-      this.loadHourly(tenantId, zone, days),
-      this.loadIncremental(tenantId, zone, days),
-      this.loadExpiringGifts(tenantId),
-      this.loadStuckReceipts(tenantId),
-    ])
+    const [summary, series, hourly, incremental, expiringGifts, stuckReceipts, partners] =
+      await Promise.all([
+        this.loadSummary(tenantId, zone, days),
+        this.loadSeries(tenantId, zone, days),
+        this.loadHourly(tenantId, zone, days),
+        this.loadIncremental(tenantId, zone, days),
+        this.loadExpiringGifts(tenantId),
+        this.loadStuckReceipts(tenantId),
+        this.loadPartnerAdvice(tenantId),
+      ])
 
     const guestsNow = toNumber(summary.guestsNow)
     const guestsPrev = toNumber(summary.guestsPrev)
@@ -212,6 +229,7 @@ export class DashboardService {
       ...(incremental === null ? {} : { incremental }),
       advice: buildAdvice({
         stuckReceipts,
+        partners,
         expiringGifts,
         sleeping: toNumber(summary.sleeping),
         manualShare,
@@ -224,6 +242,114 @@ export class DashboardService {
       // гостя» тому, у кого гости были, — значит показать, что мы их не видим.
       isEmpty: toNumber(summary.everGuests) === 0,
     }
+  }
+
+  /**
+   * Советы про партнёров. Всё под своим заведением: партнёрство и условия видят
+   * обе стороны, а имя соседа отдаёт витрина сети, а не его строка заведения.
+   */
+  private async loadPartnerAdvice(tenantId: string): Promise<PartnerAdviceInput> {
+    const since = new Date(Date.now() - RECIPROCATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const invites = await tx.partnership.count({
+        where: { partnerTenantId: tenantId, status: 'PROPOSED' },
+      })
+
+      const terms = await tx.partnershipTerm.count({
+        where: {
+          status: 'PROPOSED',
+          proposedBy: { not: tenantId },
+          OR: [{ triggerTenantId: tenantId }, { rewardTenantId: tenantId }],
+          partnership: { status: { in: [...ENGAGED_PARTNERSHIP] } },
+        },
+      })
+
+      // Условия, по которым дарим МЫ, а покупают у партнёра: гость, погасивший
+      // такой подарок у нас, пришёл от партнёра.
+      const ours = await tx.partnershipTerm.findMany({
+        where: { rewardTenantId: tenantId, offerId: { not: null } },
+        select: { offerId: true, triggerTenantId: true, partnershipId: true },
+      })
+
+      const byOffer = new Map(
+        ours.flatMap((term) => (term.offerId === null ? [] : [[term.offerId, term] as const])),
+      )
+
+      if (byOffer.size === 0) {
+        return { invites, terms, reciprocate: null }
+      }
+
+      const redeemed = await tx.offerGrant.findMany({
+        where: {
+          tenantId,
+          offerId: { in: [...byOffer.keys()] },
+          state: 'REDEEMED',
+          redeemedAt: { gte: since },
+        },
+        select: { offerId: true, guestId: true },
+      })
+
+      const guestsByPartner = new Map<string, { partnershipId: string; guests: Set<string> }>()
+
+      for (const grant of redeemed) {
+        const term = byOffer.get(grant.offerId)
+
+        if (term === undefined) {
+          continue
+        }
+
+        const entry = guestsByPartner.get(term.triggerTenantId) ?? {
+          partnershipId: term.partnershipId,
+          guests: new Set<string>(),
+        }
+        entry.guests.add(grant.guestId)
+        guestsByPartner.set(term.triggerTenantId, entry)
+      }
+
+      const candidates = [...guestsByPartner.entries()]
+        .filter(([, entry]) => entry.guests.size >= RECIPROCATE_GUESTS_FROM)
+        .sort((a, b) => b[1].guests.size - a[1].guests.size)
+
+      for (const [partnerId, entry] of candidates) {
+        // Ответное уже действует или обсуждается, либо партнёрство закрыто —
+        // советовать нечего.
+        const reciprocal = await tx.partnershipTerm.count({
+          where: {
+            partnershipId: entry.partnershipId,
+            rewardTenantId: partnerId,
+            status: { in: ['PROPOSED', 'ACTIVE', 'PAUSED'] },
+          },
+        })
+        const engaged = await tx.partnership.count({
+          where: { id: entry.partnershipId, status: { in: [...ENGAGED_PARTNERSHIP] } },
+        })
+
+        if (reciprocal > 0 || engaged === 0) {
+          continue
+        }
+
+        const [partner] = await tx.$queryRaw<Array<{ brandName: string }>>`
+          SELECT "brandName" FROM network_venues() WHERE id = ${partnerId}
+        `
+
+        if (partner === undefined) {
+          continue
+        }
+
+        return {
+          invites,
+          terms,
+          reciprocate: {
+            partnershipId: entry.partnershipId,
+            partnerName: partner.brandName,
+            guests: entry.guests.size,
+          },
+        }
+      }
+
+      return { invites, terms, reciprocate: null }
+    })
   }
 
   /** Сколько чеков не дошло с планшетов — то же условие, что у списка на экране кассы. */
@@ -525,6 +651,7 @@ const round1 = (value: number): number => Math.round(value * 10) / 10
  */
 function buildAdvice(input: {
   stuckReceipts: number
+  partners: PartnerAdviceInput
   expiringGifts: number
   sleeping: number
   manualShare: number
@@ -537,6 +664,16 @@ function buildAdvice(input: {
     advice.push({ kind: 'STUCK_RECEIPTS', receipts: input.stuckReceipts })
   }
 
+  // Затем — партнёры, которые ждут ответа: молчание на приглашение читается
+  // как отказ, а условие без ответа не работает ни на кого.
+  if (input.partners.invites + input.partners.terms > 0) {
+    advice.push({
+      kind: 'PARTNERS_WAITING',
+      invites: input.partners.invites,
+      terms: input.partners.terms,
+    })
+  }
+
   // Следом — единственный совет со сроком годности: через неделю
   // он станет бесполезным, а спящие гости подождут.
   if (input.expiringGifts >= EXPIRING_GIFTS_ADVICE_FROM) {
@@ -545,6 +682,10 @@ function buildAdvice(input: {
       gifts: input.expiringGifts,
       withinDays: EXPIRING_WINDOW_DAYS,
     })
+  }
+
+  if (input.partners.reciprocate !== null) {
+    advice.push({ kind: 'PARTNER_RECIPROCATE', ...input.partners.reciprocate })
   }
 
   if (input.sleeping >= SLEEPING_ADVICE_FROM) {

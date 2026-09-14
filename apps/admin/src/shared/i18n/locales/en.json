@@ -475,5 +475,12 @@
   "pos.stuckList.discard": "Remove",
   "pos.stuckList.confirm": "Remove the receipt from the queue? If it wasn't processed again, the guest won't get points for it.",
   "pos.stuckList.keep": "Keep",
-  "pos.stuckList.discardYes": "Yes, remove"
+  "pos.stuckList.discardYes": "Yes, remove",
+  "overview.advice.partnersWaiting.text": "Partners are waiting for your answer — invitations: {invites}, terms: {terms}",
+  "overview.advice.partnersWaiting.action": "Open partners",
+  "overview.advice.reciprocate.one": "{partner}: {n} guest came to you with a gift this month — offer something in return",
+  "overview.advice.reciprocate.few": "{partner}: {n} guests came to you with a gift this month — offer something in return",
+  "overview.advice.reciprocate.many": "{partner}: {n} guests came to you with a gift this month — offer something in return",
+  "overview.advice.reciprocate.other": "{partner}: {n} guests came to you with a gift this month — offer something in return",
+  "overview.advice.reciprocate.action": "Offer in return"
 }

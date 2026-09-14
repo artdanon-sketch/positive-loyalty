@@ -62,6 +62,17 @@ export function AdviceList({
  */
 function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): string {
   switch (item.kind) {
+    case 'PARTNERS_WAITING':
+      return fill(t('overview.advice.partnersWaiting.text'), {
+        invites: item.invites,
+        terms: item.terms,
+      })
+    case 'PARTNER_RECIPROCATE':
+      // Форма по числу гостей: «12 гостей пришли», «21 гость пришёл».
+      return fill(tp('overview.advice.reciprocate', item.guests), {
+        partner: item.partnerName,
+        n: item.guests,
+      })
     case 'STUCK_RECEIPTS':
       return `${item.receipts} ${tp('overview.advice.stuck', item.receipts)}`
     case 'EXPIRING_GIFTS':
@@ -81,6 +92,10 @@ function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): str
 
 function actionLabel(item: DashboardAdvice, t: Translate): string {
   switch (item.kind) {
+    case 'PARTNERS_WAITING':
+      return t('overview.advice.partnersWaiting.action')
+    case 'PARTNER_RECIPROCATE':
+      return t('overview.advice.reciprocate.action')
     case 'STUCK_RECEIPTS':
       return t('overview.advice.stuck.action')
     case 'EXPIRING_GIFTS':
@@ -97,10 +112,19 @@ function actionLabel(item: DashboardAdvice, t: Translate): string {
 const hh = (hour: number): string => `${String(hour).padStart(2, '0')}:00`
 
 function actionOf(item: DashboardAdvice): string {
-  if (item.kind === 'MANUAL_ENTRY') {
-    return '/operations'
+  switch (item.kind) {
+    // Застрявшие чеки разбирают там, где они видны: на экране кассы.
+    case 'STUCK_RECEIPTS':
+      return '/pos'
+    case 'PARTNERS_WAITING':
+      return '/partners'
+    case 'PARTNER_RECIPROCATE':
+      return `/partners/${item.partnershipId}`
+    case 'MANUAL_ENTRY':
+    case 'QUIET_HOURS':
+      return '/operations'
+    case 'EXPIRING_GIFTS':
+    case 'SLEEPING_GUESTS':
+      return '/guests'
   }
-
-  // Застрявшие чеки разбирают там, где они видны: на экране кассы.
-  return item.kind === 'STUCK_RECEIPTS' ? '/pos' : '/guests'
 }
