@@ -6,6 +6,8 @@ import type {
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  RedeemGrantInput,
+  RedeemGrantResult,
   SaleKind,
 } from '@positive/contracts'
 
@@ -126,6 +128,27 @@ export function useVoid(): UseMutationResult<
       authFetch<PosVoidResult>(`/pos/transactions/${transactionId}/void`, {
         method: 'POST',
         body: JSON.stringify({ reason }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin'] })
+    },
+  })
+}
+
+/**
+ * Погасить промокод гостя. Ключ повтора — номер чека (docs/02, раздел 3.4).
+ * Журнал и история гостя устаревают в ту же секунду.
+ */
+export function useRedeemGrant(): UseMutationResult<RedeemGrantResult, Error, RedeemGrantInput> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input) =>
+      authFetch<RedeemGrantResult>('/pos/grants/redeem', {
+        method: 'POST',
+        body: JSON.stringify(input),
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: () => {

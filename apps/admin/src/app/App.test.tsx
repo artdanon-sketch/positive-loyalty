@@ -1644,3 +1644,89 @@ describe('Подарок из карточки гостя', () => {
     expect(within(card).getByRole('button', { name: t('gift.submit') })).toBeEnabled()
   })
 })
+
+describe('Погашение промокода на кассе', () => {
+  const openRedeem = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.pos') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('pos.redeem.open') }))
+  }
+
+  it('КОД С ЭКРАНА ГОСТЯ → «ОТДАЙТЕ ГОСТЮ» — И ЧЕК УХОДИТ КЛЮЧОМ ПОВТОРА', async () => {
+    const fetchMock = stubApi({
+      '/v1/pos/grants/redeem': () =>
+        json({
+          grantId: '81818181-8181-4818-8818-818181818181',
+          code: 'K7QX2M9PQ7XR',
+          offerId: '91919191-9191-4919-8919-919191919191',
+          title: 'Ролл Филадельфия в подарок',
+          redeemedAt: '2026-09-15T10:00:00.000Z',
+          replayed: false,
+        }),
+    })
+    render(<App />)
+
+    await openRedeem()
+
+    // Гость диктует как видит: с пробелами и строчными.
+    fireEvent.change(screen.getByLabelText(t('pos.redeem.code')), {
+      target: { value: 'k7qx 2m9p q7xr' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.redeem.submit') }))
+
+    expect(await screen.findByText('Ролл Филадельфия в подарок')).toBeInTheDocument()
+
+    const body = postedTo(fetchMock, '/pos/grants/redeem')
+    expect(body).toMatchObject({ code: 'K7QX2M9PQ7XR' })
+    // Номера чека кассир не ввёл — ключ повтора всё равно ушёл.
+    expect(String(body?.['receiptId'])).toMatch(/^pos-/)
+  })
+
+  it('погашенный код — текст сервера и подсказка, что сказать гостю', async () => {
+    stubApi({
+      '/v1/pos/grants/redeem': () =>
+        json({ error: { code: 'GRANT_ALREADY_USED', message: 'Код уже погашен' } }, 400),
+    })
+    render(<App />)
+
+    await openRedeem()
+
+    fireEvent.change(screen.getByLabelText(t('pos.redeem.code')), {
+      target: { value: 'K7QX2M9PQ7XR' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.redeem.submit') }))
+
+    expect(await screen.findByText('Код уже погашен')).toBeInTheDocument()
+    expect(screen.getByText(t('pos.redeem.hint.GRANT_ALREADY_USED'))).toBeInTheDocument()
+  })
+})
+
+describe('Прогноз сгорания подарков', () => {
+  it('ПОДАРКИ, КОТОРЫЕ СКОРО СГОРЯТ, — ПЕРВЫМ СОВЕТОМ, С ЧИСЛОМ И СРОКОМ', async () => {
+    stubApi({
+      '/v1/admin/dashboard': () =>
+        json({
+          ...DASHBOARD,
+          advice: [
+            { kind: 'EXPIRING_GIFTS', gifts: 12, withinDays: 7 },
+            { kind: 'SLEEPING_GUESTS', guests: 26 },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    // 12 по-русски — форма «many»: «12 подарков сгорят в ближайшие 7 дней».
+    const text = `12 ${t('overview.advice.expiring.many').replace('{days}', '7')}`
+    const card = await screen.findByText(text)
+
+    const cards = screen
+      .getAllByRole('listitem')
+      .filter((item) => item.classList.contains('advice-card'))
+    expect(cards[0]).toContainElement(card)
+    expect(
+      screen.getByRole('link', { name: t('overview.advice.expiring.action') }),
+    ).toBeInTheDocument()
+  })
+})

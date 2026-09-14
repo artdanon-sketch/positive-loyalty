@@ -2041,6 +2041,25 @@ body {
   font-size: var(--fs-secondary-lg);
 }
 
+/* ── Погашение промокода на кассе ───────────────────────────────────────────── */
+
+.pos__redeem {
+  margin-top: var(--sp-5);
+}
+
+.pos__redeem-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pos__hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--tx-2);
+  font-weight: 400;
+}
+
 /* ── Действия в строке таблицы ────────────────────────────────────────────── */
 
 .row-actions {
