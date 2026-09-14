@@ -68,6 +68,14 @@ export function AppShell(): ReactElement {
               <NavLink className={navClass} to="/sale-kinds">
                 {t('nav.saleKinds')}
               </NavLink>
+              {/* Только владелец: «Управлять сотрудниками» в матрице прав
+                  docs/05 — одна галочка, и она у него. Менеджеру API ответит
+                  отказом, и нерабочий пункт в меню только сбивал бы с толку. */}
+              {subject?.role === 'OWNER' ? (
+                <NavLink className={navClass} to="/team">
+                  {t('nav.team')}
+                </NavLink>
+              ) : null}
             </>
           )}
           {/* Касса доступна всем: у владельца в мобильной версии это

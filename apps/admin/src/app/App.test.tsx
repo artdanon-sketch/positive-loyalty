@@ -921,3 +921,144 @@ describe('Живая лента', () => {
     expect(await screen.findByText(t('overview.feed.waiting'))).toBeInTheDocument()
   })
 })
+
+const OWNER_TOKENS = {
+  ...TOKENS_RESPONSE,
+  subject: { ...TOKENS_RESPONSE.subject, displayName: 'Владелец Артём', role: 'OWNER' },
+}
+
+/** Команда заведения: владелец и один кассир. */
+const TEAM = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    displayName: 'Владелец Артём',
+    role: 'OWNER',
+    isActive: true,
+    isLocked: false,
+    lastSeenAt: '2026-09-14T08:00:00.000Z',
+    createdAt: '2026-08-01T00:00:00.000Z',
+    devices: [{ deviceCode: 'demo-kata-owner', label: 'Телефон владельца', isActive: true }],
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    displayName: 'Сомчай',
+    role: 'CASHIER',
+    isActive: true,
+    isLocked: false,
+    lastSeenAt: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    devices: [{ deviceCode: 'pos-7k2p9q', label: 'Касса у бара', isActive: true }],
+  },
+]
+
+describe('Команда', () => {
+  it('ВЛАДЕЛЕЦ ВИДИТ «КОМАНДУ» В МЕНЮ', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByRole('link', { name: t('nav.team') })).toBeInTheDocument()
+  })
+
+  it('менеджеру пункта «Команда» нет — управлять ею может только владелец', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(await screen.findByRole('link', { name: t('nav.guests') })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t('nav.team') })).not.toBeInTheDocument()
+  })
+
+  it('ПОСЛЕ ДОБАВЛЕНИЯ ПОКАЗЫВАЕТ КОД УСТРОЙСТВА И PIN — И УБИРАЕТ PIN ПОСЛЕ «ГОТОВО»', async () => {
+    // PIN знают двое: тот, кто задал, и тот, кому передали. Сервер хранит
+    // только хеш, и после карточки доступа PIN на экране появляться не должен.
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/staff': (init) =>
+        init?.method === 'POST'
+          ? json(
+              {
+                staff: {
+                  ...TEAM[1],
+                  id: '33333333-3333-4333-8333-333333333333',
+                  displayName: 'Нок',
+                  devices: [{ deviceCode: 'pos-m3x8vd', label: 'Нок', isActive: true }],
+                },
+                deviceCode: 'pos-m3x8vd',
+              },
+              201,
+            )
+          : json(TEAM),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.team') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('team.add') }))
+
+    fireEvent.change(screen.getByLabelText(t('team.form.name')), { target: { value: 'Нок' } })
+    fireEvent.change(screen.getByLabelText(t('team.form.pin')), { target: { value: '5820' } })
+    fireEvent.click(screen.getByRole('button', { name: t('team.form.submit') }))
+
+    expect(await screen.findByText('pos-m3x8vd')).toBeInTheDocument()
+    expect(screen.getByText('5820')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('team.access.done') }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('5820')).not.toBeInTheDocument()
+    })
+  })
+
+  it('ОТКЛЮЧЕНИЕ СНАЧАЛА ПЕРЕСПРАШИВАЕТ И БЕЗ ПОДТВЕРЖДЕНИЯ НИЧЕГО НЕ ОТПРАВЛЯЕТ', async () => {
+    // Отключение выкидывает кассира из кассы посреди чека. Случайный тап здесь
+    // стоит очереди у стойки — поэтому одного нажатия мало.
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/staff': (init) =>
+        init?.method === 'PATCH' ? json({ ...TEAM[1], isActive: false }) : json(TEAM),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.team') }))
+    expect(await screen.findByText('Сомчай')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('team.action.disable') }))
+
+    expect(screen.getByText(t('team.action.disableConfirm'))).toBeInTheDocument()
+
+    const patchCalls = (): unknown[] =>
+      fetchMock.mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+      )
+
+    expect(patchCalls()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: t('team.action.disable') }))
+
+    await waitFor(() => {
+      expect(patchCalls()).toHaveLength(1)
+    })
+
+    const [, init] = patchCalls()[0] as [unknown, RequestInit]
+    expect(JSON.parse(init.body as string)).toEqual({ isActive: false })
+  })
+
+  it('у строки владельца нет действий — сервер её всё равно не примет', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/staff': () => json(TEAM),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.team') }))
+
+    expect(await screen.findByText(t('team.owner.noActions'))).toBeInTheDocument()
+    // Одна кнопка «Отключить» — у кассира. У владельца её нет.
+    expect(screen.getAllByRole('button', { name: t('team.action.disable') })).toHaveLength(1)
+  })
+})

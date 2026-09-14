@@ -7,11 +7,13 @@ import { AdminService } from './admin.service'
 import { DashboardService } from './dashboard.service'
 import { SaleKindsController } from './sale-kinds.controller'
 import { SaleKindsService } from './sale-kinds.service'
+import { StaffController } from './staff.controller'
+import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
 @Module({
   imports: [CoreModule],
-  controllers: [AdminController, SaleKindsController],
-  providers: [AdminService, DashboardService, SaleKindsService],
+  controllers: [AdminController, SaleKindsController, StaffController],
+  providers: [AdminService, DashboardService, SaleKindsService, StaffService],
 })
 export class AdminModule {}
