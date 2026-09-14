@@ -509,5 +509,11 @@
   "partners.catalog.cooling": "Three venues declined within a week — one free invite a day until {date}.",
   "partners.catalog.suspended": "Invites are paused: several venues reported you as spam. The platform will review and lift the restriction.",
   "partner.confirm.spam": "This is spam — report to the platform",
-  "partner.confirm.spamHint": "The venue won't know the report came from you. After five reports it can't send invites until the platform reviews."
+  "partner.confirm.spamHint": "The venue won't know the report came from you. After five reports it can't send invites until the platform reviews.",
+  "pos.offers.applied": "Offers on this receipt",
+  "pos.offers.skipped": "Offers not applied",
+  "pos.offers.afterPayment": "code after payment",
+  "pos.offers.untitled": "Untitled offer",
+  "pos.offers.issued": "Codes issued",
+  "pos.offers.issuedLine": "Code “{title}” is already in the guest's app"
 }

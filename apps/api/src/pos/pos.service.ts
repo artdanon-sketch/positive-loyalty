@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import type {
   CommitResult,
+  IssuedGrant,
   PosConfig,
   PosGuest,
   PosVoidResult,
@@ -16,7 +17,13 @@ import type {
   ReversalReason,
   SaleKind,
 } from '@positive/contracts'
-import { offerTitle, parseProgramConfig } from '@positive/contracts'
+import {
+  ENGINE_OFFER_TYPES,
+  OfferLimits,
+  offerTitle,
+  parseProgramConfig,
+} from '@positive/contracts'
+import { z } from 'zod'
 
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
@@ -25,17 +32,24 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError } from '../core/ledger.errors'
 import { LedgerService } from '../core/ledger.service'
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
+import type { GrantView } from '../core/offer-grant.service'
 import { PrismaService } from '../core/prisma.service'
+import type { Prisma } from '../generated/prisma/client'
+import { evaluateOffers } from '../rules/rules-engine'
+import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
 
 /**
  * Касса: найти гостя, посчитать, провести.
  * docs/02, раздел 3.
  *
- * ГРАНИЦА ЭТОГО КУСКА. Предрасчёт считает только базовые ставки из настроек
- * заведения. Акции, ваучеры, штампы и награда сотруднику в расчёт не входят —
- * их механики ещё нет (Срезы 3 и 5). Поля `appliedOffers` и `skippedOffers`
- * из ТЗ не возвращаются пустыми, а отсутствуют: пустой список означал бы
- * «искали и не нашли», и кассир объяснял бы гостю несуществующее правило.
+ * АКЦИИ СЧИТАЕТ ДВИЖОК ПРАВИЛ (rules/rules-engine.ts): кэшбэк сверх базовой
+ * ставки и промокод за чек. Предрасчёт запоминает применённые акции, проведение
+ * выдаёт по ним промокоды, отмена чека аннулирует невостребованные.
+ *
+ * ГРАНИЦА ЭТОГО КУСКА. Скидки в самом чеке, штампы и награда сотруднику
+ * в расчёт не входят — их механик ещё нет (Э1, Срез 5). Отложенный чек из
+ * очереди планшета считается на момент отправки, а не продажи: акция «до 17:00»
+ * для чека, пробитого в 16:50 и дошедшего в 17:10, не применится.
  */
 
 /** docs/02, раздел 3.3: PREVIEW_EXPIRED — прошло больше десяти минут. */
@@ -43,6 +57,100 @@ const PREVIEW_TTL_MINUTES = 10
 
 /** docs/02, раздел 3.5: окно отмены для кассира. Дальше — менеджер с комментарием. */
 const VOID_WINDOW_MINUTES = 15
+
+type Tx = Prisma.TransactionClient
+
+/** Столько запущенных акций касса разбирает на чеке. Больше у малого заведения не бывает. */
+const OFFER_CANDIDATES_LIMIT = 50
+
+const NO_OFFERS: RulesOutcome = { applied: [], skipped: [], earnDelta: 0 }
+
+/**
+ * Снимок применённых акций в предрасчёте. Пишет его только этот сервис, но
+ * читается он через схему: колонка JSON не обещает формы, а промокод, выданный
+ * по кривому снимку, — это подарок, которого никто не обещал.
+ */
+const StoredOffers = z.array(
+  z
+    .object({
+      offerId: z.uuid(),
+      title: z.string().nullable(),
+      earnDelta: z.number().int(),
+      grantValidityDays: z.number().int().positive().nullable(),
+    })
+    .strict(),
+)
+
+/** Ключ промокода за чек: заведение, чек, акция. Повтор проведения попадает в тот же ключ. */
+const grantKeyPrefix = (tenantId: string, receiptId: string): string =>
+  `pos:grant:${tenantId}:${receiptId}:`
+
+/** Запущенные акции заведения с числом уже выданных промокодов — всего и этому гостю. */
+const loadOfferCandidates = async (
+  tx: Tx,
+  tenantId: string,
+  guestId: string,
+): Promise<OfferCandidate[]> => {
+  const offers = await tx.offer.findMany({
+    where: { tenantId, status: 'LIVE', type: { in: [...ENGINE_OFFER_TYPES] } },
+    orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    take: OFFER_CANDIDATES_LIMIT,
+    select: {
+      id: true,
+      type: true,
+      priority: true,
+      stackable: true,
+      audience: true,
+      schedule: true,
+      limits: true,
+      reward: true,
+      i18n: true,
+    },
+  })
+
+  if (offers.length === 0) {
+    return []
+  }
+
+  const ids = offers.map((offer) => offer.id)
+  // Последовательно, а не Promise.all: запросы одной интерактивной транзакции
+  // Prisma всё равно выстраивает в очередь.
+  const total = await tx.offerGrant.groupBy({
+    by: ['offerId'],
+    where: { tenantId, offerId: { in: ids } },
+    _count: { _all: true },
+  })
+  const toGuest = await tx.offerGrant.groupBy({
+    by: ['offerId'],
+    where: { tenantId, offerId: { in: ids }, guestId },
+    _count: { _all: true },
+  })
+  const count = (rows: typeof total, offerId: string): number =>
+    rows.find((row) => row.offerId === offerId)?._count._all ?? 0
+
+  return offers.map((offer) => ({
+    id: offer.id,
+    type: offer.type,
+    priority: offer.priority,
+    stackable: offer.stackable,
+    title: offerTitle(offer.i18n, 'ru'),
+    audience: offer.audience,
+    schedule: offer.schedule,
+    limits: offer.limits,
+    reward: offer.reward,
+    issued: { total: count(total, offer.id), toGuest: count(toGuest, offer.id) },
+  }))
+}
+
+const tenantTimezone = async (tx: Tx, tenantId: string): Promise<string> => {
+  const tenant = await tx.tenant.findFirst({ where: { id: tenantId }, select: { timezone: true } })
+  return tenant?.timezone ?? 'Asia/Bangkok'
+}
+
+const guestMode = async (tx: Tx, guestId: string): Promise<'TOURIST' | 'RESIDENT'> => {
+  const guest = await tx.guest.findFirst({ where: { id: guestId }, select: { mode: true } })
+  return guest?.mode ?? 'TOURIST'
+}
 
 @Injectable()
 export class PosService {
@@ -240,15 +348,34 @@ export class PosService {
       const redeem = Math.min(input.redeemRequested, maxRedeemable)
       const amountToPay = input.amount - redeem
 
+      const now = new Date()
+      const candidates = await loadOfferCandidates(tx, tenantId, membership.guestId)
+      const outcome =
+        candidates.length === 0
+          ? NO_OFFERS
+          : evaluateOffers(candidates, {
+              amount: input.amount,
+              amountToPay,
+              at: now,
+              timezone: await tenantTimezone(tx, tenantId),
+              guest: {
+                isNew: membership.visitsTotal === 0,
+                mode: await guestMode(tx, membership.guestId),
+                lastVisitAt: membership.lastVisitAt,
+                isControlGroup: membership.isControlGroup,
+              },
+            })
+
       // Контрольная группа не получает баллы — на этом держится доказательство
       // эффекта программы (docs/01, раздел 4.2). Списывать ей тоже нечего.
       const pointsToEarn = membership.isControlGroup
         ? 0
         : // Начисляем от суммы, реально уплаченной деньгами: начислять на часть,
           // оплаченную баллами, значит платить проценты на собственный долг.
-          Math.floor((amountToPay * config.baseEarnRate) / 100)
+          // Кэшбэк акций — сверху, от той же суммы.
+          Math.floor((amountToPay * config.baseEarnRate) / 100) + outcome.earnDelta
 
-      const expiresAt = new Date(Date.now() + PREVIEW_TTL_MINUTES * 60_000)
+      const expiresAt = new Date(now.getTime() + PREVIEW_TTL_MINUTES * 60_000)
 
       const created = await tx.transactionPreview.create({
         data: {
@@ -265,6 +392,12 @@ export class PosService {
           locationId: input.locationId ?? null,
           staffId: actorId,
           expiresAt,
+          offers: outcome.applied.map((offer) => ({
+            offerId: offer.offerId,
+            title: offer.title,
+            earnDelta: offer.earnDelta,
+            grantValidityDays: offer.grantValidityDays,
+          })),
         },
       })
 
@@ -277,6 +410,14 @@ export class PosService {
         amountToPay,
         pointsToEarn,
         balanceAtPreview: membership.pointsBalance,
+        appliedOffers: outcome.applied.map((offer) => ({
+          offerId: offer.offerId,
+          title: offer.title,
+          earnDelta: offer.earnDelta,
+          discountDelta: offer.discountDelta,
+          grantAfterPayment: offer.grantAfterPayment,
+        })),
+        skippedOffers: outcome.skipped,
       }
     })
   }
@@ -434,9 +575,12 @@ export class PosService {
     await this.prisma.forTenant(tenantId, async (tx) => {
       await tx.transactionPreview.updateMany({
         where: { id: preview.id, tenantId, committedAt: null },
-        data: { committedAt: new Date() },
+        // Номер чека — чтобы повтор проведения нашёл этот предрасчёт и досоздал промокоды.
+        data: { committedAt: new Date(), committedReceiptId: input.receiptId },
       })
     })
+
+    const grantsIssued = await this.issueCheckGrants(tenantId, preview, input.receiptId)
 
     if (transactionId === null) {
       // Недостижимо: запись начисления создаётся всегда, включая нулевую.
@@ -452,6 +596,7 @@ export class PosService {
       earned: preview.pointsToEarn,
       newBalance: earnOutcome.entry.balanceAfter,
       replayed,
+      grantsIssued,
     }
   }
 
@@ -467,8 +612,11 @@ export class PosService {
    * ВСЕГДА, не только после окна: его отмена не ограничена ничем, и без
    * объяснения неотличима от заметания следов.
    *
-   * ЧЕГО ЗДЕСЬ НЕТ. Аннулирование ваучеров и снятие награды сотруднику — их
-   * механик ещё нет (Срезы 3 и 5). Комментарий уходит в лог с requestId;
+   * ПРОМОКОДЫ ЗА ЧЕК АННУЛИРУЮТСЯ ВМЕСТЕ С НИМ — невостребованные. Иначе «провести
+   * и отменить» раздавало бы подарки без покупки.
+   *
+   * ЧЕГО ЗДЕСЬ НЕТ. Снятие награды сотруднику — механики ещё нет (Срез 5).
+   * Комментарий уходит в лог с requestId;
    * постоянное хранилище — AuditLog — приедет со Срезом 5. Это учтённый долг,
    * а не забытая строчка.
    */
@@ -526,6 +674,8 @@ export class PosService {
     const alreadyVoided = await this.findCompletedReversal(tenantId, transactionId, legs)
 
     if (alreadyVoided !== null) {
+      // Первый вызов мог оборваться после компенсаций, но до промокодов.
+      await this.voidCheckGrants(tenantId, anchor.refId)
       return alreadyVoided
     }
 
@@ -564,6 +714,8 @@ export class PosService {
       actorType: 'STAFF' as const,
       ...(actorId === null ? {} : { actorId }),
     }
+
+    await this.voidCheckGrants(tenantId, anchor.refId)
 
     const reversals: Array<{ entryId: string; reversalId: string; amount: number }> = []
     let replayed = true
@@ -857,6 +1009,18 @@ export class PosService {
 
     const redeem = entries.find((entry) => entry.type === 'REDEEM')
 
+    // Промокоды за чек: повтор возвращает выданные и досоздаёт недовыданные —
+    // первый вызов мог оборваться между начислением и выдачей.
+    const committed = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.transactionPreview.findFirst({
+        where: { tenantId, committedReceiptId: receiptId },
+        orderBy: [{ committedAt: 'desc' }, { id: 'asc' }],
+        select: { guestId: true, offers: true },
+      }),
+    )
+    const grantsIssued =
+      committed === null ? [] : await this.issueCheckGrants(tenantId, committed, receiptId)
+
     return {
       // Тот же порядок, что и на прямом пути: идентификатором операции служит
       // первая созданная строка — списание, если оно было, иначе начисление.
@@ -866,7 +1030,138 @@ export class PosService {
       earned: earn.amount,
       newBalance: earn.balanceAfter,
       replayed: true,
+      grantsIssued,
     }
+  }
+
+  /**
+   * Промокоды за чек — по акциям, применённым в предрасчёте. docs/03, раздел 4:
+   * «генерируется по факту оплаты, не заранее».
+   *
+   * КЛЮЧ — ЗАВЕДЕНИЕ, ЧЕК И АКЦИЯ. Повтор проведения возвращает те же коды
+   * и досоздаёт недовыданные: касса, потерявшая связь посреди выдачи, повторит
+   * чек, и гость получит ровно один код за акцию.
+   *
+   * ЛИМИТЫ ПРОВЕРЯЮТСЯ ЕЩЁ РАЗ. Между предрасчётом и оплатой последний промокод
+   * мог уйти другому гостю, а владелец — поставить акцию на паузу. Предрасчёт
+   * обещал, проведение сверяет: не хватило — кода нет, и кассир видит это
+   * на экране результата, а не гость в пустом кошельке.
+   */
+  private async issueCheckGrants(
+    tenantId: string,
+    preview: { guestId: string; offers: Prisma.JsonValue },
+    receiptId: string,
+  ): Promise<IssuedGrant[]> {
+    const stored = StoredOffers.safeParse(preview.offers)
+
+    if (!stored.success) {
+      // Снимок пишет только предрасчёт этого же сервиса: не разобрался — значит
+      // поломка кода, и молчать о ней нельзя. Баллы при этом уже начислены.
+      this.logger.error(`Акции предрасчёта не разбираются: промокоды за чек ${receiptId} не выданы`)
+      return []
+    }
+
+    const issued: IssuedGrant[] = []
+
+    for (const offer of stored.data) {
+      if (offer.grantValidityDays === null) {
+        continue
+      }
+
+      const key = `${grantKeyPrefix(tenantId, receiptId)}${offer.offerId}`
+      const grant =
+        (await this.grants.findByIdempotencyKey(tenantId, key)) ??
+        (await this.issueWithinLimits(
+          tenantId,
+          preview.guestId,
+          offer.offerId,
+          offer.grantValidityDays,
+          key,
+        ))
+
+      if (grant !== null) {
+        issued.push({
+          grantId: grant.id,
+          offerId: grant.offerId,
+          title: offer.title,
+          codeTail: grant.code.slice(-4),
+          expiresAt: grant.expiresAt.toISOString(),
+        })
+      }
+    }
+
+    return issued
+  }
+
+  private async issueWithinLimits(
+    tenantId: string,
+    guestId: string,
+    offerId: string,
+    validityDays: number,
+    key: string,
+  ): Promise<GrantView | null> {
+    const allowed = await this.prisma.forTenant(tenantId, async (tx) => {
+      const offer = await tx.offer.findFirst({
+        where: { id: offerId, tenantId },
+        select: { status: true, limits: true },
+      })
+
+      if (offer === null || offer.status !== 'LIVE') {
+        return false
+      }
+
+      const limits = OfferLimits.safeParse(offer.limits)
+      const perGuest = limits.success ? limits.data.perGuestQty : null
+      const total = limits.success ? limits.data.totalQty : null
+
+      if (
+        typeof perGuest === 'number' &&
+        (await tx.offerGrant.count({ where: { offerId, guestId } })) >= perGuest
+      ) {
+        return false
+      }
+
+      if (
+        typeof total === 'number' &&
+        (await tx.offerGrant.count({ where: { offerId } })) >= total
+      ) {
+        return false
+      }
+
+      return true
+    })
+
+    return allowed
+      ? this.grants.issue({
+          offerId,
+          guestId,
+          tenantId,
+          validityDays,
+          idempotencyKey: key,
+          now: new Date(),
+        })
+      : null
+  }
+
+  /**
+   * Аннулировать невостребованные промокоды за чек. Погашенные остаются
+   * погашенными: подарок уже отдан, и забрать его может разговор, а не кнопка.
+   */
+  private async voidCheckGrants(tenantId: string, receiptId: string | null): Promise<void> {
+    if (receiptId === null) {
+      return
+    }
+
+    await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.offerGrant.updateMany({
+        where: {
+          tenantId,
+          state: 'ISSUED',
+          nonce: { startsWith: grantKeyPrefix(tenantId, receiptId) },
+        },
+        data: { state: 'VOID' },
+      }),
+    )
   }
 
   private async loadConfig(tenantId: string): Promise<ReturnType<typeof parseProgramConfig>> {
