@@ -143,6 +143,30 @@ function update(receiptId: string, patch: Partial<QueuedSale>): QueuedSale[] {
 }
 
 /**
+ * Вернуть застрявший чек в работу: попытки с нуля, прежняя причина стёрта.
+ *
+ * Номер чека можно вписать или исправить: самая частая причина отказа —
+ * «номер чека обязателен», когда владелец включил это правило, пока чек
+ * лежал в очереди. Пустой номер прежний не стирает.
+ */
+export function resetForRetry(receiptId: string, receiptNumber?: string): QueuedSale[] {
+  const number = receiptNumber?.trim() ?? ''
+
+  const next = readQueue().map((item) => {
+    if (item.receiptId !== receiptId) {
+      return item
+    }
+
+    // Причина уходит целиком, а не становится пустым ключом в хранилище.
+    const { lastError: _stale, ...rest } = item
+    return { ...rest, attempts: 0, ...(number === '' ? {} : { receiptNumber: number }) }
+  })
+
+  writeQueue(next)
+  return next
+}
+
+/**
  * Сетевой ли это сбой.
  *
  * РАЗЛИЧИЕ КРИТИЧНОЕ. `ApiError` означает, что сервер ответил и отказал:
