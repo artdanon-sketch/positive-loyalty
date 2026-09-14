@@ -73,6 +73,8 @@ export type AuditAction =
   | 'GIFT_ISSUED'
   /** Заведение пожаловалось на приглашение как на спам — docs/07, раздел 6.2. */
   | 'INVITE_SPAM_REPORTED'
+  /** Админ платформы разобрал жалобы на спам — приостановка приглашений снята. */
+  | 'INVITE_COMPLAINTS_REVIEWED'
 
 export interface AuditEntry {
   readonly action: AuditAction
