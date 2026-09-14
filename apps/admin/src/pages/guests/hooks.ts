@@ -1,6 +1,11 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import type { UseQueryResult } from '@tanstack/react-query'
-import type { AdminGuestCard, AdminGuestsList } from '@positive/contracts'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
+import type {
+  AdminGuestCard,
+  AdminGuestsList,
+  IssueGiftInput,
+  IssueGiftResult,
+} from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 import { useLocale } from '../../shared/i18n'
@@ -40,5 +45,28 @@ export function useGuestCard(guestId: string): UseQueryResult<AdminGuestCard, Er
     queryKey: ['admin', 'guest-card', guestId, locale],
     queryFn: () =>
       authFetch<AdminGuestCard>(`/admin/guests/${encodeURIComponent(guestId)}?locale=${locale}`),
+  })
+}
+
+/**
+ * Подарить гостю. Ключ повтора приходит от формы: один ключ на одно намерение.
+ * После подарка карточка перечитывается — подарок сразу виден в истории.
+ */
+export function useIssueGift(
+  guestId: string,
+): UseMutationResult<IssueGiftResult, Error, { key: string; input: IssueGiftInput }> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ key, input }) =>
+      authFetch<IssueGiftResult>(`/admin/guests/${encodeURIComponent(guestId)}/gifts`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'guest-card', guestId] })
+    },
   })
 }

@@ -1568,3 +1568,79 @@ describe('Партнёры', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+describe('Подарок из карточки гостя', () => {
+  const openCard = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.guests') }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    return screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+  }
+
+  const giftApi = (): Partial<Record<string, (init?: RequestInit) => Response>> => ({
+    [`/v1/admin/guests/${GUEST_ID}/gifts`]: () =>
+      json(
+        {
+          grantId: '71717171-7171-4717-8717-717171717171',
+          title: 'Десерт',
+          codeTail: 'Q7XR',
+          expiresAt: '2026-09-29T12:00:00.000Z',
+          replayed: false,
+        },
+        201,
+      ),
+    [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+    '/v1/admin/guests': () => json(GUEST_ROWS),
+  })
+
+  it('ПОДАРИТЬ: ЧТО, ЗА ЧТО, СРОК — И КЛЮЧ ПОВТОРА В ЗАГОЛОВКЕ', async () => {
+    const fetchMock = stubApi(giftApi())
+    render(<App />)
+
+    const card = await openCard()
+
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.open') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.preset.dessert') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.reason.LONG_WAIT') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.submit') }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/gifts') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(call).toBeDefined()
+
+      const init = call?.[1] as RequestInit
+      expect(JSON.parse(init.body as string)).toEqual({
+        title: 'Десерт',
+        reason: 'LONG_WAIT',
+        validityDays: 14,
+      })
+      // Без ключа повтор нажатия после обрыва связи подарил бы второй десерт.
+      expect((init.headers as Record<string, string>)['Idempotency-Key']).toMatch(/^.{8,}$/)
+    })
+
+    expect(await within(card).findByText(/код …Q7XR/)).toBeInTheDocument()
+  })
+
+  it('«Другое» без комментария не отправить — причина подарка должна быть понятна', async () => {
+    stubApi(giftApi())
+    render(<App />)
+
+    const card = await openCard()
+
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.open') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.preset.dessert') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.reason.OTHER') }))
+
+    expect(within(card).getByRole('button', { name: t('gift.submit') })).toBeDisabled()
+
+    fireEvent.change(within(card).getByLabelText(t('gift.comment')), {
+      target: { value: 'Сосед по столику пролил кофе' },
+    })
+
+    expect(within(card).getByRole('button', { name: t('gift.submit') })).toBeEnabled()
+  })
+})
