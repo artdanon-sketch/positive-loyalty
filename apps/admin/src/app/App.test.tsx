@@ -1327,3 +1327,244 @@ describe('Гости: поиск и карточка', () => {
     })
   })
 })
+
+const STUDIO_TENANT = '21212121-2121-4212-8212-212121212121'
+const PARTNERSHIP_ID = '31313131-3131-4313-8313-313131313131'
+const SUBSCRIPTION_KIND = '41414141-4141-4414-8414-414141414141'
+
+const INCOMING_INVITE = {
+  id: PARTNERSHIP_ID,
+  status: 'PROPOSED',
+  direction: 'INCOMING',
+  partner: { tenantId: STUDIO_TENANT, brandName: 'Dance Studio Kata', vertical: 'OTHER' },
+  proposedAt: '2026-09-14T09:00:00.000Z',
+  acceptedAt: null,
+  endsAt: null,
+  activeTerms: { weGive: 0, theyGive: 0 },
+}
+
+/** Своё предложенное условие: ресторан дарит ролл гостям студии за абонемент. */
+const ROLL_TERM = {
+  id: '51515151-5151-4515-8515-515151515151',
+  direction: 'WE_GIVE',
+  status: 'PROPOSED',
+  trigger: { type: 'ON_SALE_KIND', saleKindId: SUBSCRIPTION_KIND, minAmount: 500_000 },
+  reward: { kind: 'FREE_ITEM', itemName: 'Ролл Филадельфия', minCheck: 80_000 },
+  validityDays: 14,
+  limits: { totalGrants: 200, perGuest: 1, dailyCap: 10 },
+  saleKindName: 'Абонемент на месяц',
+  proposedByUs: true,
+  acceptedAt: null,
+  pausedByUs: false,
+  grantsIssued: 0,
+  grantsRedeemed: 0,
+  actions: { accept: false, reject: true, pause: false, resume: false },
+}
+
+const NEGOTIATING_PARTNERSHIP = {
+  ...INCOMING_INVITE,
+  status: 'NEGOTIATING',
+  acceptedAt: '2026-09-14T10:00:00.000Z',
+  endReason: null,
+  terms: [ROLL_TERM],
+  messages: [
+    {
+      id: '61616161-6161-4616-8616-616161616161',
+      kind: 'INVITE',
+      fromUs: false,
+      text: 'Мы студия танцев через дорогу, у нас двести учеников в месяц.',
+      sourceLang: 'ru',
+      createdAt: '2026-09-14T09:00:00.000Z',
+    },
+  ],
+  actions: { accept: false, decline: false, end: true, block: true, message: true },
+}
+
+/**
+ * Сервер партнёрств. Порядок ключей важен: заглушка ищет по началу пути,
+ * поэтому длинные пути идут раньше короткого `/v1/admin/partnerships`.
+ */
+const partnersApi = (
+  extra: Partial<Record<string, (init?: RequestInit) => Response>> = {},
+): Partial<Record<string, (init?: RequestInit) => Response>> => ({
+  [`/v1/admin/partnerships/${PARTNERSHIP_ID}/sale-kinds`]: () =>
+    json({ ours: [], theirs: [{ id: SUBSCRIPTION_KIND, name: 'Абонемент на месяц' }] }),
+  [`/v1/admin/partnerships/${PARTNERSHIP_ID}/terms`]: () => json(NEGOTIATING_PARTNERSHIP),
+  [`/v1/admin/partnerships/${PARTNERSHIP_ID}`]: () => json(NEGOTIATING_PARTNERSHIP),
+  '/v1/admin/partnerships/invites': () =>
+    json({ partnershipId: PARTNERSHIP_ID, quota: { freeLimit: 3, freeUsed: 1, freeLeft: 2 } }, 201),
+  '/v1/admin/partnerships/quota': () => json({ freeLimit: 3, freeUsed: 0, freeLeft: 3 }),
+  '/v1/admin/partners/catalog': () =>
+    json({
+      items: [
+        {
+          tenantId: STUDIO_TENANT,
+          brandName: 'Dance Studio Kata',
+          vertical: 'OTHER',
+          guestsApprox: 200,
+          partnership: null,
+        },
+      ],
+    }),
+  '/v1/admin/partnerships': () => json({ items: [INCOMING_INVITE] }),
+  ...extra,
+})
+
+const postedTo = (
+  fetchMock: ReturnType<typeof vi.fn>,
+  suffix: string,
+): Record<string, unknown> | undefined => {
+  const call = fetchMock.mock.calls.find(
+    ([input, init]) =>
+      requestOf(input as RequestInfo | URL).endsWith(suffix) &&
+      (init as RequestInit | undefined)?.method === 'POST',
+  )
+
+  return call === undefined
+    ? undefined
+    : (JSON.parse((call[1] as RequestInit).body as string) as Record<string, unknown>)
+}
+
+describe('Партнёры', () => {
+  const openPartners = async (): Promise<void> => {
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.partners') }))
+    await screen.findByRole('heading', { level: 1, name: t('partners.title') })
+  }
+
+  const openPartnership = async (): Promise<void> => {
+    await openPartners()
+    fireEvent.click(await screen.findByRole('link', { name: /Dance Studio Kata/ }))
+    await screen.findByRole('heading', { level: 1, name: 'Dance Studio Kata' })
+  }
+
+  const inviteFromCatalog = async (): Promise<void> => {
+    await openPartners()
+    fireEvent.click(screen.getByRole('tab', { name: t('partners.tab.catalog') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('partners.catalog.invite') }))
+  }
+
+  it('ВХОДЯЩЕЕ ПРИГЛАШЕНИЕ — С ПОМЕТКОЙ «ЖДЁТ ВАШЕГО ОТВЕТА»', async () => {
+    stubApi(partnersApi())
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartners()
+
+    const row = await screen.findByRole('link', { name: /Dance Studio Kata/ })
+    expect(within(row).getByText(t('partners.waitingUs'))).toBeInTheDocument()
+  })
+
+  it('ВЛАДЕЛЕЦ ПРИГЛАШАЕТ ИЗ КАТАЛОГА: ТЕКСТ УЖЕ НАПИСАН, ПОСЛЕ ОТПРАВКИ ОТКРЫВАЕТСЯ ПАРТНЁРСТВО', async () => {
+    const fetchMock = stubApi(partnersApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) }))
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await inviteFromCatalog()
+
+    // Первое сообщение незнакомцу — самый высокий барьер; шаблон его снимает.
+    const text = screen.getByLabelText(t('partners.invite.label'))
+    expect((text as HTMLTextAreaElement).value.length).toBeGreaterThanOrEqual(40)
+
+    fireEvent.click(screen.getByRole('button', { name: t('partners.invite.send') }))
+
+    await waitFor(() => {
+      expect(postedTo(fetchMock, '/partnerships/invites')).toMatchObject({
+        partnerTenantId: STUDIO_TENANT,
+      })
+    })
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Dance Studio Kata' }),
+    ).toBeInTheDocument()
+  })
+
+  it('кончились бесплатные приглашения — экран показывает объяснение сервера', async () => {
+    stubApi(
+      partnersApi({
+        '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+        '/v1/admin/partnerships/invites': () =>
+          json(
+            {
+              error: {
+                code: 'INVITE_QUOTA_EXCEEDED',
+                message: 'Бесплатные приглашения на сегодня закончились',
+              },
+            },
+            402,
+          ),
+      }),
+    )
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await inviteFromCatalog()
+
+    fireEvent.click(screen.getByRole('button', { name: t('partners.invite.send') }))
+
+    expect(
+      await screen.findByText('Бесплатные приглашения на сегодня закончились'),
+    ).toBeInTheDocument()
+  })
+
+  it('УСЛОВИЕ ЧИТАЕТСЯ ФРАЗОЙ, А НЕ ПОЛЯМИ', async () => {
+    stubApi(partnersApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) }))
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartnership()
+
+    expect(
+      screen.getByText(
+        /^За «Абонемент на месяц» от 5\s000 ฿ у Dance Studio Kata — мы дарим «Ролл Филадельфия» при чеке от 800 ฿\.$/,
+      ),
+    ).toBeInTheDocument()
+    // Своё предложенное условие отзывают, а не отклоняют.
+    expect(screen.getByRole('button', { name: t('partner.term.withdraw') })).toBeInTheDocument()
+  })
+
+  it('КОНСТРУКТОР: ВИД ПРОДАЖ — ИЗ СПИСКА ПАРТНЁРА, БАТЫ УХОДЯТ САТАНГАМИ', async () => {
+    const fetchMock = stubApi(partnersApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) }))
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartnership()
+
+    fireEvent.click(screen.getByRole('button', { name: t('partner.terms.propose') }))
+    fireEvent.change(screen.getByLabelText(t('termForm.trigger')), {
+      target: { value: 'ON_SALE_KIND' },
+    })
+    await screen.findByRole('option', { name: 'Абонемент на месяц' })
+
+    fireEvent.change(screen.getByLabelText(t('termForm.minAmount')), { target: { value: '5000' } })
+    fireEvent.change(screen.getByLabelText(t('termForm.itemName')), {
+      target: { value: 'Ролл Филадельфия' },
+    })
+    fireEvent.change(screen.getByLabelText(t('termForm.minCheck')), { target: { value: '800' } })
+    fireEvent.click(screen.getByRole('button', { name: t('termForm.submit') }))
+
+    await waitFor(() => {
+      expect(postedTo(fetchMock, `/partnerships/${PARTNERSHIP_ID}/terms`)).toEqual({
+        direction: 'WE_GIVE',
+        trigger: { type: 'ON_SALE_KIND', saleKindId: SUBSCRIPTION_KIND, minAmount: 500_000 },
+        reward: { kind: 'FREE_ITEM', itemName: 'Ролл Филадельфия', minCheck: 80_000 },
+        validityDays: 14,
+        limits: { totalGrants: null, perGuest: 1, dailyCap: 10 },
+      })
+    })
+  })
+
+  it('менеджер видит партнёрство, но кнопок договориться у него нет', async () => {
+    stubApi(partnersApi())
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartnership()
+
+    expect(screen.queryByRole('button', { name: t('partner.action.end') })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: t('partner.terms.propose') }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: t('partner.term.withdraw') }),
+    ).not.toBeInTheDocument()
+  })
+})
