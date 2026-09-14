@@ -69,6 +69,8 @@ export type AuditAction =
   | 'STAFF_UPDATED'
   /** Сотруднику задан новый PIN, его сессии отозваны. */
   | 'STAFF_PIN_RESET'
+  /** Гостю подарен промокод из карточки — с причиной. */
+  | 'GIFT_ISSUED'
 
 export interface AuditEntry {
   readonly action: AuditAction

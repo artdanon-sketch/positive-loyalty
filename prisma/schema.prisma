@@ -970,6 +970,9 @@ enum OfferType {
   WINBACK
   PACKAGE
   GIFT_CARD
+  /// Подарок от заведения гостю из карточки: одна акция на один подарок,
+  /// причина обязательна и пишется в аудит (docs/02, раздел 5.2.1).
+  GOODWILL
 }
 
 enum OfferStatus {

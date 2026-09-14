@@ -1993,6 +1993,54 @@ body {
   border: 0;
 }
 
+/* ── Подарок из карточки гостя ──────────────────────────────────────────────── */
+
+.gift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.gift__open {
+  align-self: flex-start;
+}
+
+.gift__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm-lg);
+}
+
+.gift__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.gift__preset {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gift__presets .chip + .chip {
+  margin-left: 0;
+}
+
+.gift__done {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm-lg);
+  background: color-mix(in srgb, var(--good) 12%, transparent);
+  color: var(--tx);
+  font-size: var(--fs-secondary-lg);
+}
+
 /* ── Действия в строке таблицы ────────────────────────────────────────────── */
 
 .row-actions {

@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 
 import { useT } from '../../../shared/i18n'
 import { useGuestCard } from '../hooks'
+import { GiftForm } from './gift-form'
 import { GuestSummary } from './guest-summary'
 import { GuestTimeline } from './guest-timeline'
 
@@ -100,6 +101,7 @@ export function GuestCard({
         ) : (
           <>
             <GuestSummary card={card.data} />
+            <GiftForm guestId={guestId} />
             <GuestTimeline card={card.data} />
           </>
         )}
