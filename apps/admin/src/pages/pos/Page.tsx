@@ -5,6 +5,7 @@ import type { CommitResult, PosGuest, PreviewResult } from '@positive/contracts'
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
 import { QrScanner } from './components/qr-scanner'
+import { RedeemPanel } from './components/redeem-panel'
 import { isScannerSupported } from './components/scanner-support'
 import { isNetworkFailure } from './offline-queue'
 import { useOfflineQueue } from './use-offline-queue'
@@ -160,6 +161,8 @@ export function PosPage(): ReactElement {
           }}
         />
       )}
+
+      <RedeemPanel />
     </section>
   )
 }

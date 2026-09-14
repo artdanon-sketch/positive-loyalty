@@ -64,6 +64,16 @@ const SLEEPING_ADVICE_FROM = 20
 const MANUAL_ENTRY_ADVICE_FROM = 40
 
 /**
+ * Прогноз сгорания (docs/10, раздел 6.12): выданные и непогашенные подарки,
+ * срок которых кончится в ближайшую неделю. «Сгорит через неделю» полезнее
+ * «сгорело»: пока срок не вышел, гостя ещё можно позвать.
+ */
+const EXPIRING_WINDOW_DAYS = 7
+
+/** Один сгорающий подарок — не повод отвлекать владельца, три — уже да. */
+const EXPIRING_GIFTS_ADVICE_FROM = 3
+
+/**
  * Минимальный размер контрольной группы для показа инкрементальности.
  * Требование ТЗ (docs/02, раздел 5.1): меньше — статистики нет.
  */
@@ -160,11 +170,12 @@ export class DashboardService {
 
     const zone = tenant.timezone
 
-    const [summary, series, hourly, incremental] = await Promise.all([
+    const [summary, series, hourly, incremental, expiringGifts] = await Promise.all([
       this.loadSummary(tenantId, zone, days),
       this.loadSeries(tenantId, zone, days),
       this.loadHourly(tenantId, zone, days),
       this.loadIncremental(tenantId, zone, days),
+      this.loadExpiringGifts(tenantId),
     ])
 
     const guestsNow = toNumber(summary.guestsNow)
@@ -198,6 +209,7 @@ export class DashboardService {
       hourly,
       ...(incremental === null ? {} : { incremental }),
       advice: buildAdvice({
+        expiringGifts,
         sleeping: toNumber(summary.sleeping),
         manualShare,
         hourly,
@@ -209,6 +221,18 @@ export class DashboardService {
       // гостя» тому, у кого гости были, — значит показать, что мы их не видим.
       isEmpty: toNumber(summary.everGuests) === 0,
     }
+  }
+
+  /** Сколько выданных подарков сгорит в ближайшие дни, если гости не придут. */
+  private async loadExpiringGifts(tenantId: string): Promise<number> {
+    const now = new Date()
+    const horizon = new Date(now.getTime() + EXPIRING_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+
+    return this.prisma.forTenant(tenantId, async (tx) =>
+      tx.offerGrant.count({
+        where: { tenantId, state: 'ISSUED', expiresAt: { gt: now, lte: horizon } },
+      }),
+    )
   }
 
   /**
@@ -490,11 +514,22 @@ const round1 = (value: number): number => Math.round(value * 10) / 10
  * туда смотреть.
  */
 function buildAdvice(input: {
+  expiringGifts: number
   sleeping: number
   manualShare: number
   hourly: readonly DashboardHour[]
 }): DashboardAdvice[] {
   const advice: DashboardAdvice[] = []
+
+  // Первым — единственный совет со сроком годности: через неделю
+  // он станет бесполезным, а спящие гости подождут.
+  if (input.expiringGifts >= EXPIRING_GIFTS_ADVICE_FROM) {
+    advice.push({
+      kind: 'EXPIRING_GIFTS',
+      gifts: input.expiringGifts,
+      withinDays: EXPIRING_WINDOW_DAYS,
+    })
+  }
 
   if (input.sleeping >= SLEEPING_ADVICE_FROM) {
     advice.push({ kind: 'SLEEPING_GUESTS', guests: input.sleeping })

@@ -357,6 +357,18 @@ export type DashboardIncremental = z.infer<typeof DashboardIncremental>
  * ни другой ещё нет; выдумывать для них данные хуже, чем не выдавать совет.
  */
 export const DashboardAdvice = z.discriminatedUnion('kind', [
+  /**
+   * Выданные подарки сгорят в ближайшие дни, если гости не придут.
+   * docs/10, раздел 6.12: «сгорит через неделю» полезнее «сгорело» —
+   * пока срок не вышел, гостя ещё можно позвать.
+   */
+  z
+    .object({
+      kind: z.literal('EXPIRING_GIFTS'),
+      gifts: z.number().int().positive(),
+      withinDays: z.number().int().positive(),
+    })
+    .strict(),
   /** Спящих гостей — не заходили больше месяца — набралось двадцать и больше. */
   z.object({ kind: z.literal('SLEEPING_GUESTS'), guests: z.number().int().nonnegative() }).strict(),
   /** Провал загрузки: три часа подряд и дольше заметно ниже среднего. */

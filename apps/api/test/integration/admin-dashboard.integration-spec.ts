@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { Server } from 'node:http'
 
 import type { INestApplication } from '@nestjs/common'
@@ -160,6 +161,57 @@ const load = async (token: string, query = ''): Promise<DashboardBody> => {
 }
 
 describe('Дашборд', () => {
+  it('ПОДАРКИ, КОТОРЫЕ СГОРЯТ ЗА НЕДЕЛЮ, — ПЕРВЫМ СОВЕТОМ; ДАЛЬНИЕ, ПОГАШЕННЫЕ И СГОРЕВШИЕ НЕ В СЧЁТ', async () => {
+    const venue = await createMembershipFixture(prisma)
+    const day = 24 * 60 * 60 * 1000
+
+    const offer = await prisma.offer.create({
+      data: {
+        tenantId: venue.tenantId,
+        type: 'GOODWILL',
+        status: 'LIVE',
+        visibility: 'VENUE_ONLY',
+        audience: {},
+        schedule: {},
+        limits: {},
+        reward: {},
+        i18n: {},
+      },
+      select: { id: true },
+    })
+
+    const grant = (label: string, expiresInMs: number, state: 'ISSUED' | 'REDEEMED' = 'ISSUED') => {
+      const code = `EXP${label}${randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
+      return {
+        offerId: offer.id,
+        tenantId: venue.tenantId,
+        guestId: venue.guestId,
+        code,
+        nonce: `nonce-${code}`,
+        state,
+        expiresAt: new Date(Date.now() + expiresInMs),
+      }
+    }
+
+    await prisma.offerGrant.createMany({
+      data: [
+        grant('A', 2 * day),
+        grant('B', 3 * day),
+        grant('C', 6 * day),
+        // Не в счёт: сгорит позже недели, уже погашен, уже сгорел.
+        grant('D', 10 * day),
+        grant('E', 2 * day, 'REDEEMED'),
+        grant('F', -day),
+      ],
+    })
+
+    const body = await load(
+      signAccessToken({ tenantId: venue.tenantId, actorId: null, role: 'MANAGER' }, SECRET),
+    )
+
+    expect(body.advice[0]).toEqual({ kind: 'EXPIRING_GIFTS', gifts: 3, withinDays: 7 })
+  })
+
   it('считает гостей и обязательство только по своему заведению', async () => {
     const body = await load(managerToken)
 

@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 import type { DashboardAdvice } from '@positive/contracts'
 
+import { fill } from '../../../shared/format/fill'
 import { useT, useTPlural } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
 
@@ -61,6 +62,10 @@ export function AdviceList({
  */
 function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): string {
   switch (item.kind) {
+    case 'EXPIRING_GIFTS':
+      // «12 подарков сгорят в ближайшие 7 дней»: форма по числу подарков,
+      // срок подставляется в уже выбранную форму.
+      return `${item.gifts} ${fill(tp('overview.advice.expiring', item.gifts), { days: item.withinDays })}`
     case 'SLEEPING_GUESTS':
       // Через форму по числу, а не одной строкой: «21 гостей не заходили» —
       // это не опечатка, а ошибка языка, и владелец её замечает.
@@ -74,6 +79,8 @@ function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): str
 
 function actionLabel(item: DashboardAdvice, t: Translate): string {
   switch (item.kind) {
+    case 'EXPIRING_GIFTS':
+      return t('overview.advice.expiring.action')
     case 'SLEEPING_GUESTS':
       return t('overview.advice.sleeping.action')
     case 'QUIET_HOURS':
