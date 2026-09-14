@@ -1141,6 +1141,9 @@ model Partnership {
   endsAt     DateTime?
   endedBy    String?
   endReason  String?
+  /// Когда получатель отказал. Пригласить снова то же заведение можно
+  /// не раньше чем через 30 дней после этого (docs/07, раздел 6.2).
+  declinedAt DateTime?
 
   initiator Tenant @relation("PartnershipInitiator", fields: [initiatorTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   partner   Tenant @relation("PartnershipPartner", fields: [partnerTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)

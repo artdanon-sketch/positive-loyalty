@@ -238,4 +238,88 @@ describe('Партнёрство: видят обе стороны и тольк
     ).rejects.toThrow(/permission denied|нет прав/i)
     await app.query('ROLLBACK')
   })
+
+  it('ВИДЫ ПРОДАЖ ПРИ ПРИГЛАШЕНИИ: получатель видит виды пригласившего, пригласивший чужие — нет', async () => {
+    const inviter = await makeTenant()
+    const invitee = await makeTenant()
+    const pairId = randomUUID()
+
+    await owner.query(
+      `INSERT INTO "Partnership" ("id","initiatorTenantId","partnerTenantId","status")
+       VALUES ($1, $2, $3, 'PROPOSED')`,
+      [pairId, inviter, invitee],
+    )
+
+    const inviterKind = randomUUID()
+    const inviteeKind = randomUUID()
+    await owner.query(
+      `INSERT INTO "SaleKind" ("id","tenantId","name")
+       VALUES ($1, $2, 'Абонемент на месяц'), ($3, $4, 'Секретное меню')`,
+      [inviterKind, inviter, inviteeKind, invitee],
+    )
+
+    const sql = `SELECT "id" FROM "SaleKind" WHERE "id" = $1`
+
+    // Пригласивший сам пришёл с предложением — получателю нужно понимать,
+    // на что соглашаться, а не читать голый идентификатор.
+    expect(await asTenant<{ id: string }>(invitee, sql, [inviterKind])).toHaveLength(1)
+
+    // Получатель ещё ни на что не согласился. Иначе любой читал бы ассортимент
+    // любого заведения сети, просто отправив ему приглашение.
+    expect(
+      await asTenant<{ id: string }>(inviter, sql, [inviteeKind]),
+      'отправитель приглашения читает виды продаж получателя до его согласия',
+    ).toHaveLength(0)
+
+    expect(await asTenant<{ id: string }>(c, sql, [inviterKind])).toHaveLength(0)
+
+    await owner.query(`UPDATE "Partnership" SET "status" = 'NEGOTIATING' WHERE "id" = $1`, [pairId])
+
+    // Согласились обсуждать — теперь видят друг друга.
+    expect(await asTenant<{ id: string }>(inviter, sql, [inviteeKind])).toHaveLength(1)
+
+    await owner.query(`UPDATE "Partnership" SET "status" = 'DECLINED' WHERE "id" = $1`, [pairId])
+
+    expect(await asTenant<{ id: string }>(invitee, sql, [inviterKind])).toHaveLength(0)
+    expect(await asTenant<{ id: string }>(inviter, sql, [inviteeKind])).toHaveLength(0)
+  })
+
+  it('КАТАЛОГ СЕТИ ОТДАЁТ ТОЛЬКО ВИТРИНУ: без настроек программы и без себя самого', async () => {
+    const rows = await asTenant<Record<string, unknown>>(a, `SELECT * FROM network_venues()`)
+    const probe = rows.find((row) => row['id'] === b)
+
+    expect(probe).toBeDefined()
+    expect(Object.keys(probe ?? {}).sort()).toEqual([
+      'brandName',
+      'guestsApprox',
+      'id',
+      'isOpen',
+      'vertical',
+    ])
+    expect(rows.some((row) => row['id'] === a)).toBe(false)
+  })
+
+  it('без объявленного заведения каталог пуст — «ни от кого» весь список не получить', async () => {
+    await app.query('BEGIN')
+    const result = await app.query(`SELECT * FROM network_venues()`)
+    await app.query('ROLLBACK')
+
+    expect(result.rows).toHaveLength(0)
+  })
+
+  it('ПРОВЕРКА БЛОКИРОВКИ ОТВЕЧАЕТ ТОЛЬКО «ДА» ИЛИ «НЕТ» И ТОЛЬКО ПРО СЕБЯ', async () => {
+    const blocker = await makeTenant()
+    const spammer = await makeTenant()
+
+    await owner.query(
+      `INSERT INTO "InviteBlock" ("blockerTenantId","blockedTenantId","reason")
+       VALUES ($1, $2, 'спам') ON CONFLICT DO NOTHING`,
+      [blocker, spammer],
+    )
+
+    const sql = `SELECT invite_blocked($1) AS blocked`
+
+    expect((await asTenant<{ blocked: boolean }>(spammer, sql, [blocker]))[0]?.blocked).toBe(true)
+    expect((await asTenant<{ blocked: boolean }>(c, sql, [blocker]))[0]?.blocked).toBe(false)
+  })
 })
