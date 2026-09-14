@@ -454,7 +454,7 @@ describe('Квота приглашений', () => {
     await invite(rental.owner, first.id).expect(409)
 
     const quota = await get(rental.owner, 'partnerships/quota').expect(200)
-    expect(quota.body).toEqual({ freeLimit: 2, freeUsed: 1, freeLeft: 1 })
+    expect(quota.body).toEqual({ freeLimit: 2, freeUsed: 1, freeLeft: 1, restriction: null })
 
     await invite(rental.owner, second.id).expect(201)
 

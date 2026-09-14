@@ -12,6 +12,11 @@ import { usePartnershipAction } from '../hooks'
  * «Обсудить» и «Отклонить» — в один тап: они ничего не ломают. «Расторгнуть»
  * и «Заблокировать» — через подтверждение со словами о последствиях:
  * расторжение прекращает подарки, блокировка — навсегда.
+ *
+ * Входящее приглашение можно заблокировать с жалобой «спам» — галочкой
+ * в подтверждении (docs/07, раздел 6.2). Галочка есть, только пока приглашение
+ * ждёт нашего ответа: ровно тогда сервер разрешает «Отклонить» и ровно тогда
+ * примет жалобу.
  */
 export function PartnerHeader({
   detail,
@@ -23,8 +28,15 @@ export function PartnerHeader({
   const t = useT()
   const act = usePartnershipAction(detail.id)
   const [confirming, setConfirming] = useState<'end' | 'block' | null>(null)
+  const [spam, setSpam] = useState(false)
 
   const name = detail.partner.brandName ?? t('partner.fallbackName')
+  const canReport = confirming === 'block' && detail.actions.decline
+
+  const closeConfirm = (): void => {
+    setConfirming(null)
+    setSpam(false)
+  }
 
   return (
     <header className="page__head partner-head">
@@ -104,14 +116,26 @@ export function PartnerHeader({
           <p className="confirm__text" id="partner-confirm-text">
             {t(confirming === 'end' ? 'partner.confirm.end' : 'partner.confirm.block')}
           </p>
+          {canReport ? (
+            <>
+              <label className="toggle confirm__spam">
+                <input
+                  type="checkbox"
+                  checked={spam}
+                  aria-describedby="partner-spam-hint"
+                  onChange={(event) => {
+                    setSpam(event.target.checked)
+                  }}
+                />
+                <span className="toggle__text">{t('partner.confirm.spam')}</span>
+              </label>
+              <p className="field__hint confirm__hint" id="partner-spam-hint">
+                {t('partner.confirm.spamHint')}
+              </p>
+            </>
+          ) : null}
           <div className="panel__actions">
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                setConfirming(null)
-              }}
-            >
+            <button className="button" type="button" onClick={closeConfirm}>
               {t('partner.confirm.no')}
             </button>
             <button
@@ -120,12 +144,8 @@ export function PartnerHeader({
               disabled={act.isPending}
               onClick={() => {
                 act.mutate(
-                  { action: confirming },
-                  {
-                    onSettled: () => {
-                      setConfirming(null)
-                    },
-                  },
+                  { action: confirming, spam: canReport && spam },
+                  { onSettled: closeConfirm },
                 )
               }}
             >

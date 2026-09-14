@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger'
 import {
+  BlockPartnershipInput,
   CreateInviteInput,
   PartnershipListQuery,
   PartnershipReasonInput,
@@ -102,7 +103,9 @@ export class PartnershipsController {
   @ApiOperation({ summary: 'Пригласить заведение к партнёрству' })
   @ApiCreatedResponse({ description: 'Приглашение отправлено, бесплатное приглашение списано' })
   @ApiBadRequestResponse({ description: 'Текст короче 40 знаков или приглашение самим себе' })
-  @ApiForbiddenResponse({ description: 'Получатель не принимает приглашения от вас' })
+  @ApiForbiddenResponse({
+    description: 'Получатель не принимает приглашения от вас, или ваши приглашения приостановлены',
+  })
   @ApiNotFoundResponse({ description: 'Такого открытого заведения в сети нет' })
   @ApiConflictResponse({
     description: 'Разговор уже идёт, недавний отказ или действующих партнёрств максимум',
@@ -182,20 +185,24 @@ export class PartnershipsController {
   @Post('partnerships/:id/block')
   @HttpCode(200)
   @Roles('OWNER')
-  @ApiOperation({ summary: 'Заблокировать вторую сторону навсегда' })
+  @ApiOperation({ summary: 'Заблокировать вторую сторону навсегда, по желанию — с жалобой «спам»' })
   @ApiOkResponse({ description: 'Заблокировано; живое приглашение или партнёрство закрыто' })
+  @ApiBadRequestResponse({ description: 'Причина длиннее 500 знаков или spam не флаг' })
   @ApiNotFoundResponse({ description: 'Нет такого партнёрства' })
+  @ApiConflictResponse({
+    description: 'Пожаловаться на спам можно только на приглашение, которое ждёт вашего ответа',
+  })
   async block(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
   ): Promise<PartnershipDetail> {
-    const parsed = PartnershipReasonInput.safeParse(body ?? {})
+    const parsed = BlockPartnershipInput.safeParse(body ?? {})
 
     if (!parsed.success) {
       throw invalid(parsed.error.issues)
     }
 
-    return this.partnerships.block(id, parsed.data.reason)
+    return this.partnerships.block(id, parsed.data.reason, parsed.data.spam)
   }
 
   @Post('partnerships/:id/messages')

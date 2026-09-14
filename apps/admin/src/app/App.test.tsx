@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { fill } from '../shared/format/fill'
+import { formatDate } from '../shared/format/format'
 import { t } from '../shared/i18n'
 import { App } from './App'
 
@@ -1392,8 +1394,15 @@ const partnersApi = (
   [`/v1/admin/partnerships/${PARTNERSHIP_ID}/terms`]: () => json(NEGOTIATING_PARTNERSHIP),
   [`/v1/admin/partnerships/${PARTNERSHIP_ID}`]: () => json(NEGOTIATING_PARTNERSHIP),
   '/v1/admin/partnerships/invites': () =>
-    json({ partnershipId: PARTNERSHIP_ID, quota: { freeLimit: 3, freeUsed: 1, freeLeft: 2 } }, 201),
-  '/v1/admin/partnerships/quota': () => json({ freeLimit: 3, freeUsed: 0, freeLeft: 3 }),
+    json(
+      {
+        partnershipId: PARTNERSHIP_ID,
+        quota: { freeLimit: 3, freeUsed: 1, freeLeft: 2, restriction: null },
+      },
+      201,
+    ),
+  '/v1/admin/partnerships/quota': () =>
+    json({ freeLimit: 3, freeUsed: 0, freeLeft: 3, restriction: null }),
   '/v1/admin/partners/catalog': () =>
     json({
       items: [
@@ -2048,5 +2057,119 @@ describe('Акции', () => {
       'href',
       '/partners',
     )
+  })
+})
+
+/** Входящее приглашение, которое ждёт нашего ответа. */
+const WAITING_INVITE = {
+  ...INCOMING_INVITE,
+  endReason: null,
+  terms: [],
+  messages: NEGOTIATING_PARTNERSHIP.messages,
+  actions: { accept: true, decline: true, end: false, block: true, message: false },
+}
+
+const COOLING_UNTIL = '2026-10-15T12:00:00.000Z'
+
+describe('Партнёры: антиспам', () => {
+  const openPartnership = async (): Promise<void> => {
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.partners') }))
+    fireEvent.click(await screen.findByRole('link', { name: /Dance Studio Kata/ }))
+    await screen.findByRole('heading', { level: 1, name: 'Dance Studio Kata' })
+  }
+
+  const openCatalog = async (): Promise<void> => {
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.partners') }))
+    await screen.findByRole('heading', { level: 1, name: t('partners.title') })
+    fireEvent.click(screen.getByRole('tab', { name: t('partners.tab.catalog') }))
+  }
+
+  it('ВХОДЯЩЕЕ ПРИГЛАШЕНИЕ БЛОКИРУЮТ С ЖАЛОБОЙ «СПАМ» — ГАЛОЧКОЙ В ПОДТВЕРЖДЕНИИ', async () => {
+    const fetchMock = stubApi(
+      partnersApi({
+        '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+        [`/v1/admin/partnerships/${PARTNERSHIP_ID}`]: () => json(WAITING_INVITE),
+      }),
+    )
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartnership()
+
+    fireEvent.click(screen.getByRole('button', { name: t('partner.action.block') }))
+    fireEvent.click(screen.getByRole('checkbox', { name: t('partner.confirm.spam') }))
+    expect(screen.getByText(t('partner.confirm.spamHint'))).toBeInTheDocument()
+
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', {
+        name: t('partner.action.block'),
+      }),
+    )
+
+    await waitFor(() => {
+      expect(postedTo(fetchMock, `/partnerships/${PARTNERSHIP_ID}/block`)).toEqual({ spam: true })
+    })
+  })
+
+  it('на идущий разговор жалобы нет — только блокировка', async () => {
+    const fetchMock = stubApi(partnersApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) }))
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openPartnership()
+
+    fireEvent.click(screen.getByRole('button', { name: t('partner.action.block') }))
+
+    const dialog = screen.getByRole('alertdialog')
+    expect(within(dialog).queryByRole('checkbox')).toBeNull()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('partner.action.block') }))
+
+    await waitFor(() => {
+      expect(postedTo(fetchMock, `/partnerships/${PARTNERSHIP_ID}/block`)).toEqual({})
+    })
+  })
+
+  it('на охлаждении каталог называет дату, до которой приглашение одно в день', async () => {
+    stubApi(
+      partnersApi({
+        '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+        '/v1/admin/partnerships/quota': () =>
+          json({
+            freeLimit: 1,
+            freeUsed: 0,
+            freeLeft: 1,
+            restriction: { kind: 'COOLING', until: COOLING_UNTIL },
+          }),
+      }),
+    )
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openCatalog()
+
+    expect(
+      await screen.findByText(
+        fill(t('partners.catalog.cooling'), { date: formatDate(COOLING_UNTIL) }),
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t('partners.catalog.invite') })).toBeInTheDocument()
+  })
+
+  it('ПРИОСТАНОВЛЕННОМУ КНОПОК «ПРИГЛАСИТЬ» НЕТ — ТОЛЬКО ОБЪЯСНЕНИЕ', async () => {
+    stubApi(
+      partnersApi({
+        '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+        '/v1/admin/partnerships/quota': () =>
+          json({ freeLimit: 0, freeUsed: 0, freeLeft: 0, restriction: { kind: 'SUSPENDED' } }),
+      }),
+    )
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await openCatalog()
+
+    expect(await screen.findByText(t('partners.catalog.suspended'))).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('partners.catalog.invite') })).toBeNull()
   })
 })

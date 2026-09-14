@@ -72,10 +72,18 @@ function useDetailMutation<TVariables>(
 
 export function usePartnershipAction(
   id: string,
-): UseMutationResult<PartnershipDetail, Error, { action: PartnershipAction; reason?: string }> {
-  return useDetailMutation(id, ({ action, reason }) => ({
+): UseMutationResult<
+  PartnershipDetail,
+  Error,
+  { action: PartnershipAction; reason?: string; spam?: boolean }
+> {
+  return useDetailMutation(id, ({ action, reason, spam }) => ({
     path: `/${action}`,
-    body: reason === undefined ? {} : { reason },
+    body: {
+      ...(reason === undefined ? {} : { reason }),
+      // Жалоба уходит только вместе с блокировкой: отдельно сервер её не примет.
+      ...(action === 'block' && spam === true ? { spam } : {}),
+    },
   }))
 }
 

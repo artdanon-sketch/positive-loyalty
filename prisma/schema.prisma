@@ -132,26 +132,28 @@ model Tenant {
   settings   Json // ProgramConfig, docs/01 раздел 4.3
   createdAt  DateTime     @default(now())
 
-  memberships       Membership[]
-  ledgerEntries     LedgerEntry[]
-  staff             Staff[]
-  staffDevices      StaffDevice[]
-  sessions          Session[]
-  previews          TransactionPreview[]
-  posLinks          PosLink[]
-  webhookEvents     WebhookEvent[]
-  webhookDeliveries WebhookDelivery[]
+  memberships            Membership[]
+  ledgerEntries          LedgerEntry[]
+  staff                  Staff[]
+  staffDevices           StaffDevice[]
+  sessions               Session[]
+  previews               TransactionPreview[]
+  posLinks               PosLink[]
+  webhookEvents          WebhookEvent[]
+  webhookDeliveries      WebhookDelivery[]
   partnershipTriggerRuns PartnershipTriggerRun[]
   saleKinds              SaleKind[]
   posQueueItems          PosQueueItem[]
-  offers            Offer[]
-  offerGrants       OfferGrant[]
+  offers                 Offer[]
+  offerGrants            OfferGrant[]
 
-  partnershipsInitiated Partnership[] @relation("PartnershipInitiator")
-  partnershipsReceived  Partnership[] @relation("PartnershipPartner")
+  partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
+  partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
   inviteQuotas          InviteQuota[]
-  invitesBlocked        InviteBlock[] @relation("InviteBlocker")
-  invitesBlockedBy      InviteBlock[] @relation("InviteBlocked")
+  invitesBlocked        InviteBlock[]  @relation("InviteBlocker")
+  invitesBlockedBy      InviteBlock[]  @relation("InviteBlocked")
+  inviteStrikesMade     InviteStrike[] @relation("InviteStrikeFrom")
+  inviteStrikesAgainst  InviteStrike[] @relation("InviteStrikeAgainst")
 }
 
 /// Гость платформы. Один на всю сеть мерчантов: телефон — сквозной идентификатор,
@@ -1154,6 +1156,7 @@ model Partnership {
 
   terms    PartnershipTerm[]
   messages PartnershipMessage[]
+  strikes  InviteStrike[]
 
   /// Одна пара — одно партнёрство (docs/07, раздел 6.2: нельзя долбить одно заведение).
   @@unique([initiatorTenantId, partnerTenantId])
@@ -1340,6 +1343,43 @@ model InviteBlock {
 
   @@id([blockerTenantId, blockedTenantId])
   @@index([blockedTenantId])
+}
+
+/// Отказ или жалоба на приглашение — след, по которому остывает спамер.
+/// docs/07, раздел 6.2.
+///
+/// ЖУРНАЛ, А НЕ ВЫВОД ИЗ ПАРТНЁРСТВ. Повторное приглашение той же паре
+/// переиспользует строку партнёрства и стирает declinedAt: считай мы отказы
+/// оттуда, спамер укоротил бы себе охлаждение, пригласив снова одного из отказавших.
+///
+/// ЖАЛОБУ ОБВИНЁННЫЙ НЕ ВИДИТ — только число неразобранных, через функцию базы
+/// invite_complaints(). Отказ видит: статус своего приглашения он знает и так.
+model InviteStrike {
+  id   String           @id @default(uuid())
+  kind InviteStrikeKind
+
+  /// Кто отказал или пожаловался.
+  fromTenantId    String
+  /// На чьё приглашение.
+  againstTenantId String
+  partnershipId   String
+
+  createdAt  DateTime  @default(now())
+  /// Жалобу разобрал админ платформы: разобранная приглашения больше не держит.
+  reviewedAt DateTime?
+  reviewedBy String?
+
+  fromTenant    Tenant      @relation("InviteStrikeFrom", fields: [fromTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  againstTenant Tenant      @relation("InviteStrikeAgainst", fields: [againstTenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  partnership   Partnership @relation(fields: [partnershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([againstTenantId, kind, createdAt])
+  @@index([fromTenantId])
+}
+
+enum InviteStrikeKind {
+  DECLINED
+  SPAM
 }
 
 /// Квоты и цены приглашений. Настраивает админ платформы.

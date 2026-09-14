@@ -139,12 +139,25 @@ export type NetworkVenue = z.infer<typeof NetworkVenue>
 export const PartnerCatalog = z.object({ items: z.array(NetworkVenue) }).strict()
 export type PartnerCatalog = z.infer<typeof PartnerCatalog>
 
+/**
+ * Ограничение приглашений (docs/07, раздел 6.2): охлаждение после трёх отказов
+ * за неделю — с датой конца, или приостановка после пяти жалоб — до разбора.
+ */
+export const InviteRestriction = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('COOLING'), until: z.iso.datetime() }).strict(),
+  z.object({ kind: z.literal('SUSPENDED') }).strict(),
+])
+
+export type InviteRestriction = z.infer<typeof InviteRestriction>
+
 /** Бесплатные приглашения на сегодня — по часам заведения, а не сервера. */
 export const InviteQuotaView = z
   .object({
     freeLimit: z.number().int().nonnegative(),
     freeUsed: z.number().int().nonnegative(),
     freeLeft: z.number().int().nonnegative(),
+    /** `null` — ограничений нет. */
+    restriction: InviteRestriction.nullable(),
   })
   .strict()
 
@@ -187,6 +200,16 @@ export const PartnershipReasonInput = z
   .strict()
 
 export type PartnershipReasonInput = z.infer<typeof PartnershipReasonInput>
+
+/**
+ * Блокировка. `spam` — ещё и жалоба платформе (docs/07, раздел 6.2); только
+ * на приглашение, которое ждёт вашего ответа.
+ */
+export const BlockPartnershipInput = PartnershipReasonInput.extend({
+  spam: z.boolean().default(false),
+}).strict()
+
+export type BlockPartnershipInput = z.infer<typeof BlockPartnershipInput>
 
 export const SendPartnershipMessageInput = z
   .object({ text: z.string().trim().min(1).max(INVITE_TEXT_MAX) })
