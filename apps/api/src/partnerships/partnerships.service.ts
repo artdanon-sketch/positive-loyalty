@@ -26,6 +26,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { localDay } from './invite-day'
+import { loadTermViews } from './term-view'
 
 /**
  * Договориться: каталог сети, приглашение, ответ, расторжение, переписка.
@@ -422,10 +423,12 @@ export class PartnershipsService {
       const invited = row.partnerTenantId === tenantId
       const waiting = row.status === 'PROPOSED' && invited
       const engaged = ENGAGED.includes(row.status)
+      const terms = await loadTermViews(tx, id, tenantId, row.status)
 
       return {
         ...toSummary(row, tenantId, venue),
         endReason: row.endReason,
+        terms,
         messages: recent.reverse().map((message) => toMessage(message, tenantId)),
         actions: {
           accept: waiting,

@@ -265,8 +265,126 @@ export const PartnershipActions = z
 
 export type PartnershipActions = z.infer<typeof PartnershipActions>
 
+// ─── Условия партнёрства ─────────────────────────────────────────────────────
+
+export const PartnershipTermStatus = z.enum([
+  'DRAFT',
+  'PROPOSED',
+  'ACCEPTED',
+  'ACTIVE',
+  'PAUSED',
+  'ENDED',
+])
+
+export type PartnershipTermStatus = z.infer<typeof PartnershipTermStatus>
+
+/** WE_GIVE — подарок даём мы гостям партнёра; THEY_GIVE — партнёр нашим гостям. */
+export const TermDirection = z.enum(['WE_GIVE', 'THEY_GIVE'])
+export type TermDirection = z.infer<typeof TermDirection>
+
+/** Триггеры, у которых в системе есть механика. Штампов и статусов пока нет. */
+export const WORKING_TRIGGERS = [
+  'ON_PURCHASE',
+  'ON_SALE_KIND',
+  'ON_FIRST_VISIT',
+  'ON_NTH_VISIT',
+  'ON_MEMBERSHIP',
+] as const
+
+/**
+ * Подарки, которые касса отдаёт по коду сама: вещь, скидку в процентах, скидку
+ * в батах. Баллов и штампов при погашении система пока не начисляет.
+ */
+export const WORKING_REWARDS = ['FREE_ITEM', 'PERCENT_OFF', 'FIXED_OFF'] as const
+
+export const TERM_VALIDITY_MAX_DAYS = 90
+
+/**
+ * Предложить условие.
+ *
+ * НАПРАВЛЕНИЕ СЛОВАМИ, А НЕ ИДЕНТИФИКАТОРАМИ ЗАВЕДЕНИЙ. В замысле (docs/07,
+ * раздел 9) тело несёт triggerTenantId и rewardTenantId. Два идентификатора
+ * позволяют вписать в условие третье заведение — и тогда проверять это
+ * пришлось бы отдельно, а забыть проверку легко. «Мы даём» или «они дают»
+ * другого прочтения не имеют.
+ *
+ * ТОЛЬКО ТО, ЧТО СРАБОТАЕТ. Условие «за закрытую штамп-карту — ролл»
+ * согласовать можно было бы, но оно не сработало бы ни разу: штампов в системе
+ * нет. Две стороны договорились бы о подарках, которых никто не получит.
+ */
+export const ProposeTermInput = z
+  .object({
+    direction: TermDirection,
+    trigger: PartnershipTrigger.refine(
+      (trigger) => (WORKING_TRIGGERS as readonly string[]).includes(trigger.type),
+      { error: 'Штампов и статусов в системе пока нет — такое условие не сработало бы ни разу' },
+    ),
+    reward: PartnershipReward.refine(
+      (reward) => (WORKING_REWARDS as readonly string[]).includes(reward.kind),
+      {
+        error:
+          'Такой подарок касса пока не выдаёт — выберите подарок, скидку в процентах или в батах',
+      },
+    ),
+    /** Сколько дней живёт выданный промокод. */
+    validityDays: z.number().int().min(1).max(TERM_VALIDITY_MAX_DAYS).default(7),
+    limits: PartnershipLimits,
+  })
+  .strict()
+
+export type ProposeTermInput = z.infer<typeof ProposeTermInput>
+
+/** Что можно сделать с условием прямо сейчас — решает сервер. */
+export const TermActions = z
+  .object({
+    accept: z.boolean(),
+    reject: z.boolean(),
+    pause: z.boolean(),
+    resume: z.boolean(),
+  })
+  .strict()
+
+export type TermActions = z.infer<typeof TermActions>
+
+export const PartnershipTermView = z
+  .object({
+    id: z.uuid(),
+    direction: TermDirection,
+    status: PartnershipTermStatus,
+    trigger: PartnershipTrigger,
+    reward: PartnershipReward,
+    validityDays: z.number().int().positive(),
+    limits: PartnershipLimits,
+    /** Название вида продажи из триггера: соглашаются на «абонемент», а не на идентификатор. */
+    saleKindName: z.string().nullable(),
+    proposedByUs: z.boolean(),
+    acceptedAt: z.iso.datetime().nullable(),
+    /** Стоит на паузе по нашему решению — снять её можем только мы. */
+    pausedByUs: z.boolean(),
+    grantsIssued: z.number().int().nonnegative(),
+    grantsRedeemed: z.number().int().nonnegative(),
+    actions: TermActions,
+  })
+  .strict()
+
+export type PartnershipTermView = z.infer<typeof PartnershipTermView>
+
+const SaleKindOption = z.object({ id: z.uuid(), name: z.string() }).strict()
+
+/** Виды продаж обеих сторон — для конструктора условия. */
+export const PartnerSaleKinds = z
+  .object({
+    ours: z.array(SaleKindOption),
+    theirs: z.array(SaleKindOption),
+  })
+  .strict()
+
+export type PartnerSaleKinds = z.infer<typeof PartnerSaleKinds>
+
 export const PartnershipDetail = PartnershipSummary.extend({
   endReason: z.string().nullable(),
+  /** Условия в обе стороны: сначала ждущие ответа, потом действующие. */
+  terms: z.array(PartnershipTermView),
   /** Последние сообщения, старые сверху — как в чате. */
   messages: z.array(PartnershipMessageView),
   actions: PartnershipActions,
