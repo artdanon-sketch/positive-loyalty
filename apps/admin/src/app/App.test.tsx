@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { t } from '../shared/i18n'
@@ -1168,5 +1168,162 @@ describe('Настройки программы', () => {
     await openSettings()
 
     expect(screen.getByRole('button', { name: t('settings.save') })).toBeDisabled()
+  })
+})
+
+const GUEST_ID = '12121212-1212-4121-8121-121212121212'
+const GUEST_MEMBERSHIP_ID = '13131313-1313-4131-8131-131313131313'
+
+const GUEST_ROWS = {
+  items: [
+    {
+      membershipId: GUEST_MEMBERSHIP_ID,
+      guestId: GUEST_ID,
+      displayName: 'Анна Ковалёва',
+      phone: '+66 •• •• 4821',
+      mode: 'TOURIST',
+      pointsBalance: 30_175,
+      visitsTotal: 4,
+      spentTotal: 603_500,
+      lastVisitAt: '2026-09-05T13:10:00.000Z',
+      isControlGroup: false,
+    },
+  ],
+  total: 1,
+}
+
+/** Карточка: отменённый чек с кассиром и видом продажи, подарок, погашенный в другом чеке. */
+const GUEST_CARD = {
+  guestId: GUEST_ID,
+  membershipId: GUEST_MEMBERSHIP_ID,
+  displayName: 'Анна Ковалёва',
+  phone: '+66 •• •• 4821',
+  mode: 'TOURIST',
+  source: 'ORGANIC',
+  isControlGroup: false,
+  firstVisitAt: '2026-08-20T12:00:00.000Z',
+  lastVisitAt: '2026-09-05T13:10:00.000Z',
+  pointsBalance: 30_175,
+  visitsTotal: 4,
+  spentTotal: 603_500,
+  averageCheck: 150_875,
+  timeline: [
+    {
+      kind: 'GIFT',
+      grantId: '14141414-1414-4141-8141-141414141414',
+      at: '2026-09-05T13:12:00.000Z',
+      title: 'Десерт в подарок',
+      codeTail: 'K7QX',
+      state: 'REDEEMED',
+      expiresAt: '2026-10-05T13:12:00.000Z',
+      redeemedAt: '2026-09-06T11:00:00.000Z',
+      redeemedReceiptId: '1042',
+    },
+    {
+      kind: 'OPERATION',
+      id: '15151515-1515-4151-8151-151515151515',
+      at: '2026-09-05T13:10:00.000Z',
+      type: 'EARN',
+      source: 'STAFF_MANUAL',
+      amount: 4_500,
+      basisAmount: 90_000,
+      receiptId: '1041',
+      saleKind: 'Абонемент',
+      staffName: 'Кассир Лек',
+      reversed: true,
+    },
+  ],
+  timelineLimit: 50,
+  timelineTruncated: false,
+}
+
+const requested = (fetchMock: ReturnType<typeof vi.fn>, needle: string): boolean =>
+  fetchMock.mock.calls.some(([input]) => requestOf(input as RequestInfo | URL).includes(needle))
+
+describe('Гости: поиск и карточка', () => {
+  const openGuests = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.guests') }))
+    await screen.findByRole('searchbox', { name: t('guests.search.label') })
+  }
+
+  it('ГОСТЬ ГОВОРИТ «…4821» — ЦИФРЫ УХОДЯТ В ПОИСК И НАХОДЯТ ЕГО', async () => {
+    const fetchMock = stubApi({ '/v1/admin/guests': () => json(GUEST_ROWS) })
+    render(<App />)
+
+    await openGuests()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: t('guests.search.label') }), {
+      target: { value: '4821' },
+    })
+
+    await waitFor(() => {
+      expect(requested(fetchMock, 'q=4821')).toBe(true)
+    })
+    expect(await screen.findByRole('button', { name: 'Анна Ковалёва' })).toBeInTheDocument()
+  })
+
+  it('никого не нашли — так и сказано, с подсказкой, как искать', async () => {
+    stubApi({ '/v1/admin/guests': () => json({ items: [], total: 0 }) })
+    render(<App />)
+
+    await openGuests()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: t('guests.search.label') }), {
+      target: { value: 'Зоя' },
+    })
+
+    expect(await screen.findByText(t('guests.search.nothing'))).toBeInTheDocument()
+    // «Гостей пока нет» здесь было бы враньём: гости есть, не нашёлся один.
+    expect(screen.queryByText(t('guests.empty.title'))).not.toBeInTheDocument()
+  })
+
+  it('КАРТОЧКА: ЧЕК, КАССИР, ОТМЕНА И ПУТЬ ПОДАРКА — ОДНОЙ ЛЕНТОЙ', async () => {
+    stubApi({
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await openGuests()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+
+    const card = await screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+
+    // Средний чек 1 508,75 ฿ — разряды разделены неразрывным пробелом.
+    expect(within(card).getByText(/1\s508,75 ฿/)).toBeInTheDocument()
+    expect(
+      within(card).getByText('чек 1041 · 900,00 ฿ · Абонемент · Кассир Лек'),
+    ).toBeInTheDocument()
+    expect(within(card).getByText(t('guestCard.op.reversed'))).toBeInTheDocument()
+    expect(within(card).getByText(/погашен .*чек 1042/)).toBeInTheDocument()
+    expect(within(card).getByText(`${t('guestCard.gift.code')} …K7QX`)).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
+  it('поиск в шапке ведёт к гостям с уже набранным запросом', async () => {
+    const fetchMock = stubApi({ '/v1/admin/guests': () => json(GUEST_ROWS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    fireEvent.change(await screen.findByRole('searchbox', { name: t('search.label') }), {
+      target: { value: '4821' },
+    })
+    fireEvent.submit(screen.getByRole('search', { name: t('search.label') }))
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t('guests.title') }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: t('guests.search.label') })).toHaveValue('4821')
+    await waitFor(() => {
+      expect(requested(fetchMock, 'q=4821')).toBe(true)
+    })
   })
 })

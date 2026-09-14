@@ -15,10 +15,16 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger'
-import { AdminListQuery, DashboardQuery } from '@positive/contracts'
+import {
+  AdminGuestCardQuery,
+  AdminGuestsQuery,
+  AdminListQuery,
+  DashboardQuery,
+} from '@positive/contracts'
 import type {
   AdminDashboard,
   LiveFeedEvent,
+  AdminGuestCard,
   AdminGuestsList,
   AdminLedgerEntry,
   AdminLedgerList,
@@ -142,8 +148,9 @@ export class AdminController {
   @Get('guests')
   @ApiOperation({ summary: 'Гости заведения' })
   @ApiOkResponse({ description: 'Участия своего заведения, недавние визиты первыми' })
+  @ApiBadRequestResponse({ description: 'Некорректные параметры или слишком длинный поиск' })
   async listGuests(@Query() query: Record<string, unknown>): Promise<AdminGuestsList> {
-    const parsed = AdminListQuery.safeParse(query)
+    const parsed = AdminGuestsQuery.safeParse(query)
 
     if (!parsed.success) {
       throw new BadRequestException({
@@ -155,7 +162,31 @@ export class AdminController {
       })
     }
 
-    return this.adminService.listGuests(parsed.data.limit, parsed.data.offset)
+    return this.adminService.listGuests(parsed.data.limit, parsed.data.offset, parsed.data.q)
+  }
+
+  @Get('guests/:guestId')
+  @ApiOperation({ summary: 'Карточка гостя: цифры и история одной лентой' })
+  @ApiOkResponse({ description: 'Гость своего заведения' })
+  @ApiBadRequestResponse({ description: 'Неизвестный язык' })
+  @ApiNotFoundResponse({ description: 'Гость не участвует в программе этого заведения' })
+  async guestCard(
+    @Param('guestId', ParseUUIDPipe) guestId: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<AdminGuestCard> {
+    const parsed = AdminGuestCardQuery.safeParse(query)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректные параметры запроса',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.adminService.guestCard(guestId, parsed.data.locale)
   }
 
   @Get('ledger/:id')

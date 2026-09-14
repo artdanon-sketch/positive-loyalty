@@ -109,6 +109,142 @@ export const AdminGuestsList = z
 
 export type AdminGuestsList = z.infer<typeof AdminGuestsList>
 
+/**
+ * Список гостей с поиском. docs/10, раздел 5.2 — «поиск-везде».
+ *
+ * ОДНА СТРОКА, ЧЕТЫРЕ СМЫСЛА: последние цифры телефона, имя, промокод, номер
+ * чека. Человек у стойки не выбирает, по какому полю искать, — он повторяет то,
+ * что сказал гость: «…4821», «Анна», «у меня код», «вот чек».
+ *
+ * Пустая строка — не ошибка, а «без поиска»: поле очистили.
+ */
+export const AdminGuestsQuery = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    offset: z.coerce.number().int().min(0).default(0),
+    q: z.string().trim().max(64).optional(),
+  })
+  .strict()
+
+export type AdminGuestsQuery = z.infer<typeof AdminGuestsQuery>
+
+/** Язык названий подарков в карточке — язык интерфейса того, кто смотрит. */
+export const AdminGuestCardQuery = z
+  .object({
+    locale: z.enum(['ru', 'en', 'th', 'zh']).default('ru'),
+  })
+  .strict()
+
+export type AdminGuestCardQuery = z.infer<typeof AdminGuestCardQuery>
+
+/** Откуда гость пришёл в программу. */
+export const GuestSource = z.enum(['ORGANIC', 'CATALOG', 'REFERRAL', 'STAFF', 'IMPORT'])
+export type GuestSource = z.infer<typeof GuestSource>
+
+/**
+ * Судьба подарка.
+ *
+ * EXPIRED вычисляет сервер по сроку, а не только читает из базы: подарок, срок
+ * которого прошёл вчера, в базе может ещё числиться выданным — фоновая задача
+ * не обязана успеть. Владельцу нужна правда о сегодняшнем дне.
+ */
+export const AdminGiftState = z.enum(['ISSUED', 'REDEEMED', 'EXPIRED', 'VOID'])
+export type AdminGiftState = z.infer<typeof AdminGiftState>
+
+/** Операция в истории гостя. */
+export const AdminTimelineOperation = z
+  .object({
+    kind: z.literal('OPERATION'),
+    id: z.uuid(),
+    /** Когда операция ПРОИЗОШЛА: чек, досланный кассой вечером, стоит на своём часе. */
+    at: z.iso.datetime(),
+    type: LedgerType,
+    source: LedgerSource,
+    /** Знаковое, в баллах. */
+    amount: z.number().int(),
+    /** Сумма чека в сатангах. */
+    basisAmount: z.number().int().nonnegative().nullable(),
+    receiptId: z.string().nullable(),
+    /** Что продали — если заведение ведёт виды продаж. */
+    saleKind: z.string().nullable(),
+    /** Кто провёл. null — касса по вебхуку или система. */
+    staffName: z.string().nullable(),
+    /** Операцию отменили — рядом в истории стоит её компенсация. */
+    reversed: z.boolean(),
+  })
+  .strict()
+
+export type AdminTimelineOperation = z.infer<typeof AdminTimelineOperation>
+
+/**
+ * Подарок в истории гостя — одной строкой со всем путём:
+ * «выдан 3 сентября → погашен 5 сентября, чек 1042».
+ *
+ * КОДА ЦЕЛИКОМ ЗДЕСЬ НЕТ И БЫТЬ НЕ МОЖЕТ. Код — это сам подарок: кто его знает,
+ * тот его и погасит. Сотруднику в бэк-офисе полный код не нужен ни для чего,
+ * кроме как погасить подарок самому себе. Последних четырёх знаков достаточно,
+ * чтобы сверить с экраном гостя. Граница стоит в схеме: строка длиннее четырёх
+ * знаков не пройдёт разбор, даже если сервер однажды ошибётся.
+ */
+export const AdminTimelineGift = z
+  .object({
+    kind: z.literal('GIFT'),
+    grantId: z.uuid(),
+    /** Когда выдан. */
+    at: z.iso.datetime(),
+    title: z.string().nullable(),
+    codeTail: z.string().min(1).max(4),
+    state: AdminGiftState,
+    expiresAt: z.iso.datetime(),
+    redeemedAt: z.iso.datetime().nullable(),
+    redeemedReceiptId: z.string().nullable(),
+  })
+  .strict()
+
+export type AdminTimelineGift = z.infer<typeof AdminTimelineGift>
+
+export const AdminTimelineItem = z.discriminatedUnion('kind', [
+  AdminTimelineOperation,
+  AdminTimelineGift,
+])
+
+export type AdminTimelineItem = z.infer<typeof AdminTimelineItem>
+
+/**
+ * Карточка гостя: кто он для заведения и что с ним происходило.
+ *
+ * ИСТОРИЯ — ОДНОЙ ЛЕНТОЙ, А НЕ ВКЛАДКАМИ. Спор у стойки звучит как «мне не
+ * начислили за вчерашний ужин, а подарок не дали». Ответ на него — чек, баллы
+ * и подарок рядом на одной оси времени, а не на трёх вкладках.
+ */
+export const AdminGuestCard = z
+  .object({
+    guestId: z.uuid(),
+    membershipId: z.uuid(),
+    displayName: z.string().nullable(),
+    /** Маска для менеджера, целиком для владельца — как в списке. */
+    phone: z.string().min(1).nullable(),
+    mode: z.enum(['TOURIST', 'RESIDENT']),
+    source: GuestSource,
+    isControlGroup: z.boolean(),
+    firstVisitAt: z.iso.datetime().nullable(),
+    lastVisitAt: z.iso.datetime().nullable(),
+    pointsBalance: z.number().int(),
+    visitsTotal: z.number().int().nonnegative(),
+    spentTotal: z.number().int().nonnegative(),
+    /** Сатанги. null — визитов не было, делить не на что. */
+    averageCheck: z.number().int().nonnegative().nullable(),
+    /** Новые сверху. */
+    timeline: z.array(AdminTimelineItem),
+    /** Сколько последних операций и подарков показывается. */
+    timelineLimit: z.number().int().positive(),
+    /** Показано не всё: старое — в «Операциях». */
+    timelineTruncated: z.boolean(),
+  })
+  .strict()
+
+export type AdminGuestCard = z.infer<typeof AdminGuestCard>
+
 // ─── Дашборд ─────────────────────────────────────────────────────────────────
 
 /**

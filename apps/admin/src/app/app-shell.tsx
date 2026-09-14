@@ -6,6 +6,7 @@ import { isCashierApp } from '../shared/config/product'
 import { useT } from '../shared/i18n'
 import type { TranslationKey } from '../shared/i18n'
 import { ThemeToggle } from '../shared/ui/theme-toggle'
+import { GlobalSearch } from './global-search'
 
 /**
  * Каркас бэк-офиса: шапка с навигацией и область экрана.
@@ -91,6 +92,7 @@ export function AppShell(): ReactElement {
         </nav>
 
         <div className="app-header__side">
+          {isCashier ? null : <GlobalSearch />}
           {subject !== null ? (
             <span className="app-user">
               <span className="app-user__name">{subject.displayName}</span>
