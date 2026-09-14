@@ -358,6 +358,29 @@ export type DashboardIncremental = z.infer<typeof DashboardIncremental>
  */
 export const DashboardAdvice = z.discriminatedUnion('kind', [
   /**
+   * Партнёры ждут нашего ответа: входящие приглашения и предложенные условия.
+   * Единственное в партнёрствах, что требует действия прямо сейчас.
+   */
+  z
+    .object({
+      kind: z.literal('PARTNERS_WAITING'),
+      invites: z.number().int().nonnegative(),
+      terms: z.number().int().nonnegative(),
+    })
+    .strict(),
+  /**
+   * Партнёр прислал гостей, а ответного условия от него нет (docs/10, раздел 5.1):
+   * разные гости партнёра за месяц погасили у нас не меньше десяти подарков.
+   */
+  z
+    .object({
+      kind: z.literal('PARTNER_RECIPROCATE'),
+      partnershipId: z.uuid(),
+      partnerName: z.string().min(1),
+      guests: z.number().int().positive(),
+    })
+    .strict(),
+  /**
    * Чеки не дошли с планшетов: застряли или опаздывают больше часа.
    * Гости по ним уже сейчас без баллов — это не прогноз, а долг, поэтому первым.
    */

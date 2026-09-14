@@ -1929,3 +1929,47 @@ describe('Застрявший чек на планшете', () => {
     })
   })
 })
+
+describe('Советы про партнёров', () => {
+  it('ПАРТНЁРЫ ЖДУТ ОТВЕТА И ПАРТНЁР ПРИСЛАЛ ГОСТЕЙ — СОВЕТЫ ВЕДУТ В ПАРТНЁРСТВА', async () => {
+    stubApi({
+      '/v1/admin/dashboard': () =>
+        json({
+          ...DASHBOARD,
+          advice: [
+            { kind: 'PARTNERS_WAITING', invites: 1, terms: 2 },
+            {
+              kind: 'PARTNER_RECIPROCATE',
+              partnershipId: PARTNERSHIP_ID,
+              partnerName: 'Dance Studio Kata',
+              guests: 12,
+            },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    expect(
+      await screen.findByText(
+        t('overview.advice.partnersWaiting.text').replace('{invites}', '1').replace('{terms}', '2'),
+      ),
+    ).toBeInTheDocument()
+    // 12 по-русски — форма «many»: «12 гостей пришли».
+    expect(
+      screen.getByText(
+        t('overview.advice.reciprocate.many')
+          .replace('{partner}', 'Dance Studio Kata')
+          .replace('{n}', '12'),
+      ),
+    ).toBeInTheDocument()
+
+    expect(
+      screen.getByRole('link', { name: t('overview.advice.partnersWaiting.action') }),
+    ).toHaveAttribute('href', '/partners')
+    expect(
+      screen.getByRole('link', { name: t('overview.advice.reciprocate.action') }),
+    ).toHaveAttribute('href', `/partners/${PARTNERSHIP_ID}`)
+  })
+})
