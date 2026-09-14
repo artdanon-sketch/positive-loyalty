@@ -1973,3 +1973,80 @@ describe('Советы про партнёров', () => {
     ).toHaveAttribute('href', `/partners/${PARTNERSHIP_ID}`)
   })
 })
+
+const OFFERS = {
+  items: [
+    {
+      id: '52525252-5252-4525-8525-525252525252',
+      status: 'LIVE',
+      title: 'Ролл Филадельфия в подарок',
+      howTo: ['Покажите код на кассе', 'К заказу от 800 ฿'],
+      partner: { partnershipId: PARTNERSHIP_ID, name: 'Dance Studio Kata' },
+      issued: 12,
+      redeemed: 7,
+      returned: 3,
+      createdAt: '2026-09-14T10:00:00.000Z',
+    },
+    {
+      id: '53535353-5353-4535-8535-535353535353',
+      status: 'ENDED',
+      title: 'Вернём 200 ฿',
+      howTo: [],
+      partner: null,
+      issued: 40,
+      redeemed: 31,
+      returned: 12,
+      createdAt: '2026-08-01T10:00:00.000Z',
+    },
+  ],
+}
+
+describe('Акции', () => {
+  const openOffers = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.offers') }))
+    await screen.findByRole('heading', { level: 1, name: t('offers.title') })
+  }
+
+  it('ПАРТНЁРСКАЯ АКЦИЯ — С ПОМЕТКОЙ, КОТОРАЯ ВЕДЁТ В ПАРТНЁРСТВО, И С УСЛОВИЕМ СЛОВАМИ', async () => {
+    stubApi({ '/v1/admin/offers': () => json(OFFERS) })
+    render(<App />)
+
+    await openOffers()
+
+    const mark = await screen.findByRole('link', {
+      name: t('offers.partner').replace('{name}', 'Dance Studio Kata'),
+    })
+    expect(mark).toHaveAttribute('href', `/partners/${PARTNERSHIP_ID}`)
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Ролл Филадельфия в подарок' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('К заказу от 800 ฿')).toBeInTheDocument()
+    expect(screen.getByText(t('offers.partnerHint'))).toBeInTheDocument()
+  })
+
+  it('фильтр «Завершены» уходит на сервер', async () => {
+    const fetchMock = stubApi({ '/v1/admin/offers': () => json(OFFERS) })
+    render(<App />)
+
+    await openOffers()
+    fireEvent.click(screen.getByRole('button', { name: t('offers.filter.ENDED') }))
+
+    await waitFor(() => {
+      expect(requested(fetchMock, 'filter=ENDED')).toBe(true)
+    })
+  })
+
+  it('акций нет — честно сказано, откуда они берутся, и есть дорога в партнёры', async () => {
+    stubApi({ '/v1/admin/offers': () => json({ items: [] }) })
+    render(<App />)
+
+    await openOffers()
+
+    expect(await screen.findByText(t('offers.empty.title'))).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('offers.empty.action') })).toHaveAttribute(
+      'href',
+      '/partners',
+    )
+  })
+})

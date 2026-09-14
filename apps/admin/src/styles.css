@@ -2100,6 +2100,97 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Акции ──────────────────────────────────────────────────────────────────── */
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--sp-4);
+}
+
+.filter-chips .chip + .chip,
+.offer-card__meta .chip + .chip {
+  margin-left: 0;
+}
+
+.filter-chip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filter-chip:focus-visible,
+.offer-card__partner:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+
+.offer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: var(--sp-4);
+}
+
+.offer-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surf);
+}
+
+.offer-card--ended {
+  opacity: 0.62;
+}
+
+.offer-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.offer-card__partner {
+  text-decoration: none;
+}
+
+.offer-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.offer-card__how {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+.offer-card__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+}
+
+.offer-card__stats dt {
+  font-size: var(--fs-secondary);
+  color: var(--tx-3);
+}
+
+.offer-card__stats dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Действия в строке таблицы ────────────────────────────────────────────── */
 
 .row-actions {

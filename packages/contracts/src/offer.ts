@@ -96,3 +96,48 @@ export const offerHowTo = (i18n: unknown, locale: string): readonly string[] => 
 
   return []
 }
+
+// ─── Список акций в бэк-офисе ────────────────────────────────────────────────
+
+export const OfferStatus = z.enum(['DRAFT', 'SCHEDULED', 'LIVE', 'PAUSED', 'ENDED'])
+export type OfferStatus = z.infer<typeof OfferStatus>
+
+/** Фильтры чипами из docs/03, раздел 4: Все · Идут · Запланированы · Завершены. */
+export const OfferListFilter = z.enum(['ALL', 'LIVE', 'SCHEDULED', 'ENDED'])
+export type OfferListFilter = z.infer<typeof OfferListFilter>
+
+export const AdminOffersQuery = z
+  .object({
+    filter: OfferListFilter.default('ALL'),
+    locale: z.enum(['ru', 'en', 'th', 'zh']).default('ru'),
+  })
+  .strict()
+
+export type AdminOffersQuery = z.infer<typeof AdminOffersQuery>
+
+/**
+ * Акция глазами владельца: что идёт и работает ли.
+ *
+ * Партнёрская приходит с `partner`: её условия меняются только через
+ * партнёрство (docs/10, раздел 5.3), и экран ведёт туда, а не в редактор.
+ */
+export const AdminOfferCard = z
+  .object({
+    id: z.uuid(),
+    status: OfferStatus,
+    title: z.string().nullable(),
+    /** Условие словами — те же шаги, что видят гость и кассир. */
+    howTo: z.array(z.string()),
+    partner: z.object({ partnershipId: z.uuid(), name: z.string().nullable() }).strict().nullable(),
+    issued: z.number().int().nonnegative(),
+    redeemed: z.number().int().nonnegative(),
+    /** Гости, пришедшие снова после погашения: другой чек и позже, чем через час. */
+    returned: z.number().int().nonnegative(),
+    createdAt: z.iso.datetime(),
+  })
+  .strict()
+
+export type AdminOfferCard = z.infer<typeof AdminOfferCard>
+
+export const AdminOfferList = z.object({ items: z.array(AdminOfferCard) }).strict()
+export type AdminOfferList = z.infer<typeof AdminOfferList>

@@ -66,6 +66,9 @@ export function AppShell(): ReactElement {
               <NavLink className={navClass} to="/guests">
                 {t('nav.guests')}
               </NavLink>
+              <NavLink className={navClass} to="/offers">
+                {t('nav.offers')}
+              </NavLink>
               {/* Смотреть партнёрства может и менеджер; договариваться — только
                   владелец, и кнопок у менеджера на экранах нет. */}
               <NavLink className={navClass} to="/partners">
