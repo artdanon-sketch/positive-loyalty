@@ -1,21 +1,77 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import { formatBaht, formatDateTime } from '../../shared/format/format'
+import { useDebouncedValue } from '../../shared/hooks/use-debounced-value'
 import { useT } from '../../shared/i18n'
+import { GuestCard } from './components/guest-card'
+import { SearchBox } from './components/search-box'
 import { GUESTS_PAGE_SIZE, useGuestsPage } from './hooks'
 
 /**
- * Экран «Гости»: кто участвует в программе и когда был.
- * docs/03, раздел 3 — в объёме Среза 1: список без карточки гостя и сегментов.
+ * Экран «Гости»: кто участвует в программе, поиск и карточка гостя.
+ * docs/03, раздел 3 · docs/10, раздел 5.2.
+ *
+ * ЗАПРОС И ОТКРЫТАЯ КАРТОЧКА ЖИВУТ В АДРЕСЕ СТРАНИЦЫ (`?q=4821&guest=…`).
+ * Так поиск из шапки попадает сюда уже набранным, ссылку на гостя можно
+ * переслать управляющему, а перезагрузка не теряет, на ком остановились.
  *
  * Телефон приходит с сервера уже в том виде, который положен роли:
  * менеджеру — маска, владельцу — целиком. Клиент его только показывает.
  */
+
+const SEARCH_DELAY_MS = 250
+
 export function GuestsPage(): ReactElement {
   const t = useT()
-  const [offset, setOffset] = useState(0)
-  const query = useGuestsPage(offset)
+  const [params, setParams] = useSearchParams()
+  const q = params.get('q') ?? ''
+  const openGuestId = params.get('guest')
+  const search = useDebouncedValue(q.trim(), SEARCH_DELAY_MS)
+
+  // Страница помнит, к какому запросу относится: новый поиск начинается
+  // с первой страницы, а не с той, на которой листали прошлый.
+  const [paging, setPaging] = useState({ search, offset: 0 })
+  const offset = paging.search === search ? paging.offset : 0
+  const query = useGuestsPage(offset, search)
+
+  const setOffset = (next: number): void => {
+    setPaging({ search, offset: next })
+  }
+
+  const updateParams = (change: (next: URLSearchParams) => void): void => {
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        change(next)
+        return next
+      },
+      { replace: true },
+    )
+  }
+
+  const setQuery = (value: string): void => {
+    updateParams((next) => {
+      if (value === '') {
+        next.delete('q')
+      } else {
+        next.set('q', value)
+      }
+    })
+  }
+
+  const openCard = (guestId: string): void => {
+    updateParams((next) => {
+      next.set('guest', guestId)
+    })
+  }
+
+  const closeCard = (): void => {
+    updateParams((next) => {
+      next.delete('guest')
+    })
+  }
 
   return (
     <section className="page">
@@ -23,6 +79,8 @@ export function GuestsPage(): ReactElement {
         <h1 className="page__title">{t('guests.title')}</h1>
         <p className="page__subtitle">{t('guests.subtitle')}</p>
       </header>
+
+      <SearchBox value={q} onChange={setQuery} />
 
       {query.isPending ? (
         <div className="state" role="status">
@@ -43,12 +101,25 @@ export function GuestsPage(): ReactElement {
           </button>
         </div>
       ) : query.data.items.length === 0 ? (
-        <div className="state">
-          <p className="state__title">{t('guests.empty.title')}</p>
-          <p className="state__hint">{t('guests.empty.hint')}</p>
-        </div>
+        search === '' ? (
+          <div className="state">
+            <p className="state__title">{t('guests.empty.title')}</p>
+            <p className="state__hint">{t('guests.empty.hint')}</p>
+          </div>
+        ) : (
+          <div className="state" role="status">
+            <p className="state__title">{t('guests.search.nothing')}</p>
+            <p className="state__hint">{t('guests.search.nothingHint')}</p>
+          </div>
+        )
       ) : (
         <>
+          {search === '' ? null : (
+            <p className="search__found" role="status">
+              {t('guests.search.found')}: {query.data.total}
+            </p>
+          )}
+
           <div className="table-scroll">
             <table className="data-table">
               <thead>
@@ -65,7 +136,17 @@ export function GuestsPage(): ReactElement {
               <tbody>
                 {query.data.items.map((row) => (
                   <tr key={row.membershipId}>
-                    <td>{row.displayName ?? t('guests.noName')}</td>
+                    <td>
+                      <button
+                        className="link-button"
+                        type="button"
+                        onClick={() => {
+                          openCard(row.guestId)
+                        }}
+                      >
+                        {row.displayName ?? t('guests.noName')}
+                      </button>
+                    </td>
                     <td className="data-table__mono">{row.phone}</td>
                     <td>
                       <span
@@ -114,6 +195,10 @@ export function GuestsPage(): ReactElement {
             </button>
           </nav>
         </>
+      )}
+
+      {openGuestId === null ? null : (
+        <GuestCard key={openGuestId} guestId={openGuestId} onClose={closeCard} />
       )}
     </section>
   )

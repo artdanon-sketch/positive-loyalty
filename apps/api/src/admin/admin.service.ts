@@ -1,15 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { offerTitle } from '@positive/contracts'
 import type {
+  AdminGuestCard,
   AdminGuestRow,
   AdminGuestsList,
   AdminLedgerEntry,
   AdminLedgerList,
   AdminMembership,
+  AdminTimelineItem,
 } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { maskPhone } from '../common/pii/mask-phone'
 import { PrismaService } from '../core/prisma.service'
+import { guestSearchWhere } from './guest-search'
+
+/**
+ * Сколько последних операций и сколько последних подарков идёт в карточку.
+ * Спор у стойки — про последние визиты; полгода назад — это «Операции».
+ */
+const TIMELINE_LIMIT = 50
 
 /**
  * Чтение данных бэк-офиса.
@@ -96,14 +106,17 @@ export class AdminService {
    * (docs/05, раздел 3). Маскирование делает сервер — у клиента полного
    * значения просто нет, и «размаскировать» на фронте нечего.
    */
-  async listGuests(limit: number, offset: number): Promise<AdminGuestsList> {
+  async listGuests(limit: number, offset: number, q?: string): Promise<AdminGuestsList> {
     const { tenantId, role } = TenantContext.getOrThrow()
     const showFullPhone = role === 'OWNER'
+    // tenantId стоит рядом с условием поиска, а не внутри него: поиск может
+    // только сузить список своего заведения, но не расширить его.
+    const where = { tenantId, ...guestSearchWhere(tenantId, q) }
 
     return this.prisma.forTenant(tenantId, async (tx) => {
       const [rows, total] = await Promise.all([
         tx.membership.findMany({
-          where: { tenantId },
+          where,
           include: { guest: { select: { displayName: true, phoneE164: true, mode: true } } },
           // Спящие гости в конце: экран отвечает на вопрос «кто был недавно»,
           // а «кто давно не был» — это отдельный сегмент рассылок (Срез 4).
@@ -111,7 +124,7 @@ export class AdminService {
           take: limit,
           skip: offset,
         }),
-        tx.membership.count({ where: { tenantId } }),
+        tx.membership.count({ where }),
       ])
 
       const items: AdminGuestRow[] = rows.map((row) => ({
@@ -129,6 +142,162 @@ export class AdminService {
 
       return { items, total }
     })
+  }
+
+  /**
+   * Карточка гостя: цифры и история одной лентой.
+   *
+   * Адресуется ГОСТЕМ, а не участием (docs/02, раздел 5.2), но читается только
+   * его участие в СВОЁМ заведении. Гость соседа даёт 404 — так же, как
+   * несуществующий: по ответу нельзя узнать, что такой человек где-то есть.
+   *
+   * Подарки — только выданные этим заведением: чужие подарки гостя — чужая
+   * программа, и их коды здесь делать нечего.
+   */
+  async guestCard(guestId: string, locale: string): Promise<AdminGuestCard> {
+    const { tenantId, role } = TenantContext.getOrThrow()
+    const now = new Date()
+
+    const data = await this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { guestId, tenantId },
+        include: { guest: { select: { displayName: true, phoneE164: true, mode: true } } },
+      })
+
+      if (membership === null) {
+        return null
+      }
+
+      // На одну больше лимита: так без отдельного count видно, что показано не всё.
+      const [entries, grants] = await Promise.all([
+        tx.ledgerEntry.findMany({
+          where: { tenantId, membershipId: membership.id },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: TIMELINE_LIMIT + 1,
+          select: {
+            id: true,
+            type: true,
+            source: true,
+            amount: true,
+            basisAmount: true,
+            refType: true,
+            refId: true,
+            actorType: true,
+            actorId: true,
+            createdAt: true,
+            occurredAt: true,
+            saleKind: { select: { name: true } },
+          },
+        }),
+        tx.offerGrant.findMany({
+          where: { tenantId, guestId },
+          orderBy: [{ issuedAt: 'desc' }, { id: 'desc' }],
+          take: TIMELINE_LIMIT + 1,
+          select: {
+            id: true,
+            code: true,
+            state: true,
+            issuedAt: true,
+            expiresAt: true,
+            redeemedAt: true,
+            redeemedReceiptId: true,
+            offer: { select: { i18n: true } },
+          },
+        }),
+      ])
+
+      const shown = entries.slice(0, TIMELINE_LIMIT)
+      const shownIds = shown.map((entry) => entry.id)
+      const staffIds = [
+        ...new Set(
+          shown.flatMap((entry) =>
+            entry.actorId !== null && (entry.actorType === 'STAFF' || entry.actorType === 'OWNER')
+              ? [entry.actorId]
+              : [],
+          ),
+        ),
+      ]
+
+      const [reversals, staff] = await Promise.all([
+        shownIds.length === 0
+          ? Promise.resolve([])
+          : tx.ledgerEntry.findMany({
+              where: { tenantId, reversalOfId: { in: shownIds } },
+              select: { reversalOfId: true },
+            }),
+        staffIds.length === 0
+          ? Promise.resolve([])
+          : tx.staff.findMany({
+              where: { tenantId, id: { in: staffIds } },
+              select: { id: true, displayName: true },
+            }),
+      ])
+
+      return { membership, shown, entries, grants, reversals, staff }
+    })
+
+    if (data === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Гость не найден' },
+      })
+    }
+
+    const { membership, shown, entries, grants, reversals, staff } = data
+    const reversedIds = new Set(reversals.map((row) => row.reversalOfId))
+    const staffNames = new Map(staff.map((person) => [person.id, person.displayName]))
+
+    const operations: AdminTimelineItem[] = shown.map((entry) => ({
+      kind: 'OPERATION',
+      id: entry.id,
+      at: (entry.occurredAt ?? entry.createdAt).toISOString(),
+      type: entry.type,
+      source: entry.source,
+      amount: entry.amount,
+      basisAmount: entry.basisAmount,
+      receiptId: entry.refType === 'receipt' ? entry.refId : null,
+      saleKind: entry.saleKind?.name ?? null,
+      staffName: entry.actorId === null ? null : (staffNames.get(entry.actorId) ?? null),
+      reversed: reversedIds.has(entry.id),
+    }))
+
+    const gifts: AdminTimelineItem[] = grants.slice(0, TIMELINE_LIMIT).map((grant) => ({
+      kind: 'GIFT',
+      grantId: grant.id,
+      at: grant.issuedAt.toISOString(),
+      title: offerTitle(grant.offer.i18n, locale),
+      codeTail: grant.code.slice(-4),
+      state: grant.state === 'ISSUED' && grant.expiresAt <= now ? 'EXPIRED' : grant.state,
+      expiresAt: grant.expiresAt.toISOString(),
+      redeemedAt: grant.redeemedAt?.toISOString() ?? null,
+      redeemedReceiptId: grant.redeemedReceiptId,
+    }))
+
+    // ISO-строки одного формата сравниваются как строки — это и есть порядок во времени.
+    const timeline = [...operations, ...gifts].sort((a, b) =>
+      a.at === b.at ? 0 : a.at < b.at ? 1 : -1,
+    )
+
+    return {
+      guestId,
+      membershipId: membership.id,
+      displayName: membership.guest.displayName,
+      phone: role === 'OWNER' ? membership.guest.phoneE164 : maskPhone(membership.guest.phoneE164),
+      mode: membership.guest.mode,
+      source: membership.source,
+      isControlGroup: membership.isControlGroup,
+      firstVisitAt: membership.firstVisitAt?.toISOString() ?? null,
+      lastVisitAt: membership.lastVisitAt?.toISOString() ?? null,
+      pointsBalance: membership.pointsBalance,
+      visitsTotal: membership.visitsTotal,
+      spentTotal: membership.spentTotal,
+      averageCheck:
+        membership.visitsTotal > 0
+          ? Math.floor(membership.spentTotal / membership.visitsTotal)
+          : null,
+      timeline,
+      timelineLimit: TIMELINE_LIMIT,
+      timelineTruncated: entries.length > TIMELINE_LIMIT || grants.length > TIMELINE_LIMIT,
+    }
   }
 
   async getMembership(id: string): Promise<AdminMembership> {

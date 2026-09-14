@@ -45,3 +45,19 @@ export function formatDateTime(iso: string | null): string {
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? '—' : dateTimeFormat.format(date)
 }
+
+const dateFormat = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+})
+
+/** ISO-строка → «26.08.2026». Для сроков и дат, где час ничего не добавляет. */
+export function formatDate(iso: string | null): string {
+  if (iso === null) {
+    return '—'
+  }
+
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '—' : dateFormat.format(date)
+}
