@@ -10,6 +10,7 @@ import type {
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
+import { stuckReceiptsWhere } from './stuck-receipts.service'
 
 /**
  * Дашборд заведения. docs/02, раздел 5.1 · docs/03, раздел 2.
@@ -170,12 +171,13 @@ export class DashboardService {
 
     const zone = tenant.timezone
 
-    const [summary, series, hourly, incremental, expiringGifts] = await Promise.all([
+    const [summary, series, hourly, incremental, expiringGifts, stuckReceipts] = await Promise.all([
       this.loadSummary(tenantId, zone, days),
       this.loadSeries(tenantId, zone, days),
       this.loadHourly(tenantId, zone, days),
       this.loadIncremental(tenantId, zone, days),
       this.loadExpiringGifts(tenantId),
+      this.loadStuckReceipts(tenantId),
     ])
 
     const guestsNow = toNumber(summary.guestsNow)
@@ -209,6 +211,7 @@ export class DashboardService {
       hourly,
       ...(incremental === null ? {} : { incremental }),
       advice: buildAdvice({
+        stuckReceipts,
         expiringGifts,
         sleeping: toNumber(summary.sleeping),
         manualShare,
@@ -221,6 +224,13 @@ export class DashboardService {
       // гостя» тому, у кого гости были, — значит показать, что мы их не видим.
       isEmpty: toNumber(summary.everGuests) === 0,
     }
+  }
+
+  /** Сколько чеков не дошло с планшетов — то же условие, что у списка на экране кассы. */
+  private async loadStuckReceipts(tenantId: string): Promise<number> {
+    return this.prisma.forTenant(tenantId, async (tx) =>
+      tx.posQueueItem.count({ where: stuckReceiptsWhere(tenantId, new Date()) }),
+    )
   }
 
   /** Сколько выданных подарков сгорит в ближайшие дни, если гости не придут. */
@@ -514,6 +524,7 @@ const round1 = (value: number): number => Math.round(value * 10) / 10
  * туда смотреть.
  */
 function buildAdvice(input: {
+  stuckReceipts: number
   expiringGifts: number
   sleeping: number
   manualShare: number
@@ -521,7 +532,12 @@ function buildAdvice(input: {
 }): DashboardAdvice[] {
   const advice: DashboardAdvice[] = []
 
-  // Первым — единственный совет со сроком годности: через неделю
+  // Первым — гости, которые уже сейчас без баллов: это не прогноз, а долг.
+  if (input.stuckReceipts > 0) {
+    advice.push({ kind: 'STUCK_RECEIPTS', receipts: input.stuckReceipts })
+  }
+
+  // Следом — единственный совет со сроком годности: через неделю
   // он станет бесполезным, а спящие гости подождут.
   if (input.expiringGifts >= EXPIRING_GIFTS_ADVICE_FROM) {
     advice.push({

@@ -450,5 +450,21 @@
   "overview.advice.expiring.few": "подарка сгорят в ближайшие {days} дней — гости о них, похоже, забыли",
   "overview.advice.expiring.many": "подарков сгорят в ближайшие {days} дней — гости о них, похоже, забыли",
   "overview.advice.expiring.other": "подарков сгорят в ближайшие {days} дней — гости о них, похоже, забыли",
-  "overview.advice.expiring.action": "Открыть гостей"
+  "overview.advice.expiring.action": "Открыть гостей",
+  "stuck.title": "Чеки, которые не дошли",
+  "stuck.hint": "Гости по этим чекам пока без баллов. «Нет связи» — чек уйдёт сам, когда планшет поймает интернет. «Отказ сервера» — сам он не уйдёт: проведите чек заново.",
+  "stuck.col.when": "Встал в очередь",
+  "stuck.col.amount": "Сумма",
+  "stuck.col.guest": "Гость",
+  "stuck.col.who": "Кассир и планшет",
+  "stuck.col.why": "Почему не дошёл",
+  "stuck.terminal": "планшет …{id}",
+  "stuck.lastSeen": "на связи {when}",
+  "stuck.rejected": "Сервер отказал",
+  "stuck.late": "Нет связи больше часа",
+  "overview.advice.stuck.one": "чек не дошёл до сервера — гость пока без баллов",
+  "overview.advice.stuck.few": "чека не дошли до сервера — гости пока без баллов",
+  "overview.advice.stuck.many": "чеков не дошли до сервера — гости пока без баллов",
+  "overview.advice.stuck.other": "чеков не дошли до сервера — гости пока без баллов",
+  "overview.advice.stuck.action": "Посмотреть чеки"
 }

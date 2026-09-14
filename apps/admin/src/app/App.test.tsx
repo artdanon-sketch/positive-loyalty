@@ -1730,3 +1730,120 @@ describe('Прогноз сгорания подарков', () => {
     ).toBeInTheDocument()
   })
 })
+
+const STUCK_LIST = {
+  items: [
+    {
+      receiptId: 'pos-lx2k9-a1b2c3',
+      amount: 125_000,
+      receiptNumber: '1042',
+      guest: '+66 •• •• 4821',
+      staffName: 'Кассир Лек',
+      terminal: 'a1b2',
+      attempts: 20,
+      stuck: true,
+      lastError: 'Номер чека обязателен',
+      queuedAt: '2026-09-15T09:00:00.000Z',
+      reportedAt: '2026-09-15T11:30:00.000Z',
+    },
+  ],
+}
+
+describe('Застрявшие чеки', () => {
+  it('ВЛАДЕЛЕЦ ВИДИТ НА ЭКРАНЕ КАССЫ ЧЕКИ, КОТОРЫЕ НЕ ДОШЛИ, — С ПРИЧИНОЙ И ПЛАНШЕТОМ', async () => {
+    stubApi({ '/v1/admin/stuck-receipts': () => json(STUCK_LIST) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.pos') }))
+
+    const panel = await screen.findByRole('region', { name: t('stuck.title') })
+    expect(within(panel).getByText('Номер чека обязателен')).toBeInTheDocument()
+    expect(within(panel).getByText('+66 •• •• 4821')).toBeInTheDocument()
+    expect(within(panel).getByText(t('stuck.terminal').replace('{id}', 'a1b2'))).toBeInTheDocument()
+  })
+
+  it('кассиру список не показывают и даже не запрашивают', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/admin/stuck-receipts': () => json(STUCK_LIST),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    await screen.findByLabelText(t('pos.phone.label'))
+
+    expect(screen.queryByText(t('stuck.title'))).not.toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        requestOf(input as RequestInfo | URL).includes('/admin/stuck-receipts'),
+      ),
+    ).toBe(false)
+  })
+
+  it('ПЛАНШЕТ СООБЩАЕТ ВЛАДЕЛЬЦУ, ЧТО ЧЕК ЛЁГ В ОЧЕРЕДЬ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/commit': () => OFFLINE,
+      '/v1/pos/queue': () => json({ tracked: 1 }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    fireEvent.change(await screen.findByLabelText(t('pos.amount.label')), {
+      target: { value: '1250' },
+    })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'B-1' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+    fireEvent.click(await screen.findByRole('button', { name: t('pos.confirm.submit') }))
+
+    await screen.findByText(t('pos.queued.title'))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/pos/queue') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(call).toBeDefined()
+
+      const body = JSON.parse((call?.[1] as RequestInit).body as string) as {
+        terminalId: string
+        items: Array<Record<string, unknown>>
+      }
+      expect(body.terminalId).toMatch(/^[A-Za-z0-9-]{8,64}$/)
+      expect(body.items).toEqual([
+        expect.objectContaining({ amount: 125_000, receiptNumber: 'B-1' }),
+      ])
+    })
+  })
+
+  it('недошедшие чеки — первым советом на «Обзоре», со ссылкой на кассу', async () => {
+    stubApi({
+      '/v1/admin/dashboard': () =>
+        json({
+          ...DASHBOARD,
+          advice: [
+            { kind: 'STUCK_RECEIPTS', receipts: 3 },
+            { kind: 'EXPIRING_GIFTS', gifts: 12, withinDays: 7 },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    // 3 по-русски — форма «few»: «3 чека не дошли».
+    expect(await screen.findByText(`3 ${t('overview.advice.stuck.few')}`)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('overview.advice.stuck.action') })).toHaveAttribute(
+      'href',
+      '/pos',
+    )
+  })
+})

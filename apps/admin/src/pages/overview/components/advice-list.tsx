@@ -62,6 +62,8 @@ export function AdviceList({
  */
 function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): string {
   switch (item.kind) {
+    case 'STUCK_RECEIPTS':
+      return `${item.receipts} ${tp('overview.advice.stuck', item.receipts)}`
     case 'EXPIRING_GIFTS':
       // «12 подарков сгорят в ближайшие 7 дней»: форма по числу подарков,
       // срок подставляется в уже выбранную форму.
@@ -79,6 +81,8 @@ function describe(item: DashboardAdvice, t: Translate, tp: TranslatePlural): str
 
 function actionLabel(item: DashboardAdvice, t: Translate): string {
   switch (item.kind) {
+    case 'STUCK_RECEIPTS':
+      return t('overview.advice.stuck.action')
     case 'EXPIRING_GIFTS':
       return t('overview.advice.expiring.action')
     case 'SLEEPING_GUESTS':
@@ -93,5 +97,10 @@ function actionLabel(item: DashboardAdvice, t: Translate): string {
 const hh = (hour: number): string => `${String(hour).padStart(2, '0')}:00`
 
 function actionOf(item: DashboardAdvice): string {
-  return item.kind === 'MANUAL_ENTRY' ? '/operations' : '/guests'
+  if (item.kind === 'MANUAL_ENTRY') {
+    return '/operations'
+  }
+
+  // Застрявшие чеки разбирают там, где они видны: на экране кассы.
+  return item.kind === 'STUCK_RECEIPTS' ? '/pos' : '/guests'
 }
