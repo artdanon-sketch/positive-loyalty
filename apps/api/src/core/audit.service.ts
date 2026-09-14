@@ -63,6 +63,12 @@ export type AuditAction =
   | 'PLATFORM_ADMIN_SIGNED_IN'
   /** Перевыпуск доступа админа платформы: пароль, второй фактор, коды. */
   | 'PLATFORM_CREDENTIALS_REISSUED'
+  /** Владелец добавил сотрудника. */
+  | 'STAFF_CREATED'
+  /** Изменены имя, роль или доступ сотрудника. Отключение — тоже здесь. */
+  | 'STAFF_UPDATED'
+  /** Сотруднику задан новый PIN, его сессии отозваны. */
+  | 'STAFF_PIN_RESET'
 
 export interface AuditEntry {
   readonly action: AuditAction

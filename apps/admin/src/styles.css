@@ -1099,6 +1099,215 @@ body {
   border-color: var(--mint);
 }
 
+/* ── Шапка страницы с действием справа ─────────────────────────────────────── */
+
+.page__head--row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+/* ── Панель формы: добавление сотрудника и подобное ───────────────────────── */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surf);
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-4);
+}
+
+.panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.field__hint {
+  font-size: var(--fs-secondary);
+  color: var(--tx-3);
+}
+
+.field__input--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.field__input--compact {
+  min-height: 36px;
+  width: 7.5em;
+  padding: 6px 10px;
+}
+
+/* ── Выбор с объяснением: роль сотрудника ─────────────────────────────────── */
+
+.choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice legend {
+  margin-bottom: 6px;
+}
+
+.choice__option {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm-lg);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease);
+}
+
+.choice__option--on {
+  border-color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 7%, transparent);
+}
+
+.choice__option input {
+  margin-top: 3px;
+  accent-color: var(--mint);
+}
+
+.choice__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.choice__text span {
+  font-size: var(--fs-secondary);
+  color: var(--tx-2);
+}
+
+/* ── Карточка доступа: код устройства и PIN нового сотрудника ─────────────── */
+
+/* Рамка акцента: это не очередная панель, а то, что нужно передать человеку
+   прямо сейчас и что больше не покажут. */
+.access-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 20px;
+  margin-bottom: 20px;
+  border: 1px solid color-mix(in srgb, var(--mint) 45%, var(--line));
+  border-radius: 16px;
+  background: var(--surf);
+}
+
+.access-card__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.access-card__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+.access-card__grid div {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm-lg);
+  background: var(--surf-2);
+}
+
+.access-card__grid dt {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tx-3);
+}
+
+/* Значения диктуют вслух или показывают экраном: крупно, моноширинно,
+   с разрядкой — чтобы «0» не спутать с «O». */
+.access-card__value {
+  margin: 4px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+.access-card__hint {
+  margin: 0;
+  color: var(--tx-2);
+}
+
+.access-card__warn {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--r-sm);
+  background: var(--tint);
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+/* ── Действия в строке таблицы ────────────────────────────────────────────── */
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row-actions__warn {
+  font-size: var(--fs-secondary);
+  color: var(--bad);
+}
+
+.row-actions__ok {
+  font-size: var(--fs-secondary);
+  color: var(--good);
+}
+
+.data-table__sub {
+  display: block;
+  font-size: var(--fs-secondary);
+  color: var(--tx-3);
+}
+
+.data-table__row--muted td {
+  opacity: 0.6;
+}
+
+.button--danger {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
 /* ── Строка формы: поле плюс кнопка в один ряд ─────────────────────────────── */
 
 .form-row {
