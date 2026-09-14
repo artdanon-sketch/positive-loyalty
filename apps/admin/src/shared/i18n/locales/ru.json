@@ -466,5 +466,14 @@
   "overview.advice.stuck.few": "чека не дошли до сервера — гости пока без баллов",
   "overview.advice.stuck.many": "чеков не дошли до сервера — гости пока без баллов",
   "overview.advice.stuck.other": "чеков не дошли до сервера — гости пока без баллов",
-  "overview.advice.stuck.action": "Посмотреть чеки"
+  "overview.advice.stuck.action": "Посмотреть чеки",
+  "pos.stuckList.title": "Застрявшие чеки на этом планшете",
+  "pos.stuckList.hint": "Эти чеки сами не уйдут. Просят номер чека — впишите и нажмите «Повторить». Провели чек заново вручную — уберите его, иначе, дойдя, он начислит баллы второй раз.",
+  "pos.stuckList.member": "гость найден",
+  "pos.stuckList.receipt": "Номер чека",
+  "pos.stuckList.retry": "Повторить",
+  "pos.stuckList.discard": "Убрать",
+  "pos.stuckList.confirm": "Убрать чек из очереди? Если его не провели заново, гость не получит по нему баллы.",
+  "pos.stuckList.keep": "Оставить",
+  "pos.stuckList.discardYes": "Да, убрать"
 }

@@ -4,10 +4,12 @@ import type { PosGuest, PreviewResult } from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 import {
+  dequeue,
   enqueue,
   flushQueue,
   isStuck,
   readQueue,
+  resetForRetry,
   type QueuedSale,
   type QueuedTarget,
   type SaleSender,
@@ -63,6 +65,10 @@ export interface OfflineQueueState {
     receiptNumber?: string
   }) => boolean
   readonly flush: () => void
+  /** Вернуть застрявший чек в работу, при желании вписав номер чека. */
+  readonly retry: (receiptId: string, receiptNumber?: string) => void
+  /** Убрать чек из очереди насовсем: провели заново вручную или чек ошибочный. */
+  readonly discard: (receiptId: string) => void
 }
 
 export function useOfflineQueue(): OfflineQueueState {
@@ -215,6 +221,21 @@ export function useOfflineQueue(): OfflineQueueState {
     [flush, tenantId],
   )
 
+  // Застрявший чек кассир возвращает в работу — например, вписав номер чека,
+  // которого потребовал сервер, — или убирает, если провёл его заново вручную.
+  // Убранный пропадёт и у владельца: следующий снимок очереди его не содержит.
+  const retry = useCallback<OfflineQueueState['retry']>(
+    (receiptId, receiptNumber) => {
+      setQueue(resetForRetry(receiptId, receiptNumber))
+      flush()
+    },
+    [flush],
+  )
+
+  const discard = useCallback<OfflineQueueState['discard']>((receiptId) => {
+    setQueue(dequeue(receiptId))
+  }, [])
+
   const own = queue.filter((sale) => sale.tenantId === tenantId)
 
   return {
@@ -224,5 +245,7 @@ export function useOfflineQueue(): OfflineQueueState {
     isOnline,
     queueSale,
     flush,
+    retry,
+    discard,
   }
 }

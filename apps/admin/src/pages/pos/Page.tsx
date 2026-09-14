@@ -6,6 +6,7 @@ import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
 import { QrScanner } from './components/qr-scanner'
 import { RedeemPanel } from './components/redeem-panel'
+import { StuckQueue } from './components/stuck-queue'
 import { StuckReceipts } from './components/stuck-receipts'
 import { isScannerSupported } from './components/scanner-support'
 import { isNetworkFailure } from './offline-queue'
@@ -87,6 +88,7 @@ export function PosPage(): ReactElement {
 
       <QueueBanner queue={queue} />
       <StuckReceipts />
+      <StuckQueue queue={queue} />
 
       {stage.kind === 'GUEST' ? (
         <GuestStep

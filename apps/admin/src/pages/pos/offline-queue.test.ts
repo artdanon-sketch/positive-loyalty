@@ -8,6 +8,7 @@ import {
   isStuck,
   MAX_ATTEMPTS,
   readQueue,
+  resetForRetry,
   type QueuedSale,
   type SaleSender,
 } from './offline-queue'
@@ -185,5 +186,26 @@ describe('Отправка накопленного', () => {
   it('исчерпанные попытки помечают чек застрявшим', () => {
     expect(isStuck(sale({ attempts: MAX_ATTEMPTS }))).toBe(true)
     expect(isStuck(sale({ attempts: MAX_ATTEMPTS - 1 }))).toBe(false)
+  })
+})
+
+describe('Застрявший чек в руках кассира', () => {
+  it('«повторить» обнуляет попытки, стирает причину и вписывает номер чека', () => {
+    enqueue(sale({ attempts: MAX_ATTEMPTS, lastError: 'Номер чека обязателен' }))
+    enqueue(sale({ receiptId: 'r-2', attempts: 3 }))
+
+    const [first, second] = resetForRetry('r-1', ' A-42 ')
+
+    expect(first).toEqual({ ...sale(), attempts: 0, receiptNumber: 'A-42' })
+    expect(first !== undefined && 'lastError' in first).toBe(false)
+    // Соседний чек не тронут.
+    expect(second?.attempts).toBe(3)
+    expect(readQueue().filter(isStuck)).toHaveLength(0)
+  })
+
+  it('пустой номер прежний номер не стирает', () => {
+    enqueue(sale({ attempts: MAX_ATTEMPTS, receiptNumber: 'B-1' }))
+
+    expect(resetForRetry('r-1', '   ')[0]?.receiptNumber).toBe('B-1')
   })
 })

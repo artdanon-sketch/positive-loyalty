@@ -1847,3 +1847,85 @@ describe('Застрявшие чеки', () => {
     )
   })
 })
+
+/** Застрявший чек на планшете этого заведения: сервер потребовал номер чека. */
+const STUCK_SALE = {
+  receiptId: 'pos-stuck-1',
+  tenantId: TOKENS_RESPONSE.subject.tenantId,
+  target: { kind: 'MEMBERSHIP', membershipId: POS_GUEST.membershipId },
+  amount: 125_000,
+  queuedAt: Date.UTC(2026, 8, 15, 9, 0),
+  attempts: 20,
+  lastError: 'Номер чека обязателен',
+}
+
+/** Без номера чека предрасчёт отказывает — чек так и остаётся застрявшим. */
+const previewNeedsReceipt = (init?: RequestInit): Response => {
+  const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
+    receiptNumber?: string
+  }
+
+  return body.receiptNumber === undefined
+    ? json({ error: { code: 'RECEIPT_REQUIRED', message: 'Номер чека обязателен' } }, 400)
+    : json(POS_PREVIEW)
+}
+
+const storedQueue = (): unknown[] =>
+  JSON.parse(window.localStorage.getItem('positive.pos.queue') ?? '[]') as unknown[]
+
+describe('Застрявший чек на планшете', () => {
+  const seedAndOpen = async (): Promise<{
+    fetchMock: ReturnType<typeof vi.fn>
+    panel: HTMLElement
+  }> => {
+    window.localStorage.setItem('positive.pos.queue', JSON.stringify([STUCK_SALE]))
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/preview': previewNeedsReceipt,
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    const panel = await screen.findByRole('region', { name: t('pos.stuckList.title') })
+
+    return { fetchMock, panel }
+  }
+
+  it('ВПИСАТЬ НОМЕР И ПОВТОРИТЬ — ЧЕК УХОДИТ ТЕМ ЖЕ КЛЮЧОМ, ОЧЕРЕДЬ ПУСТЕЕТ', async () => {
+    const { fetchMock, panel } = await seedAndOpen()
+
+    expect(within(panel).getByText('Номер чека обязателен')).toBeInTheDocument()
+
+    fireEvent.change(within(panel).getByLabelText(t('pos.stuckList.receipt')), {
+      target: { value: 'A-42' },
+    })
+    fireEvent.click(within(panel).getByRole('button', { name: t('pos.stuckList.retry') }))
+
+    // Тот же ключ идемпотентности: если чек когда-то всё же дошёл, второго не будет.
+    await waitFor(() => {
+      expect(postedTo(fetchMock, '/pos/transactions/commit')).toMatchObject({
+        receiptId: 'pos-stuck-1',
+      })
+    })
+    await waitFor(() => {
+      expect(storedQueue()).toEqual([])
+    })
+    expect(screen.queryByRole('region', { name: t('pos.stuckList.title') })).not.toBeInTheDocument()
+  })
+
+  it('УБРАТЬ — ТОЛЬКО ПОСЛЕ ПОДТВЕРЖДЕНИЯ, И ЧЕК ПРОПАДАЕТ С ПЛАНШЕТА', async () => {
+    const { panel } = await seedAndOpen()
+
+    fireEvent.click(within(panel).getByRole('button', { name: t('pos.stuckList.discard') }))
+
+    // Одним нажатием чек не пропадает: гость по нему может остаться без баллов.
+    expect(within(panel).getByText(t('pos.stuckList.confirm'))).toBeInTheDocument()
+    expect(storedQueue()).toHaveLength(1)
+
+    fireEvent.click(within(panel).getByRole('button', { name: t('pos.stuckList.discardYes') }))
+
+    await waitFor(() => {
+      expect(storedQueue()).toEqual([])
+    })
+  })
+})
