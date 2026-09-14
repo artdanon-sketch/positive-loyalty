@@ -23,9 +23,17 @@ import type {
 } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
+import { AuditService } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { localDay } from './invite-day'
+import {
+  DECLINES_LOOKBACK_MS,
+  freeInvitesUnder,
+  inviteRestriction,
+  restrictionView,
+} from './invite-restriction'
+import type { Restriction } from './invite-restriction'
 import { loadTermViews } from './term-view'
 
 /**
@@ -43,10 +51,17 @@ import { loadTermViews } from './term-view'
  * встречных приглашения, отправленных в одну секунду, выстраиваются в очередь,
  * и второе видит первое.
  *
+ * ─── АНТИСПАМ: ОХЛАЖДЕНИЕ И ЖАЛОБЫ ──────────────────────────────────────────
+ *
+ * Отказ и жалоба оставляют след в InviteStrike: строка партнёрства при повторном
+ * приглашении переиспользуется, и отказ из неё стирается. Сами правила — три
+ * отказа за неделю, пять жалоб — живут в invite-restriction.ts.
+ *
  * ─── ЧТО ОСТАВЛЕНО НА ПОТОМ, И ЭТО НАДО ЗНАТЬ ──────────────────────────────
  *
  * Платных приглашений сверх квоты нет: биллинга заведений ещё нет, и 402
- * отвечает «на сегодня всё». Автоохлаждения за три отказа за неделю нет (П6).
+ * отвечает «на сегодня всё». Разбора жалоб в панели
+ * платформы ещё нет: приостановку снимает отметка reviewedAt в журнале.
  * Перевода переписки нет (П7): сообщение хранится с языком оригинала,
  * и переводчик сядет на это поле, ничего не меняя в схеме.
  */
@@ -103,6 +118,13 @@ const MESSAGE_SELECT = {
 
 type MessageRow = Prisma.PartnershipMessageGetPayload<{ select: typeof MESSAGE_SELECT }>
 
+interface OwnRow {
+  id: string
+  status: PartnershipStatus
+  initiatorTenantId: string
+  partnerTenantId: string
+}
+
 interface OfferToEnd {
   readonly offerId: string
   readonly tenantId: string
@@ -110,7 +132,10 @@ interface OfferToEnd {
 
 @Injectable()
 export class PartnershipsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   /**
    * Каталог сети: с кем можно договориться.
@@ -173,12 +198,17 @@ export class PartnershipsService {
     return this.prisma.forTenant(tenantId, async (tx) => {
       const me = await selfOf(tx, tenantId)
       const pricing = await pricingFor(tx, me.vertical)
+      const restriction = await restrictionOf(tx, tenantId, now)
       const row = await tx.inviteQuota.findFirst({
         where: { tenantId, date: localDay(me.timezone, now) },
         select: { freeUsed: true },
       })
 
-      return quotaView(pricing.freeInvitesPerDay, row?.freeUsed ?? 0)
+      return quotaView(
+        freeInvitesUnder(pricing.freeInvitesPerDay, restriction),
+        row?.freeUsed ?? 0,
+        restriction,
+      )
     })
   }
 
@@ -201,6 +231,20 @@ export class PartnershipsService {
     }
 
     return this.prisma.forTenant(tenantId, async (tx) => {
+      // Приостановленному незачем объяснять про чужие блокировки и отказы:
+      // сначала — главная причина, по которой приглашение не уйдёт никому.
+      const restriction = await restrictionOf(tx, tenantId, now)
+
+      if (restriction.kind === 'SUSPENDED') {
+        throw new ForbiddenException({
+          error: {
+            code: 'INVITES_SUSPENDED',
+            message:
+              'Приглашения приостановлены: на вас пожаловались несколько заведений. Платформа разберётся и снимет ограничение',
+          },
+        })
+      }
+
       const [low, high] = [tenantId, partnerId].sort()
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`partnership:${low ?? ''}:${high ?? ''}`}))`
 
@@ -307,8 +351,9 @@ export class PartnershipsService {
 
       // Условное обновление, а не «прочитать и записать»: два приглашения
       // в одну секунду не проскочат оба последнее бесплатное.
+      const freeLimit = freeInvitesUnder(pricing.freeInvitesPerDay, restriction)
       const taken = await tx.inviteQuota.updateMany({
-        where: { tenantId, date: day, freeUsed: { lt: pricing.freeInvitesPerDay } },
+        where: { tenantId, date: day, freeUsed: { lt: freeLimit } },
         data: { freeUsed: { increment: 1 } },
       })
 
@@ -317,8 +362,18 @@ export class PartnershipsService {
           {
             error: {
               code: 'INVITE_QUOTA_EXCEEDED',
-              message: 'Бесплатные приглашения на сегодня закончились',
-              details: { freeLeft: 0, extraPrice: pricing.extraInvitePrice, currency: 'THB' },
+              message:
+                restriction.kind === 'COOLING'
+                  ? 'Сегодняшнее приглашение уже отправлено: после трёх отказов за неделю — одно в день'
+                  : 'Бесплатные приглашения на сегодня закончились',
+              details: {
+                freeLeft: 0,
+                extraPrice: pricing.extraInvitePrice,
+                currency: 'THB',
+                ...(restriction.kind === 'COOLING'
+                  ? { coolingUntil: restriction.until.toISOString() }
+                  : {}),
+              },
             },
           },
           HttpStatus.PAYMENT_REQUIRED,
@@ -369,7 +424,7 @@ export class PartnershipsService {
 
       return {
         partnershipId: partnership.id,
-        quota: quotaView(pricing.freeInvitesPerDay, quota?.freeUsed ?? 0),
+        quota: quotaView(freeLimit, quota?.freeUsed ?? 0, restriction),
       }
     })
   }
@@ -467,7 +522,7 @@ export class PartnershipsService {
     const now = new Date()
 
     await this.prisma.forTenant(tenantId, async (tx) => {
-      await this.answerable(tx, tenantId, id)
+      const row = await this.answerable(tx, tenantId, id)
 
       const moved = await tx.partnership.updateMany({
         where: { id, partnerTenantId: tenantId, status: 'PROPOSED' },
@@ -477,6 +532,8 @@ export class PartnershipsService {
       if (moved.count === 0) {
         throw wrongState('Приглашение уже не ждёт ответа')
       }
+
+      await recordStrikes(tx, row, tenantId, ['DECLINED'])
     })
 
     return this.detail(id)
@@ -523,49 +580,82 @@ export class PartnershipsService {
    *
    * Живое приглашение при этом закрывается: полученное — отказом, своё —
    * завершением. Действующее партнёрство расторгается так же, как по «Завершить».
+   *
+   * С `spam` — ещё и жалоба платформе. Входящее приглашение, закрытое
+   * блокировкой, — отказ для охлаждения отправителя, с жалобой или без.
    */
-  async block(id: string, reason: string | undefined): Promise<PartnershipDetail> {
-    const { tenantId } = TenantContext.getOrThrow()
+  async block(id: string, reason: string | undefined, spam = false): Promise<PartnershipDetail> {
+    const { tenantId, actorId } = TenantContext.getOrThrow()
     const now = new Date()
 
-    const offers = await this.prisma.forTenant(tenantId, async (tx) => {
-      const row = await findOwn(tx, tenantId, id)
-      const closing = { endedBy: tenantId, endReason: reason ?? null }
+    const { offers, reported } = await this.prisma.forTenant(
+      tenantId,
+      async (tx): Promise<{ offers: OfferToEnd[]; reported: string | null }> => {
+        const row = await findOwn(tx, tenantId, id)
+        const closing = { endedBy: tenantId, endReason: reason ?? null }
+        // Жалоба — только на непрошеное: на приглашение, которое ждёт нашего ответа.
+        // Иначе «спам» стал бы оружием в споре бывших партнёров.
+        const waitingUs = row.status === 'PROPOSED' && row.partnerTenantId === tenantId
 
-      await tx.inviteBlock.createMany({
-        data: [
-          {
-            blockerTenantId: tenantId,
-            blockedTenantId: otherSide(row, tenantId),
-            reason: reason ?? null,
-          },
-        ],
-        skipDuplicates: true,
-      })
+        if (spam && !waitingUs) {
+          throw wrongState(
+            'Пожаловаться на спам можно только на приглашение, которое ждёт вашего ответа',
+          )
+        }
 
-      if (row.status === 'PROPOSED') {
-        await tx.partnership.update({
-          where: { id },
-          data:
-            row.partnerTenantId === tenantId
+        await tx.inviteBlock.createMany({
+          data: [
+            {
+              blockerTenantId: tenantId,
+              blockedTenantId: otherSide(row, tenantId),
+              reason: reason ?? null,
+            },
+          ],
+          skipDuplicates: true,
+        })
+
+        if (row.status === 'PROPOSED') {
+          await tx.partnership.update({
+            where: { id },
+            data: waitingUs
               ? { status: 'DECLINED', declinedAt: now, ...closing }
               : { status: 'ENDED', endsAt: now, ...closing },
-        })
-        return []
-      }
+          })
 
-      if (ENGAGED.includes(row.status)) {
-        await tx.partnership.update({
-          where: { id },
-          data: { status: 'ENDED', endsAt: now, ...closing },
-        })
-        return stopTerms(tx, id)
-      }
+          if (waitingUs) {
+            await recordStrikes(tx, row, tenantId, spam ? ['DECLINED', 'SPAM'] : ['DECLINED'])
+          }
 
-      return []
-    })
+          return { offers: [], reported: spam ? row.initiatorTenantId : null }
+        }
+
+        if (ENGAGED.includes(row.status)) {
+          await tx.partnership.update({
+            where: { id },
+            data: { status: 'ENDED', endsAt: now, ...closing },
+          })
+          return { offers: await stopTerms(tx, id), reported: null }
+        }
+
+        return { offers: [], reported: null }
+      },
+    )
 
     await this.endOffers(offers)
+
+    if (reported !== null) {
+      // След для платформы (docs/07, раздел 6.2): по нему разбирают жалобы.
+      await this.audit.write({
+        action: 'INVITE_SPAM_REPORTED',
+        actorType: 'OWNER',
+        actorId,
+        tenantId,
+        entityType: 'Tenant',
+        entityId: reported,
+        newValue: { partnershipId: id },
+        reason: reason ?? null,
+      })
+    }
 
     return this.detail(id)
   }
@@ -602,7 +692,7 @@ export class PartnershipsService {
   }
 
   /** Ответить на приглашение может только приглашённый и только пока оно ждёт. */
-  private async answerable(tx: Tx, tenantId: string, id: string): Promise<void> {
+  private async answerable(tx: Tx, tenantId: string, id: string): Promise<OwnRow> {
     const row = await findOwn(tx, tenantId, id)
 
     if (row.partnerTenantId !== tenantId) {
@@ -617,6 +707,8 @@ export class PartnershipsService {
     if (row.status !== 'PROPOSED') {
       throw wrongState('Приглашение уже не ждёт ответа')
     }
+
+    return row
   }
 
   /**
@@ -653,16 +745,7 @@ const otherSide = (
   tenantId: string,
 ): string => (row.initiatorTenantId === tenantId ? row.partnerTenantId : row.initiatorTenantId)
 
-const findOwn = async (
-  tx: Tx,
-  tenantId: string,
-  id: string,
-): Promise<{
-  id: string
-  status: PartnershipStatus
-  initiatorTenantId: string
-  partnerTenantId: string
-}> => {
+const findOwn = async (tx: Tx, tenantId: string, id: string): Promise<OwnRow> => {
   const row = await tx.partnership.findFirst({
     where: { id, ...sidesOf(tenantId) },
     select: { id: true, status: true, initiatorTenantId: true, partnerTenantId: true },
@@ -735,11 +818,55 @@ const pricingFor = async (
   )
 }
 
-const quotaView = (limit: number, used: number): InviteQuotaView => ({
+const quotaView = (limit: number, used: number, restriction: Restriction): InviteQuotaView => ({
   freeLimit: limit,
   freeUsed: used,
   freeLeft: Math.max(0, limit - used),
+  restriction: restrictionView(restriction),
 })
+
+/** Ограничение приглашений заведения: охлаждение за отказы, приостановка за жалобы. */
+const restrictionOf = async (tx: Tx, tenantId: string, now: Date): Promise<Restriction> => {
+  const declines = await tx.inviteStrike.findMany({
+    where: {
+      againstTenantId: tenantId,
+      kind: 'DECLINED',
+      createdAt: { gt: new Date(now.getTime() - DECLINES_LOOKBACK_MS) },
+    },
+    select: { fromTenantId: true, createdAt: true },
+  })
+
+  // Жалобы на себя заведение знает только числом: кто пожаловался — не его дело.
+  const [complaints] = await tx.$queryRaw<Array<{ open: number }>>`
+    SELECT invite_complaints() AS open
+  `
+
+  return inviteRestriction({
+    declines: declines.map((row) => ({ from: row.fromTenantId, at: row.createdAt })),
+    openComplaints: complaints?.open ?? 0,
+    now,
+  })
+}
+
+/**
+ * След отказа или жалобы. Пишет отказавший и от своего имени: политика
+ * на InviteStrike не даст записать след за другого.
+ */
+const recordStrikes = async (
+  tx: Tx,
+  row: OwnRow,
+  tenantId: string,
+  kinds: ReadonlyArray<'DECLINED' | 'SPAM'>,
+): Promise<void> => {
+  await tx.inviteStrike.createMany({
+    data: kinds.map((kind) => ({
+      kind,
+      fromTenantId: tenantId,
+      againstTenantId: row.initiatorTenantId,
+      partnershipId: row.id,
+    })),
+  })
+}
 
 const toVertical = (value: string): VenueVertical => {
   const parsed = VenueVertical.safeParse(value)

@@ -71,6 +71,8 @@ export type AuditAction =
   | 'STAFF_PIN_RESET'
   /** Гостю подарен промокод из карточки — с причиной. */
   | 'GIFT_ISSUED'
+  /** Заведение пожаловалось на приглашение как на спам — docs/07, раздел 6.2. */
+  | 'INVITE_SPAM_REPORTED'
 
 export interface AuditEntry {
   readonly action: AuditAction

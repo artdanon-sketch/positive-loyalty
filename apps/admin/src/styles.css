@@ -1870,6 +1870,16 @@ body {
   margin: 0 0 var(--sp-3);
 }
 
+/* Жалоба «спам» при блокировке входящего приглашения. */
+.confirm__spam {
+  margin: 0 0 var(--sp-2);
+}
+
+.confirm__hint {
+  margin: 0 0 var(--sp-3) 30px;
+  max-width: 62ch;
+}
+
 .terms-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));

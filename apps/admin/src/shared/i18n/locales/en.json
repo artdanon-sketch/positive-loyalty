@@ -505,5 +505,9 @@
   "offers.empty.title": "No offers yet",
   "offers.empty.filtered": "No such offers",
   "offers.empty.hint": "Your own offer builder is coming next. For now, offers appear when you accept a partner's terms.",
-  "offers.empty.action": "Open partners"
+  "offers.empty.action": "Open partners",
+  "partners.catalog.cooling": "Three venues declined within a week — one free invite a day until {date}.",
+  "partners.catalog.suspended": "Invites are paused: several venues reported you as spam. The platform will review and lift the restriction.",
+  "partner.confirm.spam": "This is spam — report to the platform",
+  "partner.confirm.spamHint": "The venue won't know the report came from you. After five reports it can't send invites until the platform reviews."
 }

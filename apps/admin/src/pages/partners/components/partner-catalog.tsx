@@ -3,6 +3,8 @@ import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../../shared/auth/auth-context'
+import { fill } from '../../../shared/format/fill'
+import { formatDate } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
 import { useCatalog, useInviteQuota } from '../hooks'
 import { ALIVE, STATUS_LABELS, VERTICAL_LABELS } from '../labels'
@@ -16,6 +18,10 @@ import { InviteForm } from './invite-form'
  * Если с заведением уже идёт разговор, вместо «Пригласить» — «Открыть»:
  * второе приглашение сервер всё равно не пропустит, и кнопка, которая
  * заведомо откажет, хуже ссылки на уже идущий разговор.
+ *
+ * По той же причине приостановленному кнопок «Пригласить» нет вовсе — только
+ * объяснение. На охлаждении кнопки остаются, и каталог говорит, до какого числа
+ * приглашение одно в день (docs/07, раздел 6.2).
  */
 export function PartnerCatalogView(): ReactElement {
   const t = useT()
@@ -23,6 +29,7 @@ export function PartnerCatalogView(): ReactElement {
   const catalog = useCatalog()
   const quota = useInviteQuota()
   const [inviting, setInviting] = useState<string | null>(null)
+  const restriction = quota.data?.restriction ?? null
 
   if (catalog.isPending) {
     return (
@@ -66,6 +73,18 @@ export function PartnerCatalogView(): ReactElement {
         </p>
       ) : null}
 
+      {isOwner && restriction?.kind === 'COOLING' ? (
+        <p className="state__hint">
+          {fill(t('partners.catalog.cooling'), { date: formatDate(restriction.until) })}
+        </p>
+      ) : null}
+
+      {isOwner && restriction?.kind === 'SUSPENDED' ? (
+        <p className="state__hint state__hint--error" role="alert">
+          {t('partners.catalog.suspended')}
+        </p>
+      ) : null}
+
       <ul className="venue-grid">
         {catalog.data.items.map((venue) => {
           const current =
@@ -87,7 +106,8 @@ export function PartnerCatalogView(): ReactElement {
                 <Link className="button" to={`/partners/${current.id}`}>
                   {t('partners.catalog.open')} · {t(STATUS_LABELS[current.status])}
                 </Link>
-              ) : !isOwner ? null : inviting === venue.tenantId ? (
+              ) : !isOwner || restriction?.kind === 'SUSPENDED' ? null : inviting ===
+                venue.tenantId ? (
                 <InviteForm
                   venue={venue}
                   onCancel={() => {
