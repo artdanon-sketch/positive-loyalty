@@ -1190,6 +1190,9 @@ model PartnershipTerm {
   proposedBy String
   acceptedBy String?
   acceptedAt DateTime?
+  /// Кто поставил условие на паузу. Снять паузу может только он: согласие
+  /// одной стороны не отменяется решением другой.
+  pausedBy   String?
 
   grantsIssued   Int @default(0)
   grantsRedeemed Int @default(0)
