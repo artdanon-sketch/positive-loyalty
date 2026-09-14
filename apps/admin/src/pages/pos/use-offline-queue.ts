@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { PosGuest, PreviewResult } from '@positive/contracts'
 
@@ -12,6 +12,13 @@ import {
   type QueuedTarget,
   type SaleSender,
 } from './offline-queue'
+import {
+  rememberReported,
+  snapshotSignature,
+  terminalId,
+  toReport,
+  wasReportedNonEmpty,
+} from './queue-report'
 
 /**
  * Очередь чеков, привязанная к сессии и к состоянию сети.
@@ -27,6 +34,12 @@ import {
 
 /** Как часто пробуем сами. Полминуты: чаще — зря греем планшет, реже — гость ушёл. */
 const FLUSH_INTERVAL_MS = 30_000
+
+/**
+ * Как часто планшет подтверждает владельцу, что застрявший чек всё ещё лежит.
+ * Изменения уходят сразу; тот же снимок — не чаще раза в пять минут.
+ */
+const REPORT_EVERY_MS = 5 * 60 * 1000
 
 export interface OfflineQueueState {
   /** Чеки этого заведения, ждущие отправки. */
@@ -131,6 +144,51 @@ export function useOfflineQueue(): OfflineQueueState {
       window.clearInterval(timer)
     }
   }, [flush])
+
+  // Снимок очереди — владельцу (docs/10, раздел 5.7): чек, который не доходит,
+  // должен увидеть не только кассир на этом планшете. Не дошёл отчёт — не беда:
+  // пришлём при следующем изменении очереди.
+  const lastReport = useRef<{ signature: string; at: number } | null>(null)
+
+  useEffect(() => {
+    if (tenantId === null) {
+      return
+    }
+
+    const mine = queue.filter((sale) => sale.tenantId === tenantId)
+    const signature = snapshotSignature(mine)
+    const now = Date.now()
+    const previous = lastReport.current
+
+    // Ничего не лежит и владельцу ничего не показывали — сообщать нечего.
+    if (mine.length === 0 && !wasReportedNonEmpty()) {
+      return
+    }
+
+    // Лежит то же, что в прошлый раз, и прошло меньше пяти минут — тоже.
+    if (
+      previous !== null &&
+      previous.signature === signature &&
+      (mine.length === 0 || now - previous.at < REPORT_EVERY_MS)
+    ) {
+      return
+    }
+
+    lastReport.current = { signature, at: now }
+
+    void authFetch('/pos/queue', {
+      method: 'PUT',
+      body: JSON.stringify(toReport(terminalId(), mine)),
+      headers: { 'Content-Type': 'application/json' },
+    }).then(
+      () => {
+        rememberReported(mine.length > 0)
+      },
+      () => {
+        lastReport.current = previous
+      },
+    )
+  }, [authFetch, queue, tenantId])
 
   const queueSale = useCallback<OfflineQueueState['queueSale']>(
     (input) => {

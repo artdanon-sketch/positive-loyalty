@@ -450,5 +450,21 @@
   "overview.advice.expiring.few": "gifts expire within {days} days — guests seem to have forgotten them",
   "overview.advice.expiring.many": "gifts expire within {days} days — guests seem to have forgotten them",
   "overview.advice.expiring.other": "gifts expire within {days} days — guests seem to have forgotten them",
-  "overview.advice.expiring.action": "Open guests"
+  "overview.advice.expiring.action": "Open guests",
+  "stuck.title": "Receipts that didn't go through",
+  "stuck.hint": "Guests on these receipts have no points yet. “No connection” — the receipt will go once the tablet is online. “Server refused” — it won't go by itself: process it again.",
+  "stuck.col.when": "Queued",
+  "stuck.col.amount": "Amount",
+  "stuck.col.guest": "Guest",
+  "stuck.col.who": "Cashier and tablet",
+  "stuck.col.why": "Why it didn't go",
+  "stuck.terminal": "tablet …{id}",
+  "stuck.lastSeen": "last online {when}",
+  "stuck.rejected": "Server refused",
+  "stuck.late": "No connection for over an hour",
+  "overview.advice.stuck.one": "receipt didn't reach the server — the guest has no points yet",
+  "overview.advice.stuck.few": "receipts didn't reach the server — guests have no points yet",
+  "overview.advice.stuck.many": "receipts didn't reach the server — guests have no points yet",
+  "overview.advice.stuck.other": "receipts didn't reach the server — guests have no points yet",
+  "overview.advice.stuck.action": "View receipts"
 }

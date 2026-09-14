@@ -358,6 +358,11 @@ export type DashboardIncremental = z.infer<typeof DashboardIncremental>
  */
 export const DashboardAdvice = z.discriminatedUnion('kind', [
   /**
+   * Чеки не дошли с планшетов: застряли или опаздывают больше часа.
+   * Гости по ним уже сейчас без баллов — это не прогноз, а долг, поэтому первым.
+   */
+  z.object({ kind: z.literal('STUCK_RECEIPTS'), receipts: z.number().int().positive() }).strict(),
+  /**
    * Выданные подарки сгорят в ближайшие дни, если гости не придут.
    * docs/10, раздел 6.12: «сгорит через неделю» полезнее «сгорело» —
    * пока срок не вышел, гостя ещё можно позвать.

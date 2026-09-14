@@ -143,6 +143,7 @@ model Tenant {
   webhookDeliveries WebhookDelivery[]
   partnershipTriggerRuns PartnershipTriggerRun[]
   saleKinds              SaleKind[]
+  posQueueItems          PosQueueItem[]
   offers            Offer[]
   offerGrants       OfferGrant[]
 
@@ -1360,4 +1361,40 @@ model PartnershipPricing {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@unique([vertical])
+}
+
+/// Чек из очереди планшета кассы, который ещё не дошёл. docs/10, раздел 5.7.
+///
+/// ЭТО СНИМОК, А НЕ ВТОРАЯ ОЧЕРЕДЬ. Планшет присылает, что у него лежит, и сервер
+/// по этим строкам ничего не проводит: проведёт планшет тем же ключом
+/// идемпотентности, когда появится связь.
+model PosQueueItem {
+  id            String    @id @default(uuid())
+  tenantId      String
+  /// Случайная метка браузера планшета: какой именно это планшет.
+  terminalId    String
+  /// Кто был в смене, когда планшет прислал снимок.
+  staffId       String?
+  /// Ключ идемпотентности чека — тот же, с которым он уйдёт на сервер.
+  receiptId     String
+  /// Сумма чека в сатангах.
+  amount        Int
+  receiptNumber String?
+  /// Участник, если гостя успели найти до обрыва связи. Не FK: пришёл с планшета.
+  membershipId  String?
+  /// Маска телефона, если гостя искали по номеру. Полного номера здесь нет.
+  guestHint     String?
+  attempts      Int
+  lastError     String?
+  queuedAt      DateTime
+  /// Когда планшет последний раз прислал снимок с этим чеком.
+  reportedAt    DateTime  @default(now())
+  /// Чек ушёл из очереди планшета — доехал или снят. Строка не удаляется.
+  clearedAt     DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, receiptId])
+  @@index([tenantId, clearedAt, queuedAt])
+  @@index([tenantId, terminalId])
 }

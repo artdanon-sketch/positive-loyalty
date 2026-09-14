@@ -1,3 +1,5 @@
+import { POS_QUEUE_MAX_ATTEMPTS } from '@positive/contracts'
+
 import { ApiError } from '../../shared/api/http'
 
 /**
@@ -25,8 +27,11 @@ import { ApiError } from '../../shared/api/http'
 
 const STORAGE_KEY = 'positive.pos.queue'
 
-/** Сколько раз пробуем, прежде чем признать чек застрявшим и позвать человека. */
-export const MAX_ATTEMPTS = 20
+/**
+ * Сколько раз пробуем, прежде чем признать чек застрявшим и позвать человека.
+ * Число живёт в контракте: тот же порог сервер применяет к списку владельца.
+ */
+export const MAX_ATTEMPTS = POS_QUEUE_MAX_ATTEMPTS
 
 /**
  * Кого начислять.

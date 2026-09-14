@@ -12,6 +12,8 @@ import { SaleKindsService } from './sale-kinds.service'
 import { GuestGiftsController } from './guest-gifts.controller'
 import { GuestGiftsService } from './guest-gifts.service'
 import { StaffController } from './staff.controller'
+import { StuckReceiptsController } from './stuck-receipts.controller'
+import { StuckReceiptsService } from './stuck-receipts.service'
 import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
@@ -23,6 +25,7 @@ import { StaffService } from './staff.service'
     SaleKindsController,
     StaffController,
     GuestGiftsController,
+    StuckReceiptsController,
   ],
   providers: [
     AdminService,
@@ -31,6 +34,7 @@ import { StaffService } from './staff.service'
     SaleKindsService,
     StaffService,
     GuestGiftsService,
+    StuckReceiptsService,
   ],
 })
 export class AdminModule {}
