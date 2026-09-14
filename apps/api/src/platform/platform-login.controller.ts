@@ -200,6 +200,16 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .gap h2 { margin: 0 0 8px; font-size: 14px; }
 .gap ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
 .gap li { margin-bottom: 4px; }
+
+/* ── Жалобы на спам в приглашениях ──────────────────────────────────────── */
+
+.section { margin: 28px 0 6px; font-size: 16px; font-weight: 600; }
+.lead { margin: 0 0 12px; max-width: 70ch; }
+td.wrap { white-space: normal; min-width: 260px; }
+.reasons { margin: 0; padding-left: 18px; }
+.reasons li + li { margin-top: 4px; }
+.pill.SUSPENDED { color: var(--error); border-color: rgba(255,107,107,.35); }
+button.small { width: auto; margin: 0; padding: 7px 12px; font-size: 13px; }
 `
 
 /**
@@ -309,6 +319,7 @@ const PAGE_JS = `(function () {
       return r.json();
     }).then(function (data) {
       renderPanel(session, data);
+      loadComplaints();
     }).catch(function () {
       card.innerHTML =
         '<h1>Вы вошли</h1>' +
@@ -366,6 +377,8 @@ const PAGE_JS = `(function () {
           tile('Оборот по программе', money(data.totals.spentTotal)) +
         '</div>' +
 
+        '<section id="complaints"></section>' +
+
         '<div class="scroll"><table>' +
           '<thead><tr>' +
             '<th>Заведение</th><th>Статус</th><th>Тариф</th>' +
@@ -378,16 +391,89 @@ const PAGE_JS = `(function () {
 
         '<div class="gap">' +
           '<h2>Чего здесь ещё нет — и почему</h2>' +
-          'Не забыто: под это в базе пока нет таблиц, а показывать выдуманные ' +
-          'числа в панели, по которой принимают решения, нельзя.' +
+          'Не забыто: одних таблиц в базе пока нет, у других нет экранов, а показывать ' +
+          'выдуманные числа в панели, по которой принимают решения, нельзя.' +
           '<ul>' +
             '<li><b>Подписки и платежи.</b> Видны тариф и статус, но истории ' +
               'платежей, цены и даты следующего списания взять неоткуда.</li>' +
-            '<li><b>Партнёрства.</b> Таблицы нет вовсе.</li>' +
-            '<li><b>Акции.</b> Таблицы нет вовсе.</li>' +
+            '<li><b>Партнёрства и акции.</b> Таблицы есть, экранов здесь пока нет — ' +
+              'кроме жалоб на спам в приглашениях.</li>' +
           '</ul>' +
         '</div>' +
       '</div>';
+  }
+
+  /**
+   * Жалобы на спам в приглашениях (docs/07, раздел 6.2). Секция появляется,
+   * только когда есть что разбирать: пустой заголовок на главном экране — шум.
+   * Кнопки вешаются слушателями, а не onclick в разметке: CSP процесса
+   * встроенные обработчики не выполнит.
+   */
+  function loadComplaints() {
+    var box = document.getElementById('complaints');
+    if (!box) return;
+
+    fetch('/v1/platform/invite-complaints', {
+      headers: { Authorization: 'Bearer ' + window.__platformToken }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('status ' + r.status);
+      return r.json();
+    }).then(function (data) {
+      renderComplaints(box, data);
+    }).catch(function () {
+      box.innerHTML = '<p class="dim">Жалобы на спам загрузить не удалось. Обновите страницу.</p>';
+    });
+  }
+
+  function renderComplaints(box, data) {
+    if (!data.items.length) {
+      box.innerHTML = '';
+      return;
+    }
+
+    var rows = data.items.map(function (item) {
+      var from = item.complaints.map(function (c) {
+        return '<li><b>' + escapeHtml(c.fromBrandName) + '</b>' +
+          (c.reason ? ': ' + escapeHtml(c.reason) : '') +
+          ' <span class="dim">' + whenAgo(c.createdAt) + '</span></li>';
+      }).join('');
+
+      return '<tr>' +
+        '<td><div class="brand">' + escapeHtml(item.brandName) + '</div>' +
+          (item.suspended ? '<span class="pill SUSPENDED">приглашения приостановлены</span>' : '') +
+        '</td>' +
+        '<td class="num">' + item.openComplaints + ' из ' + data.suspendAfter + '</td>' +
+        '<td class="wrap"><ul class="reasons">' + from + '</ul></td>' +
+        '<td><button type="button" class="small" data-review="' + escapeHtml(item.tenantId) + '">Разобрано</button></td>' +
+      '</tr>';
+    }).join('');
+
+    box.innerHTML =
+      '<h2 class="section">Жалобы на спам в приглашениях</h2>' +
+      '<p class="dim lead">' + data.suspendAfter + ' жалоб от разных заведений приостанавливают приглашения. ' +
+        '«Разобрано» снимает приостановку; продолжит спамить — новые жалобы приостановят снова.</p>' +
+      '<div class="scroll"><table>' +
+        '<thead><tr><th>На кого</th><th class="num">Жалоб</th><th>От кого и почему</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table></div>';
+
+    Array.prototype.forEach.call(box.querySelectorAll('button[data-review]'), function (button) {
+      button.addEventListener('click', function () {
+        button.disabled = true;
+        button.textContent = 'Отмечаем…';
+
+        fetch('/v1/platform/invite-complaints/' + encodeURIComponent(button.getAttribute('data-review')) + '/review', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + window.__platformToken }
+        }).then(function (r) {
+          if (!r.ok) throw new Error('status ' + r.status);
+          loadComplaints();
+        }).catch(function () {
+          button.disabled = false;
+          button.textContent = 'Не вышло — ещё раз';
+        });
+      });
+    });
   }
 
   function tile(label, value) {

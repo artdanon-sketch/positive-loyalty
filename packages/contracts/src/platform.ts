@@ -4,7 +4,7 @@ import { z } from 'zod'
  * Контракты админки платформы (docs/02, раздел 6).
  *
  * Отдельный неймспейс `/v1/platform/*`, отдельный контур входа, отдельный
- * процесс. Здесь описан только вход — экраны появятся следующим шагом.
+ * процесс. Вход, заведения и разбор жалоб на спам в приглашениях.
  */
 
 /**
@@ -143,3 +143,56 @@ export const PlatformTenantsResult = z
   .strict()
 
 export type PlatformTenantsResult = z.infer<typeof PlatformTenantsResult>
+
+/**
+ * Жалоба на спам в приглашениях — строкой для разбора (docs/07, раздел 6.2).
+ *
+ * Имя жалобщика и причина — только здесь, в панели платформы: обвинённому
+ * заведению их не показывают, иначе жалоба стала бы поводом для ответной.
+ */
+export const PlatformInviteComplaint = z
+  .object({
+    fromTenantId: z.string().uuid(),
+    fromBrandName: z.string(),
+    /** Из блокировки, которую поставила жалоба. Объясняться никто не обязан. */
+    reason: z.string().nullable(),
+    createdAt: z.string().datetime(),
+  })
+  .strict()
+
+export type PlatformInviteComplaint = z.infer<typeof PlatformInviteComplaint>
+
+export const PlatformComplaintsRow = z
+  .object({
+    tenantId: z.string().uuid(),
+    brandName: z.string(),
+    /** Разные заведения: одно, пожаловавшееся дважды, — одна жалоба. */
+    openComplaints: z.number().int().positive(),
+    /** Приглашения приостановлены, пока жалобы не разобраны. */
+    suspended: z.boolean(),
+    lastComplaintAt: z.string().datetime(),
+    complaints: z.array(PlatformInviteComplaint),
+  })
+  .strict()
+
+export type PlatformComplaintsRow = z.infer<typeof PlatformComplaintsRow>
+
+export const PlatformComplaintsResult = z
+  .object({
+    items: z.array(PlatformComplaintsRow),
+    /** Со скольких жалоб приглашения приостанавливаются: экран не держит это число у себя. */
+    suspendAfter: z.number().int().positive(),
+  })
+  .strict()
+
+export type PlatformComplaintsResult = z.infer<typeof PlatformComplaintsResult>
+
+export const PlatformComplaintsReviewResult = z
+  .object({
+    tenantId: z.string().uuid(),
+    /** Сколько жалоб отмечено. Ноль — разбирать было нечего. */
+    reviewed: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type PlatformComplaintsReviewResult = z.infer<typeof PlatformComplaintsReviewResult>
