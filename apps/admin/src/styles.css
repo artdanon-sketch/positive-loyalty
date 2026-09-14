@@ -1038,6 +1038,46 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Акции в чеке: что применилось и почему не применилось остальное. */
+.pos-offers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.pos-offers__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pos-offers__item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-secondary-lg);
+}
+
+.pos-offers__item--applied b {
+  color: var(--mint);
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-offers__item--skipped {
+  color: var(--tx-2);
+}
+
+.pos-offers__why {
+  color: var(--tx-3);
+}
+
 .guest-card {
   display: flex;
   align-items: center;

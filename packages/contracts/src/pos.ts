@@ -1,19 +1,19 @@
 import { z } from 'zod'
 
 import { ReversalReason } from './ledger.js'
+import { AppliedOffer, IssuedGrant, SkippedOffer } from './offer-rules.js'
 
 /**
  * Контракты кассы. docs/02_API_контракты.md, раздел 3.
  *
- * ЧЕГО ЗДЕСЬ ПОКА НЕТ И ПОЧЕМУ. В ТЗ ответы богаче: `appliedOffers`,
- * `skippedOffers`, `availableGrants`, `stamps`, `staffReward`, `riskLevel`.
- * Всё это опирается на движок правил, модели Offer/OfferGrant и risk-модуль —
- * Срезы 3 и 5. Выдумывать эти поля пустыми сейчас нельзя: касса начала бы
- * показывать «акций нет» там, где их не искали, и кассир объяснял бы гостю
- * несуществующее правило.
+ * ЧЕГО ЗДЕСЬ ПОКА НЕТ И ПОЧЕМУ. В ТЗ ответы богаче: `availableGrants`, `stamps`,
+ * `staffReward`, `riskLevel`. Они опираются на штампы, статусы и risk-модуль
+ * (Э1, Срез 5). Выдумывать эти поля пустыми сейчас нельзя: касса начала бы
+ * показывать «штампов нет» там, где их не считали.
  *
- * Поэтому здесь честный подмножественный контракт, а не заглушки. Поля приедут
- * вместе с механикой, которая их наполняет.
+ * Поэтому здесь честный подмножественный контракт, а не заглушки. Поля приезжают
+ * вместе с механикой, которая их наполняет, — как приехали `appliedOffers`,
+ * `skippedOffers` и `grantsIssued` с движком правил.
  */
 
 /** Как гость расплатился. Нужно отчётности и разбору спорных операций. */
@@ -120,6 +120,13 @@ export const PreviewResult = z
     pointsToEarn: z.number().int().nonnegative(),
     /** Баланс на момент расчёта. Изменился к коммиту — BALANCE_CHANGED. */
     balanceAtPreview: z.number().int(),
+    /**
+     * Применённые акции — в порядке приоритета. Пустой список честен: акции
+     * искали и не нашли подходящих.
+     */
+    appliedOffers: z.array(AppliedOffer),
+    /** Не применившиеся — с причиной, которую кассир скажет гостю (docs/02, раздел 3.2). */
+    skippedOffers: z.array(SkippedOffer),
   })
   .strict()
 
@@ -155,6 +162,8 @@ export const CommitResult = z
     newBalance: z.number().int(),
     /** true, если этот же чек уже проводился: повтор вернул первый результат. */
     replayed: z.boolean(),
+    /** Промокоды за этот чек. Повтор возвращает те же, а не новые. */
+    grantsIssued: z.array(IssuedGrant),
   })
   .strict()
 

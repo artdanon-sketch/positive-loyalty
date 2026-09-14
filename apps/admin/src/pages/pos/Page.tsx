@@ -4,6 +4,7 @@ import type { CommitResult, PosGuest, PreviewResult } from '@positive/contracts'
 
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
+import { IssuedGrants, OfferLines } from './components/offer-lines'
 import { QrScanner } from './components/qr-scanner'
 import { RedeemPanel } from './components/redeem-panel'
 import { StuckQueue } from './components/stuck-queue'
@@ -626,6 +627,8 @@ function ConfirmStep({
         </div>
       </dl>
 
+      <OfferLines applied={preview.appliedOffers} skipped={preview.skippedOffers} />
+
       {guest.isControlGroup ? (
         // Кассир обязан знать ДО подтверждения, иначе объясняться придётся
         // постфактум, когда гость уже смотрит на нулевое начисление.
@@ -772,6 +775,8 @@ function DoneStep({
           </div>
         </dl>
       )}
+
+      {isVoided ? null : <IssuedGrants grants={result.grantsIssued} />}
 
       <div className="pos__actions">
         {isVoided || leftMs === 0 ? null : (

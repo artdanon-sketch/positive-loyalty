@@ -452,16 +452,24 @@ model TransactionPreview {
   /// Кто считал. Нужен и аудиту, и будущей награде сотруднику.
   staffId       String?
 
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime
+  /// Акции, применённые в предрасчёте: по ним проведение выдаёт промокоды.
+  /// Снимок, а не пересчёт: гость согласился на то, что кассир показал на экране.
+  offers Json @default("[]")
+
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
   /// Заполняется при коммите: повторное проведение того же предрасчёта запрещено.
-  committedAt DateTime?
+  committedAt        DateTime?
+  /// Чек, которым предрасчёт проведён. По нему повтор проведения находит
+  /// предрасчёт и досоздаёт недовыданные промокоды.
+  committedReceiptId String?
 
   tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([tenantId, expiresAt])
   @@index([membershipId, createdAt])
+  @@index([tenantId, committedReceiptId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

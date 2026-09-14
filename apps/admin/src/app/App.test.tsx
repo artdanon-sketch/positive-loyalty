@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { fill } from '../shared/format/fill'
-import { formatDate } from '../shared/format/format'
+import { formatBaht, formatDate } from '../shared/format/format'
 import { t } from '../shared/i18n'
 import { App } from './App'
 
@@ -51,6 +51,8 @@ const POS_PREVIEW = {
   amountToPay: 125_000,
   pointsToEarn: 6_250,
   balanceAtPreview: 30_175,
+  appliedOffers: [],
+  skippedOffers: [],
 }
 
 const POS_COMMIT = {
@@ -59,6 +61,7 @@ const POS_COMMIT = {
   earned: 6_250,
   newBalance: 36_425,
   replayed: false,
+  grantsIssued: [],
 }
 
 /**
@@ -2171,5 +2174,110 @@ describe('Партнёры: антиспам', () => {
 
     expect(await screen.findByText(t('partners.catalog.suspended'))).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: t('partners.catalog.invite') })).toBeNull()
+  })
+})
+
+const CASHBACK_OFFER = '91919191-9191-4919-8919-919191919191'
+const PROMO_OFFER = '92929292-9292-4929-8929-929292929292'
+const WEEKEND_OFFER = '93939393-9393-4939-8939-939393939393'
+
+describe('Касса: акции в чеке', () => {
+  const reachConfirm = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('pos.amount.label')), { target: { value: '900' } })
+    fireEvent.change(await screen.findByLabelText(t('pos.receipt.required')), {
+      target: { value: 'A-3001' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.amount.next') }))
+  }
+
+  it('ПРЕДРАСЧЁТ ОБЪЯСНЯЕТ АКЦИИ, ЭКРАН УСПЕХА ГОВОРИТ О ВЫДАННОМ ПРОМОКОДЕ', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/preview': () =>
+        json({
+          ...POS_PREVIEW,
+          amount: 90_000,
+          amountToPay: 90_000,
+          pointsToEarn: 13_500,
+          appliedOffers: [
+            {
+              offerId: CASHBACK_OFFER,
+              title: 'Кэшбэк 5%',
+              earnDelta: 4_500,
+              discountDelta: 0,
+              grantAfterPayment: false,
+            },
+            {
+              offerId: PROMO_OFFER,
+              title: 'Вернём 200 ฿',
+              earnDelta: 0,
+              discountDelta: 0,
+              grantAfterPayment: true,
+            },
+          ],
+          skippedOffers: [
+            {
+              offerId: WEEKEND_OFFER,
+              title: 'Выходные',
+              reason: 'SCHEDULE',
+              message: 'Сегодня акция не действует — только в свои дни недели',
+            },
+          ],
+        }),
+      '/v1/pos/transactions/commit': () =>
+        json({
+          ...POS_COMMIT,
+          earned: 13_500,
+          grantsIssued: [
+            {
+              grantId: '94949494-9494-4949-8949-949494949494',
+              offerId: PROMO_OFFER,
+              title: 'Вернём 200 ฿',
+              codeTail: 'K2QP',
+              expiresAt: '2026-08-28T12:00:00.000Z',
+            },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await reachConfirm()
+
+    const applied = await screen.findByRole('list', { name: t('pos.offers.applied') })
+    expect(within(applied).getByText('Кэшбэк 5%')).toBeInTheDocument()
+    expect(within(applied).getByText(`+${formatBaht(4_500)}`)).toBeInTheDocument()
+    expect(within(applied).getByText(t('pos.offers.afterPayment'))).toBeInTheDocument()
+
+    const skipped = screen.getByRole('list', { name: t('pos.offers.skipped') })
+    expect(
+      within(skipped).getByText('Сегодня акция не действует — только в свои дни недели'),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    const issued = await screen.findByRole('list', { name: t('pos.offers.issued') })
+    expect(
+      within(issued).getByText(fill(t('pos.offers.issuedLine'), { title: 'Вернём 200 ฿' })),
+    ).toBeInTheDocument()
+    expect(within(issued).getByText('•••• K2QP')).toBeInTheDocument()
+  })
+
+  it('акций нет — на кассе нет и пустых блоков про акции', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(CASHIER_TOKENS) })
+    render(<App />)
+
+    await reachConfirm()
+
+    expect(await screen.findByRole('button', { name: t('pos.confirm.submit') })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: t('pos.offers.applied') })).toBeNull()
+    expect(screen.queryByRole('list', { name: t('pos.offers.skipped') })).toBeNull()
   })
 })
