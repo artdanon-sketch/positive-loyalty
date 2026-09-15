@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import type { GuestMe, GuestQrToken, GuestWallet, WalletVoucher } from '@positive/contracts'
 import { offerHowTo, offerTitle, ProgramConfig } from '@positive/contracts'
 
 import { getEnv } from '../common/config/env'
 import { maskPhone } from '../common/pii/mask-phone'
 import { signGuestQrToken } from '../common/tenant/access-token'
+import { BirthdayService } from '../core/birthday.service'
 import { PrismaService } from '../core/prisma.service'
 import { resolveTier, tierProgress } from '../core/tiers'
 import { currentGuestId } from './current-guest'
@@ -29,7 +30,10 @@ const daysUntil = (expiresAt: Date, now: Date): number =>
 
 @Injectable()
 export class GuestService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly birthdays: BirthdayService,
+  ) {}
 
   async me(): Promise<GuestMe> {
     const guestId = currentGuestId()
@@ -50,7 +54,37 @@ export class GuestService {
       mode: guest.mode,
       locale: guest.locale,
       phoneMasked: maskPhone(guest.phoneE164),
+      birthday: guest.birthday === null ? null : guest.birthday.toISOString().slice(0, 10),
     }
+  }
+
+  /**
+   * День рождения — один раз. docs/02, раздел 2.7.
+   *
+   * Запись условная, «где дня рождения ещё нет»: вторая попытка, даже одновременная,
+   * ничего не меняет и получает отказ. Иначе подарок ко дню рождения можно было бы
+   * получать каждый месяц, переставляя дату.
+   */
+  async setBirthday(date: string): Promise<GuestMe> {
+    const guestId = currentGuestId()
+
+    const updated = await this.prisma.forGuest(guestId, async (tx) =>
+      tx.guest.updateMany({
+        where: { id: guestId, birthday: null },
+        data: { birthday: new Date(`${date}T00:00:00.000Z`) },
+      }),
+    )
+
+    if (updated.count === 0) {
+      throw new ConflictException({
+        error: {
+          code: 'BIRTHDAY_ALREADY_SET',
+          message: 'День рождения уже указан — изменить его может только поддержка',
+        },
+      })
+    }
+
+    return this.me()
   }
 
   /**
@@ -60,6 +94,9 @@ export class GuestService {
    */
   async wallet(): Promise<GuestWallet> {
     const guestId = currentGuestId()
+
+    // Подарок ко дню рождения — до чтения кошелька: баллы и сертификат гость видит сразу.
+    await this.birthdays.grantDue(guestId)
 
     const rows = await this.prisma.forGuest(guestId, async (tx) =>
       tx.membership.findMany({

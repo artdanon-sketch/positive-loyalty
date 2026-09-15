@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { BirthdayConfig } from './birthday.js'
+
 /**
  * Конфигурация программы лояльности заведения.
  * docs/01_Архитектура_и_данные.md, раздел 4.3 — хранится в `Tenant.settings`.
@@ -127,6 +129,7 @@ export const ProgramConfig = z
     // дублируются и не разъезжаются с объявлением полей.
     welcomeBonus: WelcomeBonus.default(WelcomeBonus.parse({})),
     referral: ReferralConfig.default(ReferralConfig.parse({})),
+    birthday: BirthdayConfig.default(BirthdayConfig.parse({})),
     tiers: z.array(Tier).default([]),
     cashierRules: CashierRules.default(CashierRules.parse({})),
     staffReward: StaffRewardConfig.default(StaffRewardConfig.parse({})),

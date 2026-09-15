@@ -81,6 +81,10 @@ export type AuditAction =
   | 'OFFER_STATUS_CHANGED'
   /** Владелец назначил гостю статус вручную или вернул на лестницу — с причиной. */
   | 'GUEST_TIER_CHANGED'
+  /** Владелец завёл шаблон сертификата — docs/11, У9. */
+  | 'CERTIFICATE_CREATED'
+  /** Шаблон сертификата переименован, выключен или снова включён. */
+  | 'CERTIFICATE_UPDATED'
 
 export interface AuditEntry {
   readonly action: AuditAction

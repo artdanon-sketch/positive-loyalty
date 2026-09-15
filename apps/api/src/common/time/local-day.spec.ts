@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { localDay } from './invite-day'
+import { localDay } from './local-day'
 
 describe('День квоты приглашений', () => {
   it('ПОЛНОЧЬ ПХУКЕТА, А НЕ СЕРВЕРА: в половине второго ночи по Бангкоку уже новый день', () => {
