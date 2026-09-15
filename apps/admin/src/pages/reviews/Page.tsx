@@ -7,6 +7,7 @@ import { useT } from '../../shared/i18n'
 import type { TranslationKey } from '../../shared/i18n'
 import { PERIODS } from '../overview/hooks'
 import { ReviewCard } from './components/review-card'
+import { NewsView } from './components/news-view'
 import { ReviewSummaryView } from './components/review-summary'
 import { filtersFromParams, REVIEWS_PAGE, writeFilters } from './filters'
 import type { ReviewAnswered, ReviewFilters } from './filters'
@@ -36,9 +37,18 @@ const ANSWERED_OPTIONS: ReadonlyArray<{ value: ReviewAnswered | null; label: Tra
   { value: 'yes', label: 'reviews.filter.answered' },
 ]
 
+type CommunicationTab = 'reviews' | 'news'
+
+const COMMUNICATION_TABS: ReadonlyArray<{ value: CommunicationTab; label: TranslationKey }> = [
+  { value: 'reviews', label: 'communication.tab.reviews' },
+  { value: 'news', label: 'communication.tab.news' },
+]
+
 export function ReviewsPage(): ReactElement {
   const t = useT()
   const [params, setParams] = useSearchParams()
+  // Вкладка в адресе (`?tab=news`): ссылку на новости можно переслать (docs/11, У13).
+  const tab: CommunicationTab = params.get('tab') === 'news' ? 'news' : 'reviews'
   const filters = filtersFromParams(params)
   const [period, setPeriod] = useState<DashboardPeriod>('30d')
 
@@ -67,28 +77,49 @@ export function ReviewsPage(): ReactElement {
     <section className="page">
       <header className="page__head page__head--split">
         <div>
-          <h1 className="page__title">{t('reviews.title')}</h1>
-          <p className="page__subtitle">{t('reviews.subtitle')}</p>
+          <h1 className="page__title">{t('communication.title')}</h1>
+          <p className="page__subtitle">{t('communication.subtitle')}</p>
         </div>
 
-        <div className="period" role="group" aria-label={t('overview.period.label')}>
-          {PERIODS.map((option) => (
-            <button
-              className={`period__option ${option === period ? 'period__option--on' : ''}`}
-              key={option}
-              type="button"
-              aria-pressed={option === period}
-              onClick={() => {
-                setPeriod(option)
-              }}
-            >
-              {t(PERIOD_LABEL[option])}
-            </button>
-          ))}
-        </div>
+        {tab === 'news' ? null : (
+          <div className="period" role="group" aria-label={t('overview.period.label')}>
+            {PERIODS.map((option) => (
+              <button
+                className={`period__option ${option === period ? 'period__option--on' : ''}`}
+                key={option}
+                type="button"
+                aria-pressed={option === period}
+                onClick={() => {
+                  setPeriod(option)
+                }}
+              >
+                {t(PERIOD_LABEL[option])}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      {reviews.isPending ? (
+      <div className="tabs" role="tablist" aria-label={t('communication.tabs.label')}>
+        {COMMUNICATION_TABS.map((option) => (
+          <button
+            key={option.value}
+            className={option.value === tab ? 'tabs__tab tabs__tab--on' : 'tabs__tab'}
+            type="button"
+            role="tab"
+            aria-selected={option.value === tab}
+            onClick={() => {
+              setParams(option.value === 'reviews' ? {} : { tab: 'news' }, { replace: true })
+            }}
+          >
+            {t(option.label)}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'news' ? (
+        <NewsView />
+      ) : reviews.isPending ? (
         <div className="state" role="status">
           <p className="state__title">{t('common.loading')}</p>
         </div>

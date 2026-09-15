@@ -653,6 +653,82 @@ describe('Безопасность', () => {
   })
 })
 
+describe('Новости', () => {
+  const NEWS = {
+    id: '9b9b9b9b-9b9b-49b9-89b9-9b9b9b9b9b9b',
+    title: 'Новое меню',
+    body: 'С понедельника — суп дня.',
+    isPublished: false,
+    publishedAt: null,
+    createdAt: '2026-09-16T07:55:10.000Z',
+  }
+
+  const openNews = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reviews') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('communication.tab.news') }))
+    return screen.findByRole('region', { name: t('news.title') })
+  }
+
+  it('ВЛАДЕЛЕЦ ПИШЕТ НОВОСТЬ ЧЕРНОВИКОМ И ВЫПУСКАЕТ ЕЁ КНОПКОЙ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      [`/v1/admin/news/${NEWS.id}`]: () =>
+        json({ ...NEWS, isPublished: true, publishedAt: '2026-09-16T08:00:00.000Z' }),
+      '/v1/admin/news': (init) => (init?.method === 'POST' ? json(NEWS, 201) : json([NEWS])),
+    })
+    render(<App />)
+
+    const list = await openNews()
+
+    const form = await screen.findByRole('form', { name: t('news.form.title') })
+    fireEvent.change(within(form).getByLabelText(t('news.field.title')), {
+      target: { value: ' Новое меню ' },
+    })
+    fireEvent.change(within(form).getByLabelText(t('news.field.body')), {
+      target: { value: 'С понедельника — суп дня.' },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: t('news.create') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/admin/news') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+        title: 'Новое меню',
+        body: 'С понедельника — суп дня.',
+        publish: false,
+      })
+    })
+
+    const item = await within(list).findByRole('article', { name: 'Новое меню' })
+    expect(within(item).getByText(t('news.status.draft'))).toBeInTheDocument()
+    fireEvent.click(within(item).getByRole('button', { name: t('news.publish') }))
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+      )
+      expect(patch).toBeDefined()
+      expect(JSON.parse((patch?.[1] as RequestInit).body as string)).toEqual({ isPublished: true })
+    })
+  })
+
+  it('МЕНЕДЖЕР ВИДИТ НОВОСТИ БЕЗ ФОРМЫ И БЕЗ КНОПОК ПУБЛИКАЦИИ', async () => {
+    stubApi({ '/v1/admin/news': () => json([NEWS]) })
+    render(<App />)
+
+    const list = await openNews()
+
+    expect(await within(list).findByRole('article', { name: 'Новое меню' })).toBeInTheDocument()
+    expect(within(list).queryByRole('button', { name: t('news.publish') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: t('news.form.title') })).not.toBeInTheDocument()
+  })
+})
+
 describe('Формы слова по числу', () => {
   // docs/04, раздел 7: в русском три формы. Одна строка на все числа даёт
   // «21 гостей не заходили» — это не опечатка, а ошибка языка, и владелец
