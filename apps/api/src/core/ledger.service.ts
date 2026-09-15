@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import {
+  AdjustInput,
   EarnInput,
   GrantInput,
   RedeemInput,
@@ -627,6 +628,70 @@ export class LedgerService {
         })
 
         // Только баланс: визит и оборот двигает покупка, а не подарок.
+        await tx.membership.update({
+          where: { id: membership.id },
+          data: { pointsBalance: balanceAfter },
+        })
+
+        return row
+      },
+    })
+  }
+
+  /**
+   * Ручная правка баланса владельцем — в обе стороны.
+   *
+   * Списание ниже нуля отклоняется так же, как обычное списание, и внутри той же
+   * транзакции: баллы — обязательство заведения, и в минус оно не уходит.
+   * Визит и оборот не двигаются: правка — не покупка.
+   *
+   * Идемпотентность та же, что у остальных операций: повтор с тем же ключом
+   * и той же суммой возвращает первую запись, с другой суммой — отказ.
+   */
+  async adjust(input: AdjustInput, scope: TenantScope): Promise<LedgerOperationResult> {
+    const parsed = parseInput(AdjustInput, input, 'adjust')
+
+    return this.commit({
+      operation: 'adjust',
+      idempotencyKey: parsed.idempotencyKey,
+      tenantId: scope.tenantId,
+      expectation: { type: 'ADJUST', membershipId: parsed.membershipId, amount: parsed.amount },
+      write: async (tx) => {
+        const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
+
+        // Проверка достаточности — ВНУТРИ транзакции, как у redeem: снаружи её
+        // обгоняет параллельное списание.
+        if (membership.pointsBalance + parsed.amount < 0) {
+          throw new InsufficientBalanceError(
+            membership.id,
+            membership.pointsBalance,
+            -parsed.amount,
+          )
+        }
+
+        const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
+
+        const row = await tx.ledgerEntry.create({
+          data: {
+            tenantId: membership.tenantId,
+            guestId: membership.guestId,
+            membershipId: membership.id,
+            type: 'ADJUST',
+            amount: parsed.amount,
+            balanceAfter,
+            basisAmount: null,
+            currency: parsed.currency ?? membership.tenant.currency,
+            refType: null,
+            refId: null,
+            idempotencyKey: parsed.idempotencyKey,
+            offerId: null,
+            saleKindId: null,
+            occurredAt: null,
+            ...originColumns(parsed),
+          },
+        })
+
+        // Только баланс: визит и оборот двигает покупка, а не правка.
         await tx.membership.update({
           where: { id: membership.id },
           data: { pointsBalance: balanceAfter },
