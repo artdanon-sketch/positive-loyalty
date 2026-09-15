@@ -9,12 +9,17 @@ import { checkRates, needsReferrals, resolveTier } from './tiers'
 import type { CheckRates } from './tiers'
 
 /**
- * Правила участия поверх журнала: статус гостя и приветственные баллы.
- * docs/01, раздел 4.3 · docs/11, У3.
+ * Правила участия поверх журнала: статус гостя, приветственные баллы и награда
+ * за приглашённого друга. docs/01, раздел 4.3 · docs/11, У3 и У6.
  *
  * Одна точка для кассы, вебхука и ручной правки: статус и ставки считаются
  * одинаково, откуда бы ни пришёл чек. Решения — в tiers.ts; здесь только
  * чтение участия и запись.
+ *
+ * РЕКОМЕНДАЦИЯ ЗАСЧИТЫВАЕТСЯ ПОКУПКОЙ. Условие статуса «привёл друзей» считает
+ * только друзей, у которых уже есть визит: пригласить можно кого угодно, а привести —
+ * только того, кто пришёл и заплатил. Иначе статус набирался бы регистрациями
+ * без единой покупки (docs/05, раздел 6.2).
  */
 
 type Tx = Prisma.TransactionClient
@@ -27,6 +32,7 @@ export const MEMBERSHIP_RULES_SELECT = {
   spentTotal: true,
   visitsTotal: true,
   isControlGroup: true,
+  referredById: true,
 } as const
 
 export interface MembershipSnapshot {
@@ -36,6 +42,14 @@ export interface MembershipSnapshot {
   readonly spentTotal: number
   readonly visitsTotal: number
   readonly isControlGroup: boolean
+}
+
+/** Что нужно знать о друге, чтобы наградить пригласившего. */
+export interface ReferralFacts {
+  readonly id: string
+  readonly visitsTotal: number
+  /** Участие, чья ссылка привела гостя. null — пришёл сам. */
+  readonly referredById: string | null
 }
 
 export interface TierOutcome {
@@ -67,7 +81,9 @@ export class MembershipRulesService {
     membership: MembershipSnapshot,
   ): Promise<TierOutcome> {
     const referrals = needsReferrals(config.tiers)
-      ? await tx.membership.count({ where: { tenantId, referredById: membership.id } })
+      ? await tx.membership.count({
+          where: { tenantId, referredById: membership.id, visitsTotal: { gt: 0 } },
+        })
       : 0
 
     const tier = resolveTier(config.tiers, {
@@ -133,7 +149,7 @@ export class MembershipRulesService {
       if (needsReferrals(config.tiers)) {
         const counted = await tx.membership.groupBy({
           by: ['referredById'],
-          where: { tenantId, referredById: { not: null } },
+          where: { tenantId, referredById: { not: null }, visitsTotal: { gt: 0 } },
           _count: { _all: true },
         })
 
@@ -239,5 +255,104 @@ export class MembershipRulesService {
 
       throw error
     }
+  }
+
+  /**
+   * Награда пригласившему за первую покупку друга. docs/11, У6 · docs/05, раздел 6.2.
+   *
+   * ДОЗРЕВАЕТ ПОКУПКОЙ, А НЕ ВСТУПЛЕНИЕМ. Вызывается на чеке друга до его начисления —
+   * тем же порядком, что приветственные баллы: повтор чека упрётся в «визиты уже
+   * есть» и в ключ.
+   *
+   * ОДНА НАГРАДА ЗА ДРУГА. Ключ журнала — `referral:{участие друга}`, ссылка
+   * `referral` на то же участие: повтор чека, вебхук вслед за кассой и гонка двух
+   * касс упираются в него.
+   *
+   * НЕ СВЕРХ ЛИМИТА. Считаются уже выданные награды пригласившего. Два друга,
+   * купившие в одну секунду, могут перешагнуть лимит на одну награду: это дешевле
+   * блокировки участия на каждом чеке.
+   *
+   * Контрольной группе баллов не положено — и за друзей тоже (docs/01, раздел 4.2).
+   * Правило действует на момент покупки: выключили приглашения до первого чека
+   * друга — награды нет.
+   */
+  async grantReferral(
+    tenantId: string,
+    friend: ReferralFacts,
+    config: ProgramConfig,
+  ): Promise<void> {
+    const referral = config.referral
+    const inviterId = friend.referredById
+
+    if (!referral.enabled || referral.reward <= 0 || inviterId === null || friend.visitsTotal > 0) {
+      return
+    }
+
+    const idempotencyKey = `referral:${friend.id}`
+
+    const state = await this.prisma.forTenant(tenantId, async (tx) => {
+      const [already, inviter, rewarded] = await Promise.all([
+        tx.ledgerEntry.findUnique({ where: { idempotencyKey }, select: { id: true } }),
+        tx.membership.findFirst({
+          where: { id: inviterId, tenantId },
+          select: { isControlGroup: true },
+        }),
+        tx.ledgerEntry.count({
+          where: { tenantId, membershipId: inviterId, refType: 'referral' },
+        }),
+      ])
+
+      return { already, inviter, rewarded }
+    })
+
+    if (
+      state.already !== null ||
+      state.inviter === null ||
+      state.inviter.isControlGroup ||
+      state.rewarded >= referral.limit
+    ) {
+      return
+    }
+
+    try {
+      await this.ledger.grant(
+        {
+          membershipId: inviterId,
+          amount: referral.reward,
+          idempotencyKey,
+          refType: 'referral',
+          refId: friend.id,
+          source: 'SYSTEM',
+          actorType: 'SYSTEM',
+        },
+        { tenantId },
+      )
+    } catch (error) {
+      // Касса и вебхук одного чека, и сумма награды сменилась посередине.
+      if (error instanceof IdempotencyKeyReusedError) {
+        this.logger.warn(`Награда за приглашённого ${friend.id} уже выдана`)
+        return
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Друг купил впервые — у пригласившего на одну рекомендацию больше, и статус
+   * с условием «привёл друзей» поднимается сразу, а не с его следующего чека.
+   * Вызывается ПОСЛЕ начисления другу: рекомендация засчитывается по визиту.
+   * `friend` — снимок до чека.
+   */
+  async refreshInviterTier(
+    tenantId: string,
+    friend: ReferralFacts,
+    config: ProgramConfig,
+  ): Promise<void> {
+    if (friend.referredById === null || friend.visitsTotal > 0 || !needsReferrals(config.tiers)) {
+      return
+    }
+
+    await this.refreshTier(tenantId, friend.referredById, config)
   }
 }

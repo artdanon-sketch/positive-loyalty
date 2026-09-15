@@ -62,6 +62,24 @@ export const WelcomeBonus = z
 export type WelcomeBonus = z.infer<typeof WelcomeBonus>
 
 /**
+ * Приглашения друзей. docs/11, У6.
+ *
+ * Разбор того, что уже лежит в базе, — мягче ReferralSettings, по которой владелец
+ * сохраняет (referral.ts): старые настройки без этого ключа читаются как «выключено».
+ */
+export const ReferralConfig = z
+  .object({
+    enabled: z.boolean().default(false),
+    /** Баллы пригласившему за друга, в минорных единицах. */
+    reward: z.number().int().nonnegative().default(0),
+    /** Сколько наград может получить один гость. */
+    limit: z.number().int().positive().default(10),
+  })
+  .strict()
+
+export type ReferralConfig = z.infer<typeof ReferralConfig>
+
+/**
  * Мотивация персонала. docs/01, раздел 4.6.
  *
  * Схема объявлена целиком, хотя движок наград приедет со Срезом 5: заведения
@@ -108,6 +126,7 @@ export const ProgramConfig = z
     // схему один раз при загрузке модуля — так значения по умолчанию не
     // дублируются и не разъезжаются с объявлением полей.
     welcomeBonus: WelcomeBonus.default(WelcomeBonus.parse({})),
+    referral: ReferralConfig.default(ReferralConfig.parse({})),
     tiers: z.array(Tier).default([]),
     cashierRules: CashierRules.default(CashierRules.parse({})),
     staffReward: StaffRewardConfig.default(StaffRewardConfig.parse({})),

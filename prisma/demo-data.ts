@@ -204,6 +204,7 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 30,
       pointsExpireDays: 365,
       welcomeBonus: { enabled: true, amount: 5_000, trigger: 'ON_FIRST_PURCHASE' },
+      referral: { enabled: true, reward: 5_000, limit: 10 },
       tiers: [
         tier('base', 'Гость', 5, 30, []),
         tier('regular', 'Постоянный', 7, 40, [{ type: 'VISITS_TOTAL', gt: 5 }]),
@@ -240,6 +241,7 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 25,
       pointsExpireDays: 180,
       welcomeBonus: { enabled: true, amount: 10_000, trigger: 'ON_JOIN' },
+      referral: { enabled: true, reward: 10_000, limit: 5 },
       tiers: [
         tier('base', 'Гость', 8, 25, []),
         tier('care', 'Забота', 12, 35, [{ type: 'VISITS_TOTAL', gt: 3 }]),
@@ -275,6 +277,7 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 20,
       pointsExpireDays: null,
       welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_JOIN' },
+      referral: { enabled: false, reward: 0, limit: 10 },
       tiers: [tier('base', 'Гость', 4, 20, [])],
       cashierRules: {
         requireReceiptNumber: false,

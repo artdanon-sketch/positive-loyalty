@@ -1,8 +1,9 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 
 import { Injectable, Logger } from '@nestjs/common'
 
 import { PrismaService } from './prisma.service'
+import { isUniqueViolation, randomCode } from './random-code'
 
 /**
  * Выдача и погашение промокодов — единственная точка обеих операций.
@@ -111,15 +112,6 @@ export interface GrantView {
 }
 
 /**
- * Алфавит кода.
- *
- * Без 0, O, 1, I и L: код читают вслух у стойки и набирают руками с экрана
- * телефона. Экономия на различимости оборачивается спором с гостем, которого
- * «не пускает рабочий купон».
- */
-const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
-
-/**
  * Двенадцать знаков вместо требуемых ТЗ восьми.
  *
  * docs/01 раздел 4.5 задаёт минимум восемь. На нашем алфавите из 31 символа
@@ -164,7 +156,7 @@ export class OfferGrantService {
             offerId: input.offerId,
             tenantId: input.tenantId,
             guestId: input.guestId,
-            code: generateCode(),
+            code: randomCode(CODE_LENGTH),
             nonce,
             issuedAt: input.now,
             expiresAt,
@@ -335,45 +327,6 @@ export class OfferGrantService {
       }
     })
   }
-}
-
-/**
- * Нарушение UNIQUE — по коду Prisma или по коду PostgreSQL.
- *
- * Проверяются оба: адаптер драйвера не всегда доносит код Postgres наверх,
- * и полагаться на что-то одно означает, что повтор однажды перестанет
- * распознаваться и превратится в отказ на ровном месте.
- */
-const isUniqueViolation = (error: unknown): boolean => {
-  if (typeof error !== 'object' || error === null) {
-    return false
-  }
-
-  const record = error as { code?: unknown; cause?: { code?: unknown } }
-
-  return record.code === 'P2002' || record.code === '23505' || record.cause?.code === '23505'
-}
-
-/** Криптостойкий код без смещения выборки: байты из неполного диапазона отброшены. */
-const generateCode = (): string => {
-  const out: string[] = []
-  const limit = Math.floor(256 / CODE_ALPHABET.length) * CODE_ALPHABET.length
-
-  while (out.length < CODE_LENGTH) {
-    for (const byte of randomBytes(CODE_LENGTH)) {
-      if (byte >= limit) {
-        continue
-      }
-
-      out.push(CODE_ALPHABET.charAt(byte % CODE_ALPHABET.length))
-
-      if (out.length === CODE_LENGTH) {
-        break
-      }
-    }
-  }
-
-  return out.join('')
 }
 
 /**

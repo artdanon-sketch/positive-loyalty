@@ -4,6 +4,8 @@ import { CoreModule } from '../core/core.module'
 
 import { GuestAuthController } from './guest-auth.controller'
 import { GuestAuthService } from './guest-auth.service'
+import { GuestReferralController } from './guest-referral.controller'
+import { GuestReferralService } from './guest-referral.service'
 import { GuestController } from './guest.controller'
 import { GuestSocialController } from './guest-social.controller'
 import { GuestGuard } from './guest.guard'
@@ -15,10 +17,16 @@ import { TelegramUpdatesService } from './telegram-updates.service'
 /** Identity: гости, OTP, каналы (docs/01, раздел 2 — структура модулей). */
 @Module({
   imports: [CoreModule],
-  controllers: [GuestAuthController, GuestSocialController, GuestController],
+  controllers: [
+    GuestAuthController,
+    GuestSocialController,
+    GuestController,
+    GuestReferralController,
+  ],
   providers: [
     GuestAuthService,
     GuestService,
+    GuestReferralService,
     GuestGuard,
     TelegramBotService,
     TelegramLoginService,

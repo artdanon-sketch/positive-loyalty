@@ -7,7 +7,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger'
-import { ProgramSettings, TierSettings } from '@positive/contracts'
+import { ProgramSettings, ReferralSettings, TierSettings } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -104,5 +104,45 @@ export class ProgramSettingsController {
     }
 
     return this.settings.updateTiers(parsed.data)
+  }
+
+  @Get('referral')
+  @ApiOperation({
+    summary: 'Приглашения друзей',
+    description:
+      'Включены ли, сколько баллов за друга и сколько наград на гостя. docs/02, раздел 5.6.2.',
+  })
+  @ApiOkResponse({ description: 'Текущие настройки приглашений' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async getReferral(): Promise<ReferralSettings> {
+    return this.settings.getReferral()
+  }
+
+  @Put('referral')
+  @ApiOperation({
+    summary: 'Изменить приглашения друзей',
+    description:
+      'Заменяет настройки приглашений целиком; остальное не трогает. ' +
+      'Касса применяет со следующего чека.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({ description: 'Включённая награда — ноль, лимит вне 1–100' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async updateReferral(@Body() body: unknown): Promise<ReferralSettings> {
+    const parsed = ReferralSettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректные настройки приглашений',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateReferral(parsed.data)
   }
 }

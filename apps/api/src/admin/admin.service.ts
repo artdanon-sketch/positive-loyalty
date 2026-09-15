@@ -351,7 +351,9 @@ export class AdminService {
       const program = ProgramConfig.safeParse(tenant?.settings ?? {})
       const tiers = program.success ? program.data.tiers : []
       const referrals = needsReferrals(tiers)
-        ? await tx.membership.count({ where: { tenantId, referredById: membership.id } })
+        ? await tx.membership.count({
+            where: { tenantId, referredById: membership.id, visitsTotal: { gt: 0 } },
+          })
         : 0
       const tier = resolveTier(tiers, {
         tierId: membership.tierId,
@@ -367,7 +369,30 @@ export class AdminService {
         select: { id: true, name: true, color: true },
       })
 
-      return { membership, shown, entries, grants, reversals, staff, tier, tags }
+      // Приглашения: кто привёл гостя, скольких привёл он и за скольких получил баллы.
+      const [invitedBy, invited, rewarded] = await Promise.all([
+        membership.referredById === null
+          ? Promise.resolve(null)
+          : tx.membership.findFirst({
+              where: { id: membership.referredById, tenantId },
+              select: { guestId: true, guest: { select: { displayName: true } } },
+            }),
+        tx.membership.count({ where: { tenantId, referredById: membership.id } }),
+        tx.ledgerEntry.count({
+          where: { tenantId, membershipId: membership.id, refType: 'referral' },
+        }),
+      ])
+
+      const referral = {
+        invitedBy:
+          invitedBy === null
+            ? null
+            : { guestId: invitedBy.guestId, displayName: invitedBy.guest.displayName },
+        invited,
+        rewarded,
+      }
+
+      return { membership, shown, entries, grants, reversals, staff, tier, tags, referral }
     })
 
     if (data === null) {
@@ -376,7 +401,7 @@ export class AdminService {
       })
     }
 
-    const { membership, shown, entries, grants, reversals, staff, tier, tags } = data
+    const { membership, shown, entries, grants, reversals, staff, tier, tags, referral } = data
     const reversedIds = new Set(reversals.map((row) => row.reversalOfId))
     const staffNames = new Map(staff.map((person) => [person.id, person.displayName]))
 
@@ -434,6 +459,7 @@ export class AdminService {
       spentTotal: membership.spentTotal,
       note: membership.note,
       tags,
+      referral,
       averageCheck:
         membership.visitsTotal > 0
           ? Math.floor(membership.spentTotal / membership.visitsTotal)

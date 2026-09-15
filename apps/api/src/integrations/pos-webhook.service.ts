@@ -5,7 +5,7 @@ import type { PosWebhookAccepted } from '@positive/contracts'
 import { verifyWebhookSignature } from './webhook-signature'
 import { LedgerService } from '../core/ledger.service'
 import { MEMBERSHIP_RULES_SELECT, MembershipRulesService } from '../core/membership-rules.service'
-import type { MembershipSnapshot } from '../core/membership-rules.service'
+import type { MembershipSnapshot, ReferralFacts } from '../core/membership-rules.service'
 import { PrismaService } from '../core/prisma.service'
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
@@ -219,6 +219,8 @@ export class PosWebhookService {
 
     // Приветственные баллы за первую покупку — до начисления, как и на кассе.
     await this.rules.grantWelcome(tenantId, membership, config, 'FIRST_PURCHASE')
+    // И награда пригласившему за первую покупку друга — тоже до начисления.
+    await this.rules.grantReferral(tenantId, membership, config)
 
     await this.ledger.earn(
       {
@@ -246,6 +248,7 @@ export class PosWebhookService {
     )
 
     await this.rules.refreshTier(tenantId, membership.id, config)
+    await this.rules.refreshInviterTier(tenantId, membership, config)
 
     return 'PROCESSED'
   }
@@ -297,7 +300,7 @@ export class PosWebhookService {
   private async resolveMembership(
     envelope: PosWebhookEnvelope,
     tenantId: string,
-  ): Promise<MembershipSnapshot | null> {
+  ): Promise<(MembershipSnapshot & ReferralFacts) | null> {
     const token = envelope.receipt.loyalty?.guestToken
 
     if (token === undefined) {
