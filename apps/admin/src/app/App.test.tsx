@@ -234,6 +234,21 @@ const stubApi = (
     if (path.startsWith('/v1/admin/channels')) {
       return Promise.resolve(json([]))
     }
+    if (path.startsWith('/v1/admin/reports/customers')) {
+      return Promise.resolve(
+        json({
+          period: '30d',
+          total: 0,
+          buyers: 0,
+          buyersPct: null,
+          newGuests: 0,
+          firstPurchases: 0,
+          tourists: 0,
+          residents: 0,
+          series: [],
+        }),
+      )
+    }
     if (path.startsWith('/v1/admin/reports/channels')) {
       return Promise.resolve(
         json({ period: '30d', channels: [], unattributed: { guests: 0, buyers: 0, revenue: 0 } }),
@@ -1447,6 +1462,7 @@ describe('Отчёты', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('reports.tab.channels') }))
 
     const table = await screen.findByRole('table', { name: t('reports.channels.title') })
     const tableRow = within(table).getByRole('row', { name: /Табличка на столе/ })
@@ -1476,12 +1492,159 @@ describe('Отчёты', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('reports.tab.channels') }))
 
     expect(await screen.findByText(t('reports.channels.empty.owner'))).toBeInTheDocument()
     expect(screen.getByRole('link', { name: t('reports.channels.toSettings') })).toHaveAttribute(
       'href',
       '/settings',
     )
+  })
+})
+
+const RFM_SEGMENTS = [
+  'CHAMPIONS',
+  'LOYAL',
+  'POTENTIAL',
+  'NEW',
+  'PROMISING',
+  'NEED_ATTENTION',
+  'ABOUT_TO_SLEEP',
+  'AT_RISK',
+  'CANT_LOSE',
+  'HIBERNATING',
+] as const
+
+describe('Отчёты: вкладки', () => {
+  const openReports = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+    await screen.findByRole('tablist', { name: t('reports.tabs.label') })
+  }
+
+  it('КЛИЕНТЫ ПО УМОЛЧАНИЮ: ВСЕГО, ПОКУПАТЕЛИ С ДОЛЕЙ, НОВЫЕ ЗА ПЕРИОД', async () => {
+    stubApi({
+      '/v1/admin/reports/customers': () =>
+        json({
+          period: '30d',
+          total: 748,
+          buyers: 512,
+          buyersPct: 68.4,
+          newGuests: 61,
+          firstPurchases: 44,
+          tourists: 430,
+          residents: 318,
+          series: [{ date: '2026-09-16', newGuests: 3, firstPurchases: 2 }],
+        }),
+    })
+    render(<App />)
+
+    await openReports()
+
+    expect(screen.getByRole('tab', { name: t('reports.tab.customers') })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(await screen.findByText('748')).toBeInTheDocument()
+    expect(
+      screen.getByText(fill(t('reports.customers.buyersPct'), { pct: '68,4' })),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(fill(t('reports.customers.firstPurchases'), { n: 44 })),
+    ).toBeInTheDocument()
+  })
+
+  it('ОПЕРАЦИИ: ВЫРУЧКА ДЕНЬГАМИ, ОТМЕНЫ И БАЛЛЫ — А ВКЛАДКА ЖИВЁТ В АДРЕСЕ', async () => {
+    stubApi({
+      '/v1/admin/reports/operations': () =>
+        json({
+          period: '30d',
+          turnover: 18_450_000,
+          purchases: 402,
+          averageCheck: 45_895,
+          earned: 922_500,
+          redeemed: 310_000,
+          voided: 6,
+          series: [{ date: '2026-09-16', turnover: 640_000, purchases: 14 }],
+        }),
+    })
+    render(<App />)
+
+    await openReports()
+    fireEvent.click(screen.getByRole('tab', { name: t('reports.tab.operations') }))
+
+    expect(await screen.findByText(/184\s500,00 ฿/)).toBeInTheDocument()
+    expect(screen.getByText(fill(t('reports.operations.voided'), { n: 6 }))).toBeInTheDocument()
+    expect(window.location.search).toContain('tab=operations')
+  })
+
+  it('RFM: СЕГМЕНТ С ГОСТЯМИ ВЕДЁТ В СПИСОК ГОСТЕЙ С ЭТИМ СЕГМЕНТОМ, ПЕРИОДА НЕТ', async () => {
+    const fetchMock = stubApi({
+      '/v1/admin/reports/rfm': () =>
+        json({
+          buyers: 2,
+          segments: RFM_SEGMENTS.map((segment) =>
+            segment === 'AT_RISK'
+              ? { segment, guests: 2, purchases: 9, averageCheck: 50_000, turnover: 450_000 }
+              : { segment, guests: 0, purchases: 0, averageCheck: null, turnover: 0 },
+          ),
+        }),
+    })
+    render(<App />)
+
+    await openReports()
+    fireEvent.click(screen.getByRole('tab', { name: t('reports.tab.rfm') }))
+
+    const atRisk = await screen.findByRole('link', { name: t('rfm.AT_RISK') })
+    // Пустой сегмент — не ссылка: вести в пустой список незачем.
+    expect(screen.queryByRole('link', { name: t('rfm.CHAMPIONS') })).not.toBeInTheDocument()
+    // RFM — срез «на сегодня», переключателя периода нет.
+    expect(
+      screen.queryByRole('group', { name: t('overview.period.label') }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(atRisk)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t('guests.title') }),
+    ).toBeInTheDocument()
+    await waitFor(() => {
+      expect(requested(fetchMock, 'segment=AT_RISK')).toBe(true)
+    })
+    expect(screen.getByLabelText(t('guests.filter.segment'))).toHaveValue('AT_RISK')
+  })
+
+  it('СОТРУДНИКИ: ЧЕКИ, ВЫРУЧКА И НОВЫЕ ГОСТИ — И ОТДЕЛЬНО ЧЕКИ ИЗ КАССЫ POSITIVE', async () => {
+    stubApi({
+      '/v1/admin/reports/staff': () =>
+        json({
+          period: '30d',
+          staff: [
+            {
+              staffId: '22222222-2222-4222-8222-222222222222',
+              displayName: 'Сомчай',
+              role: 'CASHIER',
+              isActive: true,
+              operations: 212,
+              turnover: 9_650_000,
+              newGuests: 31,
+            },
+          ],
+          system: { operations: 190, turnover: 8_800_000, newGuests: 13 },
+        }),
+    })
+    render(<App />)
+
+    await openReports()
+    fireEvent.click(screen.getByRole('tab', { name: t('reports.tab.staff') }))
+
+    const table = await screen.findByRole('table', { name: t('reports.tab.staff') })
+    const cashier = within(table).getByRole('row', { name: /Сомчай/ })
+    expect(within(cashier).getByText('212')).toBeInTheDocument()
+    expect(within(cashier).getByText('31')).toBeInTheDocument()
+
+    const system = within(table).getByRole('row', { name: new RegExp(t('reports.staff.system')) })
+    expect(within(system).getByText('190')).toBeInTheDocument()
   })
 })
 

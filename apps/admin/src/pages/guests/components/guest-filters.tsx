@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { RfmSegment } from '@positive/contracts'
 import type { Tag, TierSettings } from '@positive/contracts'
 
 import { fill } from '../../../shared/format/fill'
@@ -6,12 +7,13 @@ import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
 import { hasFilters, SLEEPING_OPTIONS, SOURCES } from '../filters'
 import type { GuestFilters } from '../filters'
+import { RFM_LABELS } from '../../../shared/rfm/labels'
 import { SOURCE_LABELS } from '../labels'
 
 /**
  * Фильтры списка гостей. docs/03, раздел 3 · docs/11, У4.
  *
- * Выпадающие списки, а не десяток чипов: фильтров шесть, у каждого несколько
+ * Выпадающие списки, а не десяток чипов: фильтров семь, у каждого несколько
  * значений, и строка чипов на телефоне уехала бы за край.
  *
  * Статус — только у владельца: лестница статусов лежит в настройках программы,
@@ -114,6 +116,16 @@ export function GuestFiltersBar({
               onChange({ ...filters, tag: next === '' ? undefined : next })
             },
           )}
+
+      {select(
+        'guests-filter-segment',
+        'guests.filter.segment',
+        filters.segment ?? '',
+        RfmSegment.options.map((segment) => ({ value: segment, label: t(RFM_LABELS[segment]) })),
+        (next) => {
+          onChange({ ...filters, segment: RfmSegment.options.find((segment) => segment === next) })
+        },
+      )}
 
       {select(
         'guests-filter-sleeping',
