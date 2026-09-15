@@ -819,6 +819,7 @@ function GuestCard({ guest }: { guest: PosGuest }): ReactElement {
             : `${t('pos.guest.visits')} ${guest.visitsTotal} · ${formatBaht(guest.points)}`}
         </span>
       </div>
+      {guest.tier === null ? null : <span className="chip chip--good">{guest.tier.name}</span>}
       {guest.isControlGroup ? (
         <span className="chip chip--muted">{t('pos.guest.control')}</span>
       ) : null}

@@ -227,6 +227,11 @@ export const AdminGuestCard = z
     mode: z.enum(['TOURIST', 'RESIDENT']),
     source: GuestSource,
     isControlGroup: z.boolean(),
+    /**
+     * Статус гостя — тем же расчётом, что у кассы. `manual` — назначен владельцем
+     * и после чека не пересчитывается. null — лестницы в заведении нет.
+     */
+    tier: z.object({ id: z.string(), name: z.string(), manual: z.boolean() }).strict().nullable(),
     firstVisitAt: z.iso.datetime().nullable(),
     lastVisitAt: z.iso.datetime().nullable(),
     pointsBalance: z.number().int(),

@@ -40,6 +40,7 @@ const POS_GUEST = {
   visitsTotal: 4,
   avgCheck: 150_875,
   isControlGroup: false,
+  tier: null,
 }
 
 const POS_PREVIEW = {
@@ -1074,6 +1075,21 @@ const PROGRAM_SETTINGS = {
   cashierRules: { requireReceiptNumber: true, maxManualAmount: null, allowManualEntry: true },
 }
 
+const TIER_SETTINGS = {
+  tiers: [
+    { id: 'base', name: 'Гость', earnRate: 5, redeemRate: 20, hidden: false, conditions: [] },
+    {
+      id: 'gold',
+      name: 'Золото',
+      earnRate: 10,
+      redeemRate: 50,
+      hidden: false,
+      conditions: [{ type: 'SPENT_TOTAL', gt: 1_000_000 }],
+    },
+  ],
+  welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
+}
+
 describe('Настройки программы', () => {
   const openSettings = async (): Promise<void> => {
     await fillAndSubmitLogin()
@@ -1096,6 +1112,7 @@ describe('Настройки программы', () => {
     // принимают, глядя на деньги.
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
     render(<App />)
@@ -1116,6 +1133,7 @@ describe('Настройки программы', () => {
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': (init) =>
         init?.method === 'PUT'
           ? json({
@@ -1148,6 +1166,7 @@ describe('Настройки программы', () => {
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
     render(<App />)
@@ -1166,6 +1185,7 @@ describe('Настройки программы', () => {
   it('без изменений сохранять нечего — кнопка неактивна', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
     render(<App />)
@@ -1206,6 +1226,7 @@ const GUEST_CARD = {
   mode: 'TOURIST',
   source: 'ORGANIC',
   isControlGroup: false,
+  tier: { id: 'gold', name: 'Золото', manual: false },
   firstVisitAt: '2026-08-20T12:00:00.000Z',
   lastVisitAt: '2026-09-05T13:10:00.000Z',
   pointsBalance: 30_175,
@@ -2533,5 +2554,167 @@ describe('Конструктор акций', () => {
     await screen.findByRole('heading', { level: 2, name: 'Вернём 200 ฿' })
     expect(screen.queryByRole('link', { name: t('offers.create') })).toBeNull()
     expect(screen.queryByRole('group', { name: t('offers.action.label') })).toBeNull()
+  })
+})
+
+describe('Статусы гостей в настройках', () => {
+  const openTiers = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    return screen.findByRole('region', { name: t('tiers.title') })
+  }
+
+  it('НОВЫЙ СТАТУС С ПОРОГОМ В БАТАХ УХОДИТ В САТАНГАХ, ПРИВЕТСТВЕННЫЕ БАЛЛЫ — ТОЖЕ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': (init) =>
+        init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    const section = await openTiers()
+    await within(section).findByRole('group', { name: fill(t('tiers.row'), { n: 2 }) })
+
+    fireEvent.click(within(section).getByRole('button', { name: t('tiers.add') }))
+    const third = within(section).getByRole('group', { name: fill(t('tiers.row'), { n: 3 }) })
+    fireEvent.change(within(third).getByLabelText(t('tiers.name')), {
+      target: { value: 'Платина' },
+    })
+    fireEvent.change(within(third).getByLabelText(t('tiers.earn')), { target: { value: '15' } })
+    fireEvent.change(within(third).getByLabelText(t('tiers.redeem')), { target: { value: '70' } })
+    fireEvent.change(within(third).getByLabelText(t('tiers.spentOver')), {
+      target: { value: '50000' },
+    })
+
+    fireEvent.click(within(section).getByLabelText(t('tiers.welcome.enabled')))
+    fireEvent.change(within(section).getByLabelText(t('tiers.welcome.amount')), {
+      target: { value: '50' },
+    })
+
+    fireEvent.click(within(section).getByRole('button', { name: t('tiers.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).includes('/tiers') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        tiers: [
+          ...TIER_SETTINGS.tiers,
+          {
+            id: 'tier-1',
+            name: 'Платина',
+            earnRate: 15,
+            redeemRate: 70,
+            hidden: false,
+            conditions: [{ type: 'SPENT_TOTAL', gt: 5_000_000 }],
+          },
+        ],
+        welcomeBonus: { enabled: true, amount: 5_000, trigger: 'ON_FIRST_PURCHASE' },
+      })
+    })
+    expect(await within(section).findByText(t('tiers.saved'))).toBeInTheDocument()
+  })
+
+  it('ДВА СТАТУСА С ОДНИМ НАЗВАНИЕМ — НЕ ОТПРАВЛЯЕТСЯ, И СКАЗАНО ПОЧЕМУ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    const section = await openTiers()
+    const second = await within(section).findByRole('group', {
+      name: fill(t('tiers.row'), { n: 2 }),
+    })
+    fireEvent.change(within(second).getByLabelText(t('tiers.name')), { target: { value: 'гость' } })
+
+    expect(within(section).getByText(t('tiers.problem.duplicateName'))).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: t('tiers.save') })).toBeDisabled()
+    expect(
+      fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT'),
+    ).toBe(false)
+  })
+})
+
+describe('Статус в карточке гостя', () => {
+  const openCard = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.guests') }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    return screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+  }
+
+  it('ВЛАДЕЛЕЦ НАЗНАЧАЕТ СКРЫТЫЙ СТАТУС — ТОЛЬКО С ПРИЧИНОЙ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () =>
+        json({
+          ...TIER_SETTINGS,
+          tiers: [
+            ...TIER_SETTINGS.tiers,
+            {
+              id: 'friends',
+              name: 'Друзья',
+              earnRate: 20,
+              redeemRate: 100,
+              hidden: true,
+              conditions: [],
+            },
+          ],
+        }),
+      [`/v1/admin/guests/${GUEST_ID}/tier`]: () =>
+        json({ tierId: 'friends', name: 'Друзья', manual: true }),
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    const dialog = await openCard()
+    expect(within(dialog).getByText('Золото')).toBeInTheDocument()
+
+    fireEvent.click(await within(dialog).findByRole('button', { name: t('tierForm.open') }))
+    fireEvent.change(within(dialog).getByLabelText(t('tierForm.tier')), {
+      target: { value: 'friends' },
+    })
+
+    const submit = within(dialog).getByRole('button', { name: t('tierForm.submit') })
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(within(dialog).getByLabelText(t('tierForm.reason')), {
+      target: { value: 'Друг владельца, ходит с открытия' },
+    })
+    fireEvent.click(submit)
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(requestOf(put?.[0] as RequestInfo | URL)).toContain(
+        `/v1/admin/guests/${GUEST_ID}/tier`,
+      )
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        tierId: 'friends',
+        reason: 'Друг владельца, ходит с открытия',
+      })
+    })
+  })
+
+  it('менеджер статус видит, но не меняет', async () => {
+    stubApi({
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    const dialog = await openCard()
+
+    expect(within(dialog).getByText('Золото')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: t('tierForm.open') })).toBeNull()
   })
 })

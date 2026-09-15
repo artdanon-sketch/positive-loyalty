@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { offerTitle } from '@positive/contracts'
+import { offerTitle, ProgramConfig } from '@positive/contracts'
 import type {
   AdminGuestCard,
   AdminGuestRow,
@@ -13,6 +13,7 @@ import type {
 import { TenantContext } from '../common/tenant/tenant-context'
 import { maskPhone } from '../common/pii/mask-phone'
 import { PrismaService } from '../core/prisma.service'
+import { needsReferrals, resolveTier } from '../core/tiers'
 import { guestSearchWhere } from './guest-search'
 
 /**
@@ -233,7 +234,27 @@ export class AdminService {
             }),
       ])
 
-      return { membership, shown, entries, grants, reversals, staff }
+      // Статус — тем же расчётом, что у кассы: карточка не должна показывать
+      // «Золото», пока касса считает по «Гостю». Неразборчивые настройки карточку
+      // не роняют — она нужна поддержке как раз тогда, когда что-то сломано.
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+      const program = ProgramConfig.safeParse(tenant?.settings ?? {})
+      const tiers = program.success ? program.data.tiers : []
+      const referrals = needsReferrals(tiers)
+        ? await tx.membership.count({ where: { tenantId, referredById: membership.id } })
+        : 0
+      const tier = resolveTier(tiers, {
+        tierId: membership.tierId,
+        tierManual: membership.tierManual,
+        spentTotal: membership.spentTotal,
+        visitsTotal: membership.visitsTotal,
+        referrals,
+      })
+
+      return { membership, shown, entries, grants, reversals, staff, tier }
     })
 
     if (data === null) {
@@ -242,7 +263,7 @@ export class AdminService {
       })
     }
 
-    const { membership, shown, entries, grants, reversals, staff } = data
+    const { membership, shown, entries, grants, reversals, staff, tier } = data
     const reversedIds = new Set(reversals.map((row) => row.reversalOfId))
     const staffNames = new Map(staff.map((person) => [person.id, person.displayName]))
 
@@ -285,6 +306,14 @@ export class AdminService {
       mode: membership.guest.mode,
       source: membership.source,
       isControlGroup: membership.isControlGroup,
+      tier:
+        tier === null
+          ? null
+          : {
+              id: tier.id,
+              name: tier.name,
+              manual: membership.tierManual && membership.tierId === tier.id,
+            },
       firstVisitAt: membership.firstVisitAt?.toISOString() ?? null,
       lastVisitAt: membership.lastVisitAt?.toISOString() ?? null,
       pointsBalance: membership.pointsBalance,
