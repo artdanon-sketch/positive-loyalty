@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import type { TierSettings } from '@positive/contracts'
+import type { Tag, TierSettings } from '@positive/contracts'
 
 import { fill } from '../../../shared/format/fill'
 import { useT } from '../../../shared/i18n'
@@ -11,11 +11,12 @@ import { SOURCE_LABELS } from '../labels'
 /**
  * Фильтры списка гостей. docs/03, раздел 3 · docs/11, У4.
  *
- * Выпадающие списки, а не десяток чипов: фильтров пять, у каждого несколько
+ * Выпадающие списки, а не десяток чипов: фильтров шесть, у каждого несколько
  * значений, и строка чипов на телефоне уехала бы за край.
  *
  * Статус — только у владельца: лестница статусов лежит в настройках программы,
- * а они его. Менеджер фильтрует по остальному.
+ * а они его. Менеджер фильтрует по остальному. Тег — у обоих: теги заводит
+ * и менеджер. Нет ни статусов, ни тегов — нет и пустого списка.
  */
 
 interface Option {
@@ -26,10 +27,12 @@ interface Option {
 export function GuestFiltersBar({
   filters,
   tiers,
+  tags,
   onChange,
 }: {
   filters: GuestFilters
   tiers: TierSettings['tiers'] | null
+  tags: readonly Tag[] | null
   onChange: (next: GuestFilters) => void
 }): ReactElement {
   const t = useT()
@@ -97,6 +100,18 @@ export function GuestFiltersBar({
             tiers.map((tier) => ({ value: tier.id, label: tier.name })),
             (next) => {
               onChange({ ...filters, tier: next === '' ? undefined : next })
+            },
+          )}
+
+      {tags === null || tags.length === 0
+        ? null
+        : select(
+            'guests-filter-tag',
+            'guests.filter.tag',
+            filters.tag ?? '',
+            tags.map((tag) => ({ value: tag.id, label: tag.name })),
+            (next) => {
+              onChange({ ...filters, tag: next === '' ? undefined : next })
             },
           )}
 

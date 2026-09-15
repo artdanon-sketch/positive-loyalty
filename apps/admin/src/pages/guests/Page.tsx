@@ -6,6 +6,7 @@ import { useAuth } from '../../shared/auth/auth-context'
 import { formatBaht, formatDate, formatDateTime } from '../../shared/format/format'
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value'
 import { useT } from '../../shared/i18n'
+import { useTags } from '../../shared/tags/hooks'
 import { GuestCard } from './components/guest-card'
 import { GuestExport } from './components/guest-export'
 import { GuestFiltersBar } from './components/guest-filters'
@@ -42,6 +43,7 @@ export function GuestsPage(): ReactElement {
   const filters = filtersFromParams(params)
   const search = useDebouncedValue(q.trim(), SEARCH_DELAY_MS)
   const tierOptions = useTierOptions(isOwner)
+  const tagOptions = useTags()
 
   // Страница помнит, к какому запросу относится: новый поиск или фильтр
   // начинается с первой страницы, а не с той, на которой листали прошлый.
@@ -106,6 +108,7 @@ export function GuestsPage(): ReactElement {
       <GuestFiltersBar
         filters={filters}
         tiers={tierOptions.data?.tiers ?? null}
+        tags={tagOptions.data ?? null}
         onChange={setFilters}
       />
 

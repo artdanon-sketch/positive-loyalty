@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 
 import { useT } from '../../shared/i18n'
 import { SettingsForm } from './components/settings-form'
+import { TagSettingsSection } from './components/tag-settings'
 import { TierSettingsSection } from './components/tier-settings'
 import { useProgramSettings } from './hooks'
 
@@ -53,6 +54,7 @@ export function SettingsPage(): ReactElement {
         <>
           <SettingsForm initial={settings.data} />
           <TierSettingsSection />
+          <TagSettingsSection />
         </>
       )}
     </section>

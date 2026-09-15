@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { bahtToMinor, draftOffer, draftRules, templateDraft } from './draft'
+import { bahtToMinor } from '../../shared/format/baht-input'
+import { draftOffer, draftRules, templateDraft } from './draft'
 import type { OfferDraft } from './draft'
 
 const WORDS = { title: 'Вернём 200 ฿', item: 'Десерт' }
