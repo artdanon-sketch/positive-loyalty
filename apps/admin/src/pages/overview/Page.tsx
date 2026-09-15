@@ -11,6 +11,7 @@ import { HoursChart } from './components/hours-chart'
 import { LiveFeed } from './components/live-feed'
 import { LoadingState } from './components/loading-state'
 import { StatTiles } from './components/stat-tiles'
+import { TodaySection } from './components/today-section'
 import { PERIODS, useDashboard } from './hooks'
 import { useLiveFeed } from './use-live-feed'
 
@@ -57,6 +58,9 @@ export function OverviewPage(): ReactElement {
           ))}
         </div>
       </header>
+
+      {/* «Сегодня» — над плитками периода: вечером владелец спрашивает про день. */}
+      <TodaySection />
 
       {query.isPending ? (
         <LoadingState />

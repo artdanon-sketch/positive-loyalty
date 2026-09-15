@@ -91,6 +91,26 @@ const DASHBOARD = {
 }
 
 /** Заведение первого дня: плиток нет, вместо них онбординг-чеклист. */
+/** «Сегодня»: настройка пройдена — карточек нет, остальные тесты их не видят. */
+const TODAY = {
+  date: '2026-09-16',
+  revenue: 386_500,
+  purchases: 9,
+  avgCheck: 42_944,
+  buyers: 8,
+  newGuests: 3,
+  totalGuests: 412,
+  pointsEarned: 19_325,
+  pointsRedeemed: 4_000,
+  voided: 1,
+  setup: [
+    { step: 'PROGRAM', done: true },
+    { step: 'CASHIER', done: true },
+    { step: 'OFFER', done: true },
+    { step: 'CHANNEL', done: true },
+  ],
+}
+
 const DASHBOARD_EMPTY = {
   ...DASHBOARD,
   guestsViaProgram: { value: 0, prev: 0, changePct: null, newGuests: 0 },
@@ -224,6 +244,9 @@ const stubApi = (
           replayed: false,
         }),
       )
+    }
+    if (path.startsWith('/v1/admin/today')) {
+      return Promise.resolve(json(TODAY))
     }
     if (path.startsWith('/v1/admin/dashboard')) {
       return Promise.resolve(json(DASHBOARD))
@@ -424,6 +447,61 @@ describe('Обзор', () => {
       )
       expect(asked).toBe(true)
     })
+  })
+})
+
+describe('Сегодня', () => {
+  const HALF_SET_UP = {
+    ...TODAY,
+    setup: [
+      { step: 'PROGRAM', done: true },
+      { step: 'CASHIER', done: false },
+      { step: 'OFFER', done: true },
+      { step: 'CHANNEL', done: false },
+    ],
+  }
+
+  it('ВЫРУЧКА ДНЯ, ПОКУПАТЕЛИ И БАЛЛЫ — НАД ПЛИТКАМИ ПЕРИОДА', async () => {
+    stubApi()
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const today = await screen.findByRole('region', { name: t('today.title') })
+    expect(within(today).getByText('3 865,00 ฿')).toBeInTheDocument()
+    expect(within(today).getByText(t('today.purchases').replace('{n}', '9'))).toBeInTheDocument()
+    expect(within(today).getByText(t('today.voided').replace('{n}', '1'))).toBeInTheDocument()
+  })
+
+  it('ВЛАДЕЛЕЦ ВИДИТ КАРТОЧКИ ТОЛЬКО НЕСДЕЛАННЫХ ШАГОВ — СО ССЫЛКОЙ В НУЖНЫЙ РАЗДЕЛ', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/today': () => json(HALF_SET_UP),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const setup = await screen.findByRole('region', { name: t('today.setup.title') })
+    expect(
+      within(setup).getByRole('link', { name: new RegExp(t('today.setup.CASHIER')) }),
+    ).toHaveAttribute('href', '/team')
+    expect(
+      within(setup).getByRole('link', { name: new RegExp(t('today.setup.CHANNEL')) }),
+    ).toHaveAttribute('href', '/settings')
+    expect(
+      within(setup).queryByRole('link', { name: new RegExp(t('today.setup.PROGRAM')) }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('МЕНЕДЖЕРУ КАРТОЧЕК НАСТРОЙКИ НЕТ — ЭТО РАЗДЕЛЫ ВЛАДЕЛЬЦА', async () => {
+    stubApi({ '/v1/admin/today': () => json(HALF_SET_UP) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    await screen.findByRole('region', { name: t('today.title') })
+    expect(screen.queryByRole('region', { name: t('today.setup.title') })).not.toBeInTheDocument()
   })
 })
 
