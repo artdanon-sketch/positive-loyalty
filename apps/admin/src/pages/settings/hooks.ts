@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
-import type { ProgramSettings, ReferralSettings, TierSettings } from '@positive/contracts'
+import type {
+  BirthdaySettings,
+  ProgramSettings,
+  ReferralSettings,
+  TierSettings,
+} from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 
@@ -15,6 +20,7 @@ import { useAuth } from '../../shared/auth/auth-context'
 const KEY = ['admin', 'settings', 'program'] as const
 const TIERS_KEY = ['admin', 'settings', 'tiers'] as const
 const REFERRAL_KEY = ['admin', 'settings', 'referral'] as const
+const BIRTHDAY_KEY = ['admin', 'settings', 'birthday'] as const
 
 export function useProgramSettings(): UseQueryResult<ProgramSettings, Error> {
   const { authFetch } = useAuth()
@@ -106,6 +112,37 @@ export function useSaveReferralSettings(): UseMutationResult<
       }),
     onSuccess: (saved) => {
       queryClient.setQueryData(REFERRAL_KEY, saved)
+    },
+  })
+}
+
+/** Подарок ко дню рождения — своим входом (docs/02, раздел 5.6.3). */
+export function useBirthdaySettings(): UseQueryResult<BirthdaySettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: BIRTHDAY_KEY,
+    queryFn: () => authFetch<BirthdaySettings>('/admin/settings/program/birthday'),
+  })
+}
+
+export function useSaveBirthdaySettings(): UseMutationResult<
+  BirthdaySettings,
+  Error,
+  BirthdaySettings
+> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (settings) =>
+      authFetch<BirthdaySettings>('/admin/settings/program/birthday', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(BIRTHDAY_KEY, saved)
     },
   })
 }

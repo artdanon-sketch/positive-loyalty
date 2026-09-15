@@ -231,6 +231,9 @@ const stubApi = (
     if (path.startsWith('/v1/admin/ledger')) {
       return Promise.resolve(json(EMPTY_LEDGER))
     }
+    if (path.startsWith('/v1/admin/certificates')) {
+      return Promise.resolve(json([]))
+    }
     if (path.startsWith('/v1/admin/channels')) {
       return Promise.resolve(json([]))
     }
@@ -1117,6 +1120,14 @@ const TIER_SETTINGS = {
   welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
 }
 
+/** Подарок ко дню рождения: не включался. */
+const BIRTHDAY_SETTINGS = {
+  enabled: false,
+  reward: { kind: 'POINTS', amount: 10_000 },
+  daysBefore: 3,
+  daysAfter: 3,
+}
+
 /** Приглашения друзей заведения: не включались. */
 const REFERRAL_SETTINGS = { enabled: false, reward: 0, limit: 10 }
 
@@ -1146,6 +1157,7 @@ describe('Настройки программы', () => {
     // принимают, глядя на деньги.
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1168,6 +1180,7 @@ describe('Настройки программы', () => {
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': (init) =>
@@ -1202,6 +1215,7 @@ describe('Настройки программы', () => {
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1222,6 +1236,7 @@ describe('Настройки программы', () => {
   it('без изменений сохранять нечего — кнопка неактивна', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1238,6 +1253,7 @@ describe('Настройки программы', () => {
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/tags': (init) =>
         init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json([TAG_VIP]),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1271,6 +1287,7 @@ describe('Настройки программы', () => {
   it('НАГРАДА ЗА ДРУГА НАБИРАЕТСЯ В БАТАХ И УХОДИТ В САТАНГАХ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1310,6 +1327,7 @@ describe('Настройки программы', () => {
   it('включённая награда без суммы не отправляется и объясняется рядом', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1351,6 +1369,7 @@ describe('Источники в настройках', () => {
   }
 
   const settingsApi = {
+    '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
     '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
     '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
     '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -1645,6 +1664,184 @@ describe('Отчёты: вкладки', () => {
 
     const system = within(table).getByRole('row', { name: new RegExp(t('reports.staff.system')) })
     expect(within(system).getByText('190')).toBeInTheDocument()
+  })
+})
+
+const CERTIFICATE = {
+  id: '81818181-8181-4818-8818-818181818181',
+  title: 'Сертификат на 500 ฿',
+  value: { kind: 'FIXED_OFF', amount: 50_000 },
+  validityDays: 30,
+  isActive: true,
+  issued: 12,
+  redeemed: 7,
+}
+
+describe('Сертификаты', () => {
+  const openCertificates = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.offers') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('offers.tab.certificates') }))
+    return screen.findByRole('region', { name: t('certificates.title') })
+  }
+
+  it('ВЛАДЕЛЕЦ ЗАВОДИТ СЕРТИФИКАТ НА 500 ฿ — НОМИНАЛ УХОДИТ В САТАНГАХ', async () => {
+    let certificates: unknown[] = []
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/certificates': (init) => {
+        if (init?.method === 'POST') {
+          certificates = [CERTIFICATE]
+          return json(CERTIFICATE, 201)
+        }
+        return json(certificates)
+      },
+    })
+    render(<App />)
+
+    await openCertificates()
+
+    const form = await screen.findByRole('form', { name: t('certificates.form.title') })
+    fireEvent.change(within(form).getByLabelText(t('certificates.field.title')), {
+      target: { value: 'Сертификат на 500 ฿' },
+    })
+    fireEvent.change(within(form).getByLabelText(t('certificates.field.amount')), {
+      target: { value: '500' },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: t('certificates.create') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/admin/certificates') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+        title: 'Сертификат на 500 ฿',
+        value: { kind: 'FIXED_OFF', amount: 50_000 },
+        validityDays: 30,
+      })
+    })
+
+    const table = await screen.findByRole('table', { name: t('certificates.title') })
+    expect(within(table).getByText('Сертификат на 500 ฿')).toBeInTheDocument()
+  })
+
+  it('СЧЁТЧИКИ «ВЫДАНО / ИСПОЛЬЗОВАНО» ВИДНЫ, СЕРТИФИКАТ ВЫКЛЮЧАЕТСЯ, А НЕ УДАЛЯЕТСЯ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/certificates': (init) =>
+        init?.method === 'PATCH' ? json({ ...CERTIFICATE, isActive: false }) : json([CERTIFICATE]),
+    })
+    render(<App />)
+
+    const section = await openCertificates()
+
+    const row = await within(section).findByRole('row', { name: /Сертификат на 500 ฿/ })
+    expect(within(row).getByText('12')).toBeInTheDocument()
+    expect(within(row).getByText('7')).toBeInTheDocument()
+
+    fireEvent.click(within(row).getByRole('button', { name: t('certificates.disable') }))
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+      )
+      expect(patch).toBeDefined()
+      expect(JSON.parse((patch?.[1] as RequestInit).body as string)).toEqual({ isActive: false })
+    })
+  })
+
+  it('ПОДАРИТЬ СЕРТИФИКАТ: НАЗВАНИЕ И СРОК — ИЗ ШАБЛОНА, ПОЛЯ «ЧТО ДАРИМ» НЕТ', async () => {
+    const fetchMock = stubApi({
+      '/v1/admin/certificates': () => json([CERTIFICATE]),
+      [`/v1/admin/guests/${GUEST_ID}/gifts`]: () =>
+        json(
+          {
+            grantId: '72727272-7272-4727-8727-727272727272',
+            title: 'Сертификат на 500 ฿',
+            codeTail: 'K4ZP',
+            expiresAt: '2026-10-16T12:00:00.000Z',
+            replayed: false,
+          },
+          201,
+        ),
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.guests') }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    const card = await screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.open') }))
+    fireEvent.change(await within(card).findByLabelText(t('gift.certificate')), {
+      target: { value: CERTIFICATE.id },
+    })
+
+    expect(within(card).queryByLabelText(t('gift.what'))).not.toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.reason.CELEBRATION') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('gift.submit') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/gifts') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      const body = JSON.parse((post?.[1] as RequestInit).body as string) as Record<string, unknown>
+      expect(body).toMatchObject({ certificateId: CERTIFICATE.id, reason: 'CELEBRATION' })
+      expect(body).not.toHaveProperty('title')
+    })
+  })
+
+  it('ДЕНЬ РОЖДЕНИЯ: СЕРТИФИКАТ ИЗ ШАБЛОНА И ОКНО ДНЕЙ УХОДЯТ В НАСТРОЙКИ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/certificates': () => json([CERTIFICATE]),
+      '/v1/admin/settings/program/birthday': (init) =>
+        init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(BIRTHDAY_SETTINGS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    const section = await screen.findByRole('region', { name: t('birthday.title') })
+
+    fireEvent.click(await within(section).findByLabelText(t('birthday.enabled')))
+    fireEvent.change(within(section).getByLabelText(t('birthday.kind')), {
+      target: { value: 'CERTIFICATE' },
+    })
+    fireEvent.change(await within(section).findByLabelText(t('birthday.certificate')), {
+      target: { value: CERTIFICATE.id },
+    })
+    fireEvent.change(within(section).getByLabelText(t('birthday.daysBefore')), {
+      target: { value: '5' },
+    })
+    fireEvent.click(within(section).getByRole('button', { name: t('birthday.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/birthday') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        enabled: true,
+        reward: { kind: 'CERTIFICATE', certificateId: CERTIFICATE.id },
+        daysBefore: 5,
+        daysAfter: 3,
+      })
+    })
   })
 })
 
@@ -3134,6 +3331,7 @@ describe('Статусы гостей в настройках', () => {
   it('НОВЫЙ СТАТУС С ПОРОГОМ В БАТАХ УХОДИТ В САТАНГАХ, ПРИВЕТСТВЕННЫЕ БАЛЛЫ — ТОЖЕ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(TIER_SETTINGS),
@@ -3190,6 +3388,7 @@ describe('Статусы гостей в настройках', () => {
   it('ДВА СТАТУСА С ОДНИМ НАЗВАНИЕМ — НЕ ОТПРАВЛЯЕТСЯ, И СКАЗАНО ПОЧЕМУ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -3221,6 +3420,7 @@ describe('Статус в карточке гостя', () => {
   it('ВЛАДЕЛЕЦ НАЗНАЧАЕТ СКРЫТЫЙ СТАТУС — ТОЛЬКО С ПРИЧИНОЙ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () =>
         json({
@@ -3338,6 +3538,7 @@ describe('Гости: фильтры и выгрузка', () => {
 
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/guests/export': () =>
