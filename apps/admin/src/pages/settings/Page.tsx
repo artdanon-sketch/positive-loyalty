@@ -4,6 +4,7 @@ import { useT } from '../../shared/i18n'
 import { BirthdaySettingsSection } from './components/birthday-settings'
 import { ChannelSettingsSection } from './components/channel-settings'
 import { ReferralSettingsSection } from './components/referral-settings'
+import { ReviewRepliesSection } from './components/review-replies-settings'
 import { SettingsForm } from './components/settings-form'
 import { TagSettingsSection } from './components/tag-settings'
 import { TierSettingsSection } from './components/tier-settings'
@@ -59,6 +60,7 @@ export function SettingsPage(): ReactElement {
           <TierSettingsSection />
           <ReferralSettingsSection />
           <BirthdaySettingsSection />
+          <ReviewRepliesSection />
           <TagSettingsSection />
           <ChannelSettingsSection />
         </>

@@ -3110,3 +3110,148 @@ body {
   flex-basis: 100%;
   margin-bottom: 0;
 }
+
+/* ── Отзывы (docs/11, У10) ─────────────────────────────────────────────────── */
+
+.review-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-4);
+}
+
+.review-bars,
+.review-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.review-bars__row {
+  display: grid;
+  grid-template-columns: 3em 1fr 3em;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.review-bars__label,
+.review-bars__count,
+.review-tags__count {
+  font-variant-numeric: tabular-nums;
+}
+
+.review-bars__label {
+  color: var(--tx-2);
+}
+
+.review-bars__count {
+  text-align: right;
+}
+
+.review-bars__track {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--surf-2);
+  overflow: hidden;
+}
+
+.review-bars__fill {
+  display: block;
+  height: 100%;
+  background: var(--s1);
+}
+
+.review-tags__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.review-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.review-card__title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.review-card__stars {
+  color: var(--warn);
+  letter-spacing: 0.05em;
+}
+
+.review-card__date,
+.review-card__meta {
+  margin: 0;
+  color: var(--tx-3);
+  font-size: 13px;
+}
+
+.review-card__tags {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.review-card__comment {
+  margin: 0;
+}
+
+.review-card__comment--empty {
+  margin: 0;
+  color: var(--tx-3);
+}
+
+.review-card__reply {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 3px solid var(--line);
+  background: var(--surf-2);
+}
+
+.review-card__replyText {
+  margin: 0;
+}
+
+.review-card__form,
+.review-replies-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.review-replies-form {
+  gap: var(--sp-4);
+}
+
+.review-card__textarea {
+  resize: vertical;
+  min-height: 3.5em;
+}
