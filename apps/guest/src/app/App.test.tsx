@@ -48,6 +48,7 @@ const WALLET_RESPONSE = {
       isControlGroup: false,
       tier: { name: 'Свой' },
       nextTier: { name: 'Золото', spentLeft: 250_000, visitsLeft: 3 },
+      inviteReward: 5_000,
     },
     {
       tenantId: '44444444-4444-4444-8444-444444444444',
@@ -58,6 +59,8 @@ const WALLET_RESPONSE = {
       isControlGroup: true,
       tier: null,
       nextTier: null,
+      // Группа сравнения: за её друзей баллов не будет — и кнопки «Пригласить» нет.
+      inviteReward: null,
     },
   ],
   vouchers: [
@@ -319,6 +322,93 @@ describe('Статус в кошельке', () => {
     expect(
       venues.getByText(
         t('card.tier.next').replace('{name}', 'Золото').replace('{ways}', ways).replace(/\s/g, ' '),
+      ),
+    ).toBeInTheDocument()
+  })
+})
+
+const KATA_ID = '33333333-3333-4333-8333-333333333333'
+const INVITE_CODE = '7KQ2MX4P'
+
+/** Вызовы подменённого fetch: адрес и параметры запроса. */
+const fetchCalls = (): Array<[RequestInfo | URL, RequestInit | undefined]> =>
+  (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<
+    [RequestInfo | URL, RequestInit | undefined]
+  >
+
+describe('Пригласить друга', () => {
+  it('ССЫЛКА ДРУГА, ОТКРЫТАЯ ДО ВХОДА, ПРИНИМАЕТСЯ СРАЗУ ПОСЛЕ ВХОДА', async () => {
+    // Друг открыл ссылку, ещё не войдя: вход срезал бы адрес, а код должен дожить.
+    window.history.replaceState(null, '', `/?venue=${KATA_ID}&ref=${INVITE_CODE.toLowerCase()}`)
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/referral/accept`]: () =>
+        json({ tenantId: KATA_ID, brandName: 'Kata Beach Kitchen', joined: true }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    expect(
+      await screen.findByText(t('invite.claim.joined').replace('{venue}', 'Kata Beach Kitchen')),
+    ).toBeInTheDocument()
+
+    const accept = fetchCalls().find(([input]) => pathOf(input).endsWith('/referral/accept'))
+    expect(JSON.parse(accept?.[1]?.body as string)).toEqual({ code: INVITE_CODE })
+    // Адрес очищен: перезагрузка карты не отправит приглашение второй раз.
+    expect(window.location.search).toBe('')
+  })
+
+  it('СВОЯ ССЫЛКА — СОВЕТ ОТПРАВИТЬ ЕЁ ДРУЗЬЯМ, И ОТКАЗ НЕ ПОВТОРИТСЯ ПРИ СЛЕДУЮЩЕМ ОТКРЫТИИ', async () => {
+    window.history.replaceState(null, '', `/?venue=${KATA_ID}&ref=${INVITE_CODE}`)
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/referral/accept`]: () =>
+        json(
+          {
+            error: { code: 'SELF_REFERRAL', message: 'Свою ссылку можно только отправить друзьям' },
+          },
+          409,
+        ),
+    })
+    render(<App />)
+
+    await signIn()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('invite.claim.self'))
+    expect(window.localStorage.getItem('positive.guest.invite')).toBeNull()
+  })
+
+  it('ССЫЛКА С КОДОМ И СКОЛЬКО ДРУЗЕЙ ПРИШЛО — ТОЛЬКО ТАМ, ГДЕ ЗА ДРУЗЕЙ ДАЮТ БАЛЛЫ', async () => {
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/referral`]: () =>
+        json({
+          tenantId: KATA_ID,
+          brandName: 'Kata Beach Kitchen',
+          enabled: true,
+          code: INVITE_CODE,
+          reward: 5_000,
+          limit: 10,
+          invited: 3,
+          rewarded: 2,
+        }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const venues = within(await screen.findByRole('region', { name: t('card.venues.title') }))
+
+    // Кнопка ровно одна: у заведения, где гость в группе сравнения, её нет.
+    fireEvent.click(venues.getByRole('button', { name: t('invite.open') }))
+
+    const link = await venues.findByLabelText(t('invite.link'))
+    expect(link).toHaveValue(`${window.location.origin}/?venue=${KATA_ID}&ref=${INVITE_CODE}`)
+    expect(venues.getByText(t('invite.code').replace('{code}', INVITE_CODE))).toBeInTheDocument()
+    expect(
+      venues.getByText(
+        t('invite.stats')
+          .replace('{invited}', '3')
+          .replace('{rewarded}', '2')
+          .replace('{limit}', '10'),
       ),
     ).toBeInTheDocument()
   })

@@ -1,9 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
-import type { UseQueryResult } from '@tanstack/react-query'
-import type { GuestQrToken, GuestWallet } from '@positive/contracts'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
+import type {
+  AcceptReferralResult,
+  GuestQrToken,
+  GuestReferral,
+  GuestWallet,
+} from '@positive/contracts'
 
+import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
-import { fetchQrToken, fetchWallet } from './card-api'
+import { acceptReferral, fetchQrToken, fetchReferral, fetchWallet } from './card-api'
 
 export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
 export const QR_QUERY_KEY = ['guest', 'qr'] as const
@@ -39,5 +45,35 @@ export function useQrToken(): UseQueryResult<GuestQrToken, Error> {
     },
     // Экран карты открыт у кассы — свежесть кода важнее экономии запросов.
     staleTime: 0,
+  })
+}
+
+/**
+ * Код приглашения — по нажатию «Пригласить друга», а не при открытии карты:
+ * сервер заводит код при первом запросе, и заводить его каждому гостю незачем.
+ */
+export function useReferral(
+  tenantId: string,
+  enabled: boolean,
+): UseQueryResult<GuestReferral, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: ['guest', 'referral', tenantId],
+    queryFn: () => fetchReferral(authGet, tenantId),
+    enabled: enabled && session !== null,
+  })
+}
+
+/** Принять приглашение. После — кошелёк перечитывается: в нём новое заведение. */
+export function useAcceptReferral(): UseMutationResult<AcceptReferralResult, Error, PendingInvite> {
+  const { authPost } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (invite) => acceptReferral(authPost, invite.tenantId, invite.code),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
+    },
   })
 }

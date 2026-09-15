@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type { ZodType } from 'zod'
 
-import { ApiError, apiGet, apiRequest } from '../api/api-client'
+import { ApiError, apiRequest } from '../api/api-client'
 import { SessionContext } from './session-context'
 import type { GuestSession, SessionContextValue, SessionStatus } from './session-context'
 
@@ -181,15 +181,20 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     [applyTokens],
   )
 
-  const authGet = useCallback(
-    async <T,>(path: string, schema: ZodType<T>): Promise<T> => {
+  /** Запрос от имени гостя: токен, на 401 — одно обновление сессии и повтор. */
+  const authRequest = useCallback(
+    async <T,>(
+      path: string,
+      schema: ZodType<T>,
+      options: { readonly method: 'GET' | 'POST'; readonly body?: unknown },
+    ): Promise<T> => {
       const current = sessionRef.current
       if (current === null) {
         throw new ApiError(401, 'UNAUTHORIZED', 'Сессия не установлена')
       }
 
       try {
-        return await apiGet(path, schema, { token: current.accessToken })
+        return await apiRequest(path, schema, { ...options, token: current.accessToken })
       } catch (error) {
         if (!(error instanceof ApiError) || error.status !== 401) {
           throw error
@@ -201,10 +206,22 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
           throw error
         }
 
-        return apiGet(path, schema, { token: renewed.accessToken })
+        return apiRequest(path, schema, { ...options, token: renewed.accessToken })
       }
     },
     [dropSession, refreshSession],
+  )
+
+  const authGet = useCallback(
+    async <T,>(path: string, schema: ZodType<T>): Promise<T> =>
+      authRequest(path, schema, { method: 'GET' }),
+    [authRequest],
+  )
+
+  const authPost = useCallback(
+    async <T,>(path: string, body: unknown, schema: ZodType<T>): Promise<T> =>
+      authRequest(path, schema, { method: 'POST', body }),
+    [authRequest],
   )
 
   const value = useMemo<SessionContextValue>(
@@ -218,9 +235,11 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
       pollTelegramLogin,
       signOut: dropSession,
       authGet,
+      authPost,
     }),
     [
       authGet,
+      authPost,
       dropSession,
       pollTelegramLogin,
       requestCode,
