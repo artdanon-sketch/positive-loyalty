@@ -196,6 +196,8 @@ export const GuestMe = GuestProfile.extend({
   /** Маскированный телефон: «+66 •• •• 4821». Полный гостю не нужен — он свой знает. */
   /** null — гость вошёл через аккаунт и номер не оставлял. */
   phoneMasked: z.string().min(1).nullable(),
+  /** День рождения, `YYYY-MM-DD`. null — не указан (docs/02, раздел 2.7). */
+  birthday: z.iso.date().nullable(),
 }).strict()
 
 export type GuestMe = z.infer<typeof GuestMe>

@@ -7,7 +7,12 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger'
-import { ProgramSettings, ReferralSettings, TierSettings } from '@positive/contracts'
+import {
+  BirthdaySettings,
+  ProgramSettings,
+  ReferralSettings,
+  TierSettings,
+} from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -144,5 +149,44 @@ export class ProgramSettingsController {
     }
 
     return this.settings.updateReferral(parsed.data)
+  }
+
+  @Get('birthday')
+  @ApiOperation({
+    summary: 'Подарок ко дню рождения',
+    description: 'Баллы или сертификат и окно в днях до и после. docs/02, раздел 5.6.3.',
+  })
+  @ApiOkResponse({ description: 'Текущие настройки дня рождения' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async getBirthday(): Promise<BirthdaySettings> {
+    return this.settings.getBirthday()
+  }
+
+  @Put('birthday')
+  @ApiOperation({
+    summary: 'Изменить подарок ко дню рождения',
+    description: 'Заменяет настройки дня рождения целиком; остальное не трогает.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({
+    description: 'Окно шире двух недель, баллы вне диапазона, CERTIFICATE_NOT_FOUND',
+  })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async updateBirthday(@Body() body: unknown): Promise<BirthdaySettings> {
+    const parsed = BirthdaySettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректные настройки дня рождения',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateBirthday(parsed.data)
   }
 }

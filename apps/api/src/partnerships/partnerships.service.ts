@@ -26,7 +26,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
-import { localDay } from './invite-day'
+import { localDay } from '../common/time/local-day'
 import {
   DECLINES_LOOKBACK_MS,
   freeInvitesUnder,

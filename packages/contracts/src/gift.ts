@@ -24,7 +24,13 @@ export const IssueGiftInput = z
       .string()
       .trim()
       .min(2, 'Напишите, что дарите: «десерт», «кофе», «скидка 10%»')
-      .max(GIFT_TITLE_MAX),
+      .max(GIFT_TITLE_MAX)
+      .optional(),
+    /**
+     * Шаблон сертификата (docs/11, У9): название и срок берутся из него, поэтому
+     * с шаблоном название не нужно.
+     */
+    certificateId: z.uuid().optional(),
     reason: GiftReason,
     comment: z.string().trim().min(1).max(300).optional(),
     /** Сколько дней действует промокод. */
@@ -35,6 +41,10 @@ export const IssueGiftInput = z
     error:
       'Для «другой причины» напишите пару слов — через месяц никто не вспомнит, за что подарили',
     path: ['comment'],
+  })
+  .refine((input) => input.certificateId !== undefined || input.title !== undefined, {
+    error: 'Напишите, что дарите: «десерт», «кофе», «скидка 10%» — или выберите сертификат',
+    path: ['title'],
   })
 
 export type IssueGiftInput = z.infer<typeof IssueGiftInput>

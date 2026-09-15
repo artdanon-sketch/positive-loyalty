@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
-import { offerTitle } from '@positive/contracts'
+import { CertificateOfferReward, offerTitle } from '@positive/contracts'
 import type { GiftReason, IssueGiftInput, IssueGiftResult } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
@@ -17,20 +17,25 @@ import { PrismaService } from '../core/prisma.service'
  * он сам появляется у гостя в приложении, гасится на кассе тем же эндпоинтом
  * и виден в истории гостя. Третьего способа дарить не появляется.
  *
+ * Сертификат из шаблона (docs/11, У9) — тоже промокод, только по готовой акции
+ * шаблона: название и срок берутся из шаблона, новая акция не заводится, а счётчик
+ * «выдано» у шаблона растёт сам.
+ *
  * ─── ПОВТОР НЕ ДАРИТ ДВАЖДЫ ─────────────────────────────────────────────────
  *
  * Ключ из заголовка ложится в nonce промокода, у которой UNIQUE на всю базу.
  * Поэтому заведение входит в ключ: два заведения, случайно придумавшие один
  * ключ, иначе столкнулись бы. Повтор находит первый подарок до создания
  * новой акции; гонка двух одинаковых запросов упирается в UNIQUE, и лишняя
- * акция тут же закрывается.
+ * разовая акция тут же закрывается. Шаблон сертификата не закрывается никогда.
  *
  * ─── МЕНЕДЖЕР — НЕ БОЛЬШЕ ДВАДЦАТИ ЗА СУТКИ ─────────────────────────────────
  *
  * Подарок стоит заведению денег, а матрица прав (docs/05) отдаёт деньги
  * владельцу. Менеджеру подарок нужен у стойки — и двадцати в сутки на всё
  * заведение для этого с запасом. Сорок первый десерт за день — это уже не спор
- * с гостем, а раздача, и её владелец должен увидеть. Владельца лимит не держит.
+ * с гостем, а раздача, и её владелец должен увидеть. Сертификаты считаются
+ * в тот же лимит. Владельца лимит не держит.
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -49,6 +54,15 @@ const ACTOR_TYPES: Readonly<Record<string, AuditActorType>> = {
   CASHIER: 'CASHIER',
   MANAGER: 'MANAGER',
   OWNER: 'OWNER',
+}
+
+/** Что именно дарим: разовая акция или шаблон сертификата. */
+interface GiftTarget {
+  readonly offerId: string
+  readonly title: string
+  readonly validityDays: number
+  /** Разовая акция заведена этим запросом — её можно закрыть при гонке. */
+  readonly created: boolean
 }
 
 @Injectable()
@@ -83,7 +97,7 @@ export class GuestGiftsService {
       return this.replay(tenantId, already.id)
     }
 
-    const offerId = await this.prisma.forTenant(tenantId, async (tx) => {
+    const target = await this.prisma.forTenant(tenantId, async (tx): Promise<GiftTarget> => {
       const membership = await tx.membership.findFirst({
         where: { guestId, tenantId },
         select: { id: true },
@@ -100,7 +114,7 @@ export class GuestGiftsService {
           where: {
             tenantId,
             issuedAt: { gte: new Date(now.getTime() - DAY_MS) },
-            offer: { type: 'GOODWILL' },
+            offer: { type: { in: ['GOODWILL', 'GIFT_CARD'] } },
           },
         })
 
@@ -115,6 +129,33 @@ export class GuestGiftsService {
         }
       }
 
+      if (input.certificateId !== undefined) {
+        const template = await tx.offer.findFirst({
+          where: { id: input.certificateId, tenantId, type: 'GIFT_CARD', status: 'LIVE' },
+          select: { id: true, reward: true, i18n: true },
+        })
+        const reward = template === null ? null : CertificateOfferReward.safeParse(template.reward)
+
+        if (template === null || reward === null || !reward.success) {
+          throw new NotFoundException({
+            error: {
+              code: 'CERTIFICATE_NOT_FOUND',
+              message: 'Сертификат не найден или выключен',
+            },
+          })
+        }
+
+        return {
+          offerId: template.id,
+          title: offerTitle(template.i18n, 'ru') ?? '',
+          validityDays: reward.data.validityDays,
+          created: false,
+        }
+      }
+
+      // Контракт не пропускает подарок без названия и без сертификата.
+      const title = input.title ?? ''
+
       const offer = await tx.offer.create({
         data: {
           tenantId,
@@ -124,33 +165,37 @@ export class GuestGiftsService {
           audience: {},
           schedule: {},
           limits: { totalQty: 1, perGuestQty: 1 },
-          reward: { kind: 'FREE_ITEM', itemName: input.title, minCheck: 0 },
+          reward: { kind: 'FREE_ITEM', itemName: title, minCheck: 0 },
           i18n: {
-            title: { ru: input.title, en: input.title },
+            title: { ru: title, en: title },
             howTo: { ru: ['Покажите код на кассе'], en: ['Show the code at the till'] },
           },
         },
         select: { id: true },
       })
 
-      return offer.id
+      return { offerId: offer.id, title, validityDays: input.validityDays, created: true }
     })
 
     const grant = await this.grants.issue({
-      offerId,
+      offerId: target.offerId,
       guestId,
       tenantId,
-      validityDays: input.validityDays,
+      validityDays: target.validityDays,
       idempotencyKey: nonce,
       now,
     })
 
     if (grant.replayed) {
       // Одинаковый запрос пришёл дважды одновременно: промокод родился у первого,
-      // а акция второго осталась без подарка. Закрываем её, чтобы не висела.
-      if (grant.offerId !== offerId) {
+      // а разовая акция второго осталась без подарка. Закрываем её, чтобы не висела.
+      // Шаблон сертификата общий для всех выдач — его не трогаем.
+      if (target.created && grant.offerId !== target.offerId) {
         await this.prisma.forTenant(tenantId, async (tx) =>
-          tx.offer.updateMany({ where: { id: offerId, tenantId }, data: { status: 'ENDED' } }),
+          tx.offer.updateMany({
+            where: { id: target.offerId, tenantId, type: 'GOODWILL' },
+            data: { status: 'ENDED' },
+          }),
         )
       }
 
@@ -166,9 +211,10 @@ export class GuestGiftsService {
       entityId: grant.id,
       newValue: {
         guestId,
-        title: input.title,
+        title: target.title,
         reason: input.reason,
-        validityDays: input.validityDays,
+        validityDays: target.validityDays,
+        certificateId: input.certificateId ?? null,
       },
       reason:
         input.comment === undefined
@@ -179,7 +225,7 @@ export class GuestGiftsService {
 
     return {
       grantId: grant.id,
-      title: input.title,
+      title: target.title,
       codeTail: grant.code.slice(-4),
       expiresAt: grant.expiresAt.toISOString(),
       replayed: false,

@@ -1,5 +1,20 @@
-import { Controller, Get, UseGuards } from '@nestjs/common'
-import { ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Put,
+  UseGuards,
+} from '@nestjs/common'
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger'
+import { GuestBirthdayInput } from '@positive/contracts'
 import type { GuestMe, GuestQrToken, GuestWallet } from '@positive/contracts'
 
 import { Public } from '../common/tenant/public.decorator'
@@ -8,7 +23,7 @@ import { GuestGuard } from './guest.guard'
 import { GuestService } from './guest.service'
 
 /**
- * API гостя. docs/02, разделы 2.1–2.2.
+ * API гостя. docs/02, разделы 2.1–2.2 и 2.7.
  *
  * @Public снимает тенантный гвард — у гостя нет заведения;
  * GuestGuard ставит своё требование: гостевой токен в запросе.
@@ -24,6 +39,33 @@ export class GuestController {
   @ApiOperation({ summary: 'Профиль гостя' })
   async me(): Promise<GuestMe> {
     return this.guestService.me()
+  }
+
+  @Put('me/birthday')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Указать день рождения — один раз',
+    description:
+      'Заведения дарят подарок ко дню рождения. Дата указывается один раз: иначе подарок ' +
+      'можно было бы получать, меняя дату.',
+  })
+  @ApiOkResponse({ description: 'Профиль с днём рождения' })
+  @ApiBadRequestResponse({ description: 'Дата не YYYY-MM-DD, из будущего или раньше 1900 года' })
+  @ApiConflictResponse({ description: 'BIRTHDAY_ALREADY_SET — день рождения уже указан' })
+  async setBirthday(@Body() body: unknown): Promise<GuestMe> {
+    const parsed = GuestBirthdayInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректная дата',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.guestService.setBirthday(parsed.data.date)
   }
 
   @Get('wallet')

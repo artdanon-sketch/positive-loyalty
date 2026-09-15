@@ -1,6 +1,13 @@
-import { InternalServerErrorException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common'
 import { parseProgramConfig } from '@positive/contracts'
 import type {
+  BirthdaySettings,
   ProgramConfig,
   ProgramSettings,
   ReferralSettings,
@@ -59,6 +66,13 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
 const pickTiers = (config: ProgramConfig): TierSettings => ({
   tiers: config.tiers,
   welcomeBonus: config.welcomeBonus,
+})
+
+const pickBirthday = (config: ProgramConfig): BirthdaySettings => ({
+  enabled: config.birthday.enabled,
+  reward: config.birthday.reward,
+  daysBefore: config.birthday.daysBefore,
+  daysAfter: config.birthday.daysAfter,
 })
 
 const pickReferral = (config: ProgramConfig): ReferralSettings => ({
@@ -271,6 +285,93 @@ export class ProgramSettingsService {
       })
 
       return { before: pickReferral(current), after: pickReferral(checked) }
+    })
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Подарок ко дню рождения. docs/02, раздел 5.6.3. */
+  async getBirthday(): Promise<BirthdaySettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickBirthday(this.parse(tenantId, tenant.settings))
+  }
+
+  /**
+   * Подарок ко дню рождения — тем же подмешиванием. Сертификат проверяется сейчас:
+   * выключенный или чужой шаблон молча не выдался бы ни одному имениннику, и владелец
+   * узнал бы об этом от обиженного гостя.
+   */
+  async updateBirthday(input: BirthdaySettings): Promise<BirthdaySettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      if (input.reward.kind === 'CERTIFICATE') {
+        const template = await tx.offer.findFirst({
+          where: {
+            id: input.reward.certificateId,
+            tenantId,
+            type: 'GIFT_CARD',
+            status: 'LIVE',
+          },
+          select: { id: true },
+        })
+
+        if (template === null) {
+          throw new BadRequestException({
+            error: {
+              code: 'CERTIFICATE_NOT_FOUND',
+              message: 'Сертификат не найден или выключен — выберите включённый шаблон',
+            },
+          })
+        }
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+
+      const merged: Record<string, unknown> = { ...raw, birthday: input }
+
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickBirthday(current), after: pickBirthday(checked) }
     })
 
     await this.audit.write({

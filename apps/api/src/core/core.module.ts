@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common'
 
 import { AuditService } from './audit.service'
+import { BirthdayService } from './birthday.service'
 import { LedgerEventsService } from './ledger-events.service'
 import { LedgerService } from './ledger.service'
 import { MembershipRulesService } from './membership-rules.service'
@@ -39,6 +40,7 @@ import { PrismaService } from './prisma.service'
     AuditService,
     OfferGrantService,
     MembershipRulesService,
+    BirthdayService,
   ],
   exports: [
     PrismaService,
@@ -47,6 +49,7 @@ import { PrismaService } from './prisma.service'
     AuditService,
     OfferGrantService,
     MembershipRulesService,
+    BirthdayService,
   ],
 })
 export class CoreModule {}

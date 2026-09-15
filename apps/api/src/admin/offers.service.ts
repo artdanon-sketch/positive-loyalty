@@ -36,7 +36,7 @@ import type { OfferAction } from './offer-lifecycle'
  * (железное правило 6 в интерфейсе): рядом имя второй стороны и ссылка туда,
  * а кнопок запуска и паузы у неё нет.
  *
- * ПОДАРКИ ИЗ КАРТОЧКИ ГОСТЯ (GOODWILL) ЗДЕСЬ НЕ ЖИВУТ. Десерт за долгое ожидание —
+ * ПОДАРКИ ИЗ КАРТОЧКИ ГОСТЯ (GOODWILL) И ШАБЛОНЫ СЕРТИФИКАТОВ (GIFT_CARD) ЗДЕСЬ НЕ ЖИВУТ. Десерт за долгое ожидание —
  * не кампания, и сорок таких «акций» утопили бы настоящие.
  *
  * «ВЕРНУЛОСЬ» — ЭТО ГОСТЬ, КОТОРЫЙ ПРИШЁЛ СНОВА. Чек, в котором гость погасил
@@ -94,7 +94,7 @@ export class OffersService {
 
     return this.prisma.forTenant(tenantId, async (tx) => {
       const rows = await tx.offer.findMany({
-        where: { tenantId, type: { not: 'GOODWILL' } },
+        where: { tenantId, type: { notIn: ['GOODWILL', 'GIFT_CARD'] } },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         take: LIST_LIMIT,
         select: { id: true, type: true, status: true, schedule: true, i18n: true, createdAt: true },
@@ -284,7 +284,7 @@ export class OffersService {
 
     const change = await this.prisma.forTenant(tenantId, async (tx) => {
       const offer = await tx.offer.findFirst({
-        where: { id: offerId, tenantId, type: { not: 'GOODWILL' } },
+        where: { id: offerId, tenantId, type: { notIn: ['GOODWILL', 'GIFT_CARD'] } },
         select: {
           id: true,
           type: true,

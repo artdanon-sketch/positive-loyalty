@@ -31,6 +31,7 @@ import { getEnv } from '../common/config/env'
 import { AccessTokenInvalidError } from '../common/tenant/tenant.errors'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError } from '../core/ledger.errors'
+import { BirthdayService } from '../core/birthday.service'
 import { LedgerService } from '../core/ledger.service'
 import { MembershipRulesService } from '../core/membership-rules.service'
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
@@ -169,6 +170,7 @@ export class PosService {
     private readonly ledger: LedgerService,
     private readonly grants: OfferGrantService,
     private readonly rules: MembershipRulesService,
+    private readonly birthdays: BirthdayService,
   ) {}
 
   /**
@@ -305,6 +307,8 @@ export class PosService {
     // Условие «визитов ещё нет» и один ключ на участие делают вызов безопасным
     // на каждом сканировании.
     const welcomed = await this.rules.grantWelcome(tenantId, membership, config, 'JOIN')
+    // И подарок ко дню рождения, если окно открыто: баланс после него — последний.
+    const celebrated = await this.birthdays.grantDueAt(tenantId, guestId)
 
     return {
       guestId: guest.id,
@@ -312,7 +316,7 @@ export class PosService {
       displayName: guest.displayName,
       isNew: membership.visitsTotal === 0,
       mode: guest.mode,
-      points: welcomed ?? membership.pointsBalance,
+      points: celebrated ?? welcomed ?? membership.pointsBalance,
       visitsTotal: membership.visitsTotal,
       avgCheck:
         membership.visitsTotal > 0

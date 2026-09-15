@@ -4,6 +4,8 @@ import { CoreModule } from '../core/core.module'
 
 import { AdminController } from './admin.controller'
 import { AdminService } from './admin.service'
+import { CertificatesController } from './certificates.controller'
+import { CertificatesService } from './certificates.service'
 import { ChannelReportService } from './channel-report.service'
 import { ChannelsController } from './channels.controller'
 import { ChannelsService } from './channels.service'
@@ -51,6 +53,7 @@ import { StaffService } from './staff.service'
     OffersController,
     ChannelsController,
     ReportsController,
+    CertificatesController,
   ],
   providers: [
     AdminService,
@@ -69,6 +72,7 @@ import { StaffService } from './staff.service'
     ChannelsService,
     ChannelReportService,
     ReportsService,
+    CertificatesService,
   ],
 })
 export class AdminModule {}
