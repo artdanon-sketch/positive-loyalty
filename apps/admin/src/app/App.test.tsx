@@ -505,6 +505,154 @@ describe('Сегодня', () => {
   })
 })
 
+describe('Безопасность', () => {
+  const SUSPICIOUS = {
+    period: '7d',
+    maxChecksPerDay: 5,
+    guests: [
+      {
+        membershipId: '95959595-9595-4959-8959-959595959595',
+        guestId: '96969696-9696-4969-8969-969696969696',
+        displayName: 'Гость Частый',
+        phone: '+66812340000',
+        day: '2026-09-15',
+        receipts: 7,
+      },
+    ],
+    cashiers: [
+      {
+        staffId: '97979797-9797-4979-8979-979797979797',
+        displayName: 'Кассир Пим',
+        signal: 'SELF_LINKED',
+        day: '2026-09-15',
+        receipts: 1,
+        usual: null,
+      },
+      {
+        staffId: '98989898-9898-4989-8989-989898989898',
+        displayName: 'Кассир Лек',
+        signal: 'BURST',
+        day: '2026-09-16',
+        receipts: 15,
+        usual: 1.7,
+      },
+    ],
+  }
+
+  const HISTORY = {
+    items: [
+      {
+        id: '99999999-9999-4999-8999-999999999999',
+        occurredAt: '2026-09-16T09:12:40.118Z',
+        action: 'STAFF_PIN_RESET',
+        actorType: 'OWNER',
+        actor: { id: '9a9a9a9a-9a9a-49a9-89a9-9a9a9a9a9a9a', displayName: 'Владелец Артём' },
+        entityType: 'Staff',
+        entityId: '97979797-9797-4979-8979-979797979797',
+        reason: null,
+      },
+    ],
+    nextBefore: '2026-09-16T09:12:40.118Z',
+  }
+
+  const settingsApi = {
+    '/v1/admin/settings/program/suspicious': (init?: RequestInit) =>
+      init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(SUSPICIOUS_SETTINGS),
+    '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
+    '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
+    '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+    '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+    '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+  }
+
+  const openReview = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    fireEvent.click(await screen.findByRole('link', { name: t('securitySettings.open') }))
+  }
+
+  it('РАЗБОР ИЗ НАСТРОЕК: КАССИР С ЧЕКОМ НА СВОЙ НОМЕР И ГОСТЬ ВЫШЕ ПОРОГА', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/security/suspicious': () => json(SUSPICIOUS),
+      ...settingsApi,
+    })
+    render(<App />)
+
+    await openReview()
+
+    const cashiers = await screen.findByRole('table', { name: t('security.cashiers.title') })
+    expect(within(cashiers).getByRole('row', { name: /Кассир Пим/ })).toHaveTextContent(
+      t('security.signal.SELF_LINKED'),
+    )
+    expect(within(cashiers).getByRole('row', { name: /Кассир Лек/ })).toHaveTextContent('1.7')
+
+    const guests = screen.getByRole('table', { name: t('security.guests.title') })
+    expect(within(guests).getByRole('link', { name: 'Гость Частый' })).toHaveAttribute(
+      'href',
+      '/guests?guest=96969696-9696-4969-8969-969696969696',
+    )
+    expect(screen.getByText(t('security.guests.hint').replace('{n}', '5'))).toBeInTheDocument()
+  })
+
+  it('ИСТОРИЯ: КТО И ЧТО МЕНЯЛ; «РАНЬШЕ» ПРОСИТ СЛЕДУЮЩУЮ СТРАНИЦУ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/security/history': () => json(HISTORY),
+      '/v1/admin/security/suspicious': () => json(SUSPICIOUS),
+      ...settingsApi,
+    })
+    render(<App />)
+
+    await openReview()
+    fireEvent.click(await screen.findByRole('tab', { name: t('security.tab.history') }))
+
+    const history = await screen.findByRole('table', { name: t('security.tab.history') })
+    expect(within(history).getByRole('row', { name: /Владелец Артём/ })).toHaveTextContent(
+      t('security.action.STAFF_PIN_RESET'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: t('security.history.earlier') }))
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([input]) => requestOf(input as RequestInfo | URL))
+      expect(
+        urls.some((url) =>
+          url.includes('/admin/security/history?before=2026-09-16T09%3A12%3A40.118Z'),
+        ),
+      ).toBe(true)
+    })
+  })
+
+  it('ПОРОГ ПОДОЗРИТЕЛЬНЫХ ЧЕКОВ СОХРАНЯЕТСЯ; ЕДИНИЦА — НЕЛЬЗЯ', async () => {
+    const fetchMock = stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS), ...settingsApi })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    const section = await screen.findByRole('region', { name: t('securitySettings.title') })
+    const input = await within(section).findByLabelText(t('securitySettings.maxChecks'))
+    const save = within(section).getByRole('button', { name: t('securitySettings.save') })
+
+    fireEvent.change(input, { target: { value: '1' } })
+    expect(within(section).getByText(t('securitySettings.problem'))).toBeInTheDocument()
+    expect(save).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: '3' } })
+    fireEvent.click(save)
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/program/suspicious') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({ maxChecksPerDay: 3 })
+    })
+  })
+})
+
 describe('Формы слова по числу', () => {
   // docs/04, раздел 7: в русском три формы. Одна строка на все числа даёт
   // «21 гостей не заходили» — это не опечатка, а ошибка языка, и владелец
@@ -1198,6 +1346,9 @@ const TIER_SETTINGS = {
   welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
 }
 
+/** Порог подозрительных чеков: по умолчанию. */
+const SUSPICIOUS_SETTINGS = { maxChecksPerDay: 5 }
+
 /** Автоответы на отзывы: не заданы. */
 const REVIEW_SETTINGS = { autoReplies: [null, null, null, null, null] }
 
@@ -1238,6 +1389,7 @@ describe('Настройки программы', () => {
     // принимают, глядя на деньги.
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1262,6 +1414,7 @@ describe('Настройки программы', () => {
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1298,6 +1451,7 @@ describe('Настройки программы', () => {
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1320,6 +1474,7 @@ describe('Настройки программы', () => {
   it('без изменений сохранять нечего — кнопка неактивна', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1338,6 +1493,7 @@ describe('Настройки программы', () => {
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/tags': (init) =>
         init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json([TAG_VIP]),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1373,6 +1529,7 @@ describe('Настройки программы', () => {
   it('НАГРАДА ЗА ДРУГА НАБИРАЕТСЯ В БАТАХ И УХОДИТ В САТАНГАХ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': (init) =>
@@ -1414,6 +1571,7 @@ describe('Настройки программы', () => {
   it('включённая награда без суммы не отправляется и объясняется рядом', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1457,6 +1615,7 @@ describe('Источники в настройках', () => {
   }
 
   const settingsApi = {
+    '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
     '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
     '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
     '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1893,6 +2052,7 @@ describe('Сертификаты', () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/certificates': () => json([CERTIFICATE]),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(BIRTHDAY_SETTINGS),
@@ -2043,6 +2203,7 @@ describe('Отзывы', () => {
   it('АВТООТВЕТЫ В НАСТРОЙКАХ: ПУСТОЕ ПОЛЕ — БЕЗ АВТООТВЕТА', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
@@ -3562,6 +3723,7 @@ describe('Статусы гостей в настройках', () => {
   it('НОВЫЙ СТАТУС С ПОРОГОМ В БАТАХ УХОДИТ В САТАНГАХ, ПРИВЕТСТВЕННЫЕ БАЛЛЫ — ТОЖЕ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -3620,6 +3782,7 @@ describe('Статусы гостей в настройках', () => {
   it('ДВА СТАТУСА С ОДНИМ НАЗВАНИЕМ — НЕ ОТПРАВЛЯЕТСЯ, И СКАЗАНО ПОЧЕМУ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -3653,6 +3816,7 @@ describe('Статус в карточке гостя', () => {
   it('ВЛАДЕЛЕЦ НАЗНАЧАЕТ СКРЫТЫЙ СТАТУС — ТОЛЬКО С ПРИЧИНОЙ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -3772,6 +3936,7 @@ describe('Гости: фильтры и выгрузка', () => {
 
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),

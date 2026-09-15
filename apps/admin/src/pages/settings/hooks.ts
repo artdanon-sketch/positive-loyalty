@@ -5,6 +5,7 @@ import type {
   ProgramSettings,
   ReferralSettings,
   ReviewSettings,
+  SuspiciousSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -23,6 +24,7 @@ const TIERS_KEY = ['admin', 'settings', 'tiers'] as const
 const REFERRAL_KEY = ['admin', 'settings', 'referral'] as const
 const BIRTHDAY_KEY = ['admin', 'settings', 'birthday'] as const
 const REVIEWS_KEY = ['admin', 'settings', 'reviews'] as const
+const SUSPICIOUS_KEY = ['admin', 'settings', 'suspicious'] as const
 
 export function useProgramSettings(): UseQueryResult<ProgramSettings, Error> {
   const { authFetch } = useAuth()
@@ -172,6 +174,39 @@ export function useSaveReviewSettings(): UseMutationResult<ReviewSettings, Error
       }),
     onSuccess: (saved) => {
       queryClient.setQueryData(REVIEWS_KEY, saved)
+    },
+  })
+}
+
+/** Порог подозрительных чеков — своим входом (docs/02, раздел 5.6.5). */
+export function useSuspiciousSettings(): UseQueryResult<SuspiciousSettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: SUSPICIOUS_KEY,
+    queryFn: () => authFetch<SuspiciousSettings>('/admin/settings/program/suspicious'),
+  })
+}
+
+/** Сохранить порог. Разбор «Подозрительное» перечитывается: список зависит от порога. */
+export function useSaveSuspiciousSettings(): UseMutationResult<
+  SuspiciousSettings,
+  Error,
+  SuspiciousSettings
+> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (settings) =>
+      authFetch<SuspiciousSettings>('/admin/settings/program/suspicious', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(SUSPICIOUS_KEY, saved)
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'security', 'suspicious'] })
     },
   })
 }
