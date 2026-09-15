@@ -413,3 +413,41 @@ describe('Пригласить друга', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('Ссылка источника', () => {
+  it('ССЫЛКА ТАБЛИЧКИ, ОТКРЫТАЯ ДО ВХОДА, ДЕЛАЕТ ГОСТЕМ ЗАВЕДЕНИЯ СРАЗУ ПОСЛЕ ВХОДА', async () => {
+    window.history.replaceState(null, '', `/?venue=${KATA_ID}&src=tbr2k7qx`)
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/join`]: () =>
+        json({ tenantId: KATA_ID, brandName: 'Kata Beach Kitchen', joined: true }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    expect(
+      await screen.findByText(
+        t('invite.claim.joinedChannel').replace('{venue}', 'Kata Beach Kitchen'),
+      ),
+    ).toBeInTheDocument()
+
+    const join = fetchCalls().find(([input]) => pathOf(input).endsWith('/join'))
+    expect(JSON.parse(join?.[1]?.body as string)).toEqual({ channel: 'TBR2K7QX' })
+    // Табличка — не приглашение друга: запроса приглашения нет.
+    expect(fetchCalls().some(([input]) => pathOf(input).includes('/referral'))).toBe(false)
+    expect(window.location.search).toBe('')
+  })
+
+  it('выключенная табличка — гость узнаёт, что ссылка не действует', async () => {
+    window.history.replaceState(null, '', `/?venue=${KATA_ID}&src=TBR2K7QX`)
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/join`]: () =>
+        json({ error: { code: 'CHANNEL_NOT_FOUND', message: 'Ссылка не найдена' } }, 404),
+    })
+    render(<App />)
+
+    await signIn()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(t('invite.claim.linkNotFound'))
+  })
+})

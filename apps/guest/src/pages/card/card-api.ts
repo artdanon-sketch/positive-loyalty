@@ -1,4 +1,10 @@
-import { AcceptReferralResult, GuestQrToken, GuestReferral, GuestWallet } from '@positive/contracts'
+import {
+  AcceptReferralResult,
+  GuestQrToken,
+  GuestReferral,
+  GuestWallet,
+  JoinVenueResult,
+} from '@positive/contracts'
 import type { ZodType } from 'zod'
 
 /**
@@ -38,5 +44,18 @@ export function acceptReferral(
     `/guest/venues/${encodeURIComponent(tenantId)}/referral/accept`,
     { code },
     AcceptReferralResult,
+  )
+}
+
+/** Стать гостем заведения по ссылке источника: табличка, Instagram (docs/02, раздел 2.6). */
+export function joinVenue(
+  authPost: AuthPost,
+  tenantId: string,
+  channel: string,
+): Promise<JoinVenueResult> {
+  return authPost(
+    `/guest/venues/${encodeURIComponent(tenantId)}/join`,
+    { channel },
+    JoinVenueResult,
   )
 }

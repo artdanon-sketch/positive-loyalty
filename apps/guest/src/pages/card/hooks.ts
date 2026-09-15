@@ -5,11 +5,12 @@ import type {
   GuestQrToken,
   GuestReferral,
   GuestWallet,
+  JoinVenueResult,
 } from '@positive/contracts'
 
 import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
-import { acceptReferral, fetchQrToken, fetchReferral, fetchWallet } from './card-api'
+import { acceptReferral, fetchQrToken, fetchReferral, fetchWallet, joinVenue } from './card-api'
 
 export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
 export const QR_QUERY_KEY = ['guest', 'qr'] as const
@@ -65,13 +66,23 @@ export function useReferral(
   })
 }
 
-/** Принять приглашение. После — кошелёк перечитывается: в нём новое заведение. */
-export function useAcceptReferral(): UseMutationResult<AcceptReferralResult, Error, PendingInvite> {
+/**
+ * Принять ссылку, открытую до входа: приглашение друга или ссылку источника.
+ * Ответы у обоих одного вида. После — кошелёк перечитывается: в нём новое заведение.
+ */
+export function useClaimInvite(): UseMutationResult<
+  AcceptReferralResult | JoinVenueResult,
+  Error,
+  PendingInvite
+> {
   const { authPost } = useSession()
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (invite) => acceptReferral(authPost, invite.tenantId, invite.code),
+    mutationFn: (invite) =>
+      invite.kind === 'channel'
+        ? joinVenue(authPost, invite.tenantId, invite.code)
+        : acceptReferral(authPost, invite.tenantId, invite.code),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
     },

@@ -80,5 +80,7 @@
   "invite.claim.self": "This is your own link — send it to your friends.",
   "invite.claim.notFound": "This invitation is not valid: the venue may have switched it off.",
   "invite.claim.failed": "Could not accept the invitation. Open the link again.",
-  "invite.claim.dismiss": "Got it"
+  "invite.claim.dismiss": "Got it",
+  "invite.claim.joinedChannel": "You are now a guest of “{venue}”. Show your code at the till — points start with your first purchase.",
+  "invite.claim.linkNotFound": "This link is not valid: the venue may have switched it off."
 }
