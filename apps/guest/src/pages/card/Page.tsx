@@ -4,6 +4,7 @@ import { formatBaht } from '../../shared/format/baht'
 import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
 import { ThemeToggle } from '../../shared/theme/theme-toggle'
+import { BirthdayPrompt } from './components/birthday-prompt'
 import { CardEmpty } from './components/card-empty'
 import { CardError } from './components/card-error'
 import { CardLoading } from './components/card-loading'
@@ -86,6 +87,10 @@ export function Page(): ReactElement {
               Это то, ради чего гость открыл приложение у стойки: баллы он
               смотрит дома, а подарок предъявляет здесь и сейчас. */}
           {wallet.data.vouchers.length > 0 ? <VoucherList vouchers={wallet.data.vouchers} /> : null}
+
+          {/* День рождения — после подарков: вопрос задаётся один раз и не должен
+              отодвигать код для кассы. Без заведений спрашивать не о чем. */}
+          {wallet.data.memberships.length > 0 ? <BirthdayPrompt /> : null}
 
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />

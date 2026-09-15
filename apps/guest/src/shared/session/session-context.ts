@@ -50,6 +50,8 @@ export interface SessionContextValue {
     body: unknown,
     schema: import('zod').ZodType<T>,
   ) => Promise<T>
+  /** Запись целиком (PUT): тело — JSON, ответ разбирается схемой. */
+  readonly authPut: <T>(path: string, body: unknown, schema: import('zod').ZodType<T>) => Promise<T>
 }
 
 export const SessionContext = createContext<SessionContextValue | null>(null)

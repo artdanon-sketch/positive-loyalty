@@ -1,5 +1,6 @@
 import {
   AcceptReferralResult,
+  GuestMe,
   GuestQrToken,
   GuestReferral,
   GuestWallet,
@@ -18,6 +19,8 @@ import type { ZodType } from 'zod'
 type AuthGet = <T>(path: string, schema: ZodType<T>) => Promise<T>
 
 type AuthPost = <T>(path: string, body: unknown, schema: ZodType<T>) => Promise<T>
+
+type AuthPut = AuthPost
 
 /** Кошелёк: баллы по всем заведениям острова (docs/02, раздел 2.1). */
 export function fetchWallet(authGet: AuthGet): Promise<GuestWallet> {
@@ -58,4 +61,14 @@ export function joinVenue(
     { channel },
     JoinVenueResult,
   )
+}
+
+/** Профиль гостя: здесь нужен ради дня рождения (docs/02, раздел 2.7). */
+export function fetchMe(authGet: AuthGet): Promise<GuestMe> {
+  return authGet('/guest/me', GuestMe)
+}
+
+/** Указать день рождения — один раз. */
+export function saveBirthday(authPut: AuthPut, date: string): Promise<GuestMe> {
+  return authPut('/guest/me/birthday', { date }, GuestMe)
 }

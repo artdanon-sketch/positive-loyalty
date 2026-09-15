@@ -186,7 +186,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     async <T,>(
       path: string,
       schema: ZodType<T>,
-      options: { readonly method: 'GET' | 'POST'; readonly body?: unknown },
+      options: { readonly method: 'GET' | 'POST' | 'PUT'; readonly body?: unknown },
     ): Promise<T> => {
       const current = sessionRef.current
       if (current === null) {
@@ -224,6 +224,12 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     [authRequest],
   )
 
+  const authPut = useCallback(
+    async <T,>(path: string, body: unknown, schema: ZodType<T>): Promise<T> =>
+      authRequest(path, schema, { method: 'PUT', body }),
+    [authRequest],
+  )
+
   const value = useMemo<SessionContextValue>(
     () => ({
       status,
@@ -236,10 +242,12 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
       signOut: dropSession,
       authGet,
       authPost,
+      authPut,
     }),
     [
       authGet,
       authPost,
+      authPut,
       dropSession,
       pollTelegramLogin,
       requestCode,

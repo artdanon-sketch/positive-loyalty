@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { dictionaries } from '../shared/i18n/dictionaries'
@@ -94,6 +94,13 @@ const WALLET_WITHOUT_VOUCHERS = { ...WALLET_RESPONSE, vouchers: [] }
 
 const QR_RESPONSE = { token: 'guest-qr-token', expiresIn: 300 }
 
+/** Профиль: день рождения уже указан — вопроса на карте нет, остальные тесты его не видят. */
+const ME_RESPONSE = {
+  ...AUTH_RESPONSE.guest,
+  phoneMasked: '+66 •• •• 5678',
+  birthday: '1990-09-17',
+}
+
 const json = (payload: unknown, status = 200): Response =>
   new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -117,6 +124,7 @@ const stubApi = (overrides: Record<string, () => Response> = {}): void => {
       if (path.startsWith('/v1/auth/otp/request')) return Promise.resolve(json(OTP_RESPONSE))
       if (path.startsWith('/v1/auth/otp/verify')) return Promise.resolve(json(AUTH_RESPONSE))
       if (path.startsWith('/v1/guest/wallet')) return Promise.resolve(json(WALLET_RESPONSE))
+      if (path.startsWith('/v1/guest/me')) return Promise.resolve(json(ME_RESPONSE))
       if (path.startsWith('/v1/guest/qr-token')) return Promise.resolve(json(QR_RESPONSE))
 
       return Promise.resolve(
@@ -449,5 +457,82 @@ describe('Ссылка источника', () => {
     await signIn()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(t('invite.claim.linkNotFound'))
+  })
+})
+
+describe('День рождения', () => {
+  const WITHOUT_BIRTHDAY = { ...ME_RESPONSE, birthday: null }
+
+  const enterDate = async (value: string): Promise<ReturnType<typeof within>> => {
+    const section = within(await screen.findByRole('region', { name: t('birthday.title') }))
+    fireEvent.change(section.getByLabelText(t('birthday.date')), { target: { value } })
+    fireEvent.click(section.getByRole('button', { name: t('birthday.next') }))
+    return section
+  }
+
+  it('ГОСТЬ УКАЗЫВАЕТ ДЕНЬ РОЖДЕНИЯ ОДИН РАЗ: ДАТА УХОДИТ ТОЛЬКО ПОСЛЕ ПОДТВЕРЖДЕНИЯ', async () => {
+    stubApi({
+      '/v1/guest/me/birthday': () => json(ME_RESPONSE),
+      '/v1/guest/me': () => json(WITHOUT_BIRTHDAY),
+    })
+    render(<App />)
+
+    await signIn()
+    const section = await enterDate('1990-09-17')
+
+    expect(
+      section.getByText(t('birthday.check').replace('{date}', '17.09.1990')),
+    ).toBeInTheDocument()
+    expect(fetchCalls().some(([input]) => pathOf(input).endsWith('/me/birthday'))).toBe(false)
+
+    fireEvent.click(section.getByRole('button', { name: t('birthday.confirm') }))
+
+    expect(await section.findByRole('status')).toHaveTextContent(t('birthday.saved'))
+    const put = fetchCalls().find(([input]) => pathOf(input).endsWith('/me/birthday'))
+    expect(put?.[1]?.method).toBe('PUT')
+    expect(JSON.parse(put?.[1]?.body as string)).toEqual({ date: '1990-09-17' })
+  })
+
+  it('ДАТА ИЗ БУДУЩЕГО НЕ ДОХОДИТ ДАЖЕ ДО ПОДТВЕРЖДЕНИЯ', async () => {
+    stubApi({ '/v1/guest/me': () => json(WITHOUT_BIRTHDAY) })
+    render(<App />)
+
+    await signIn()
+    const section = await enterDate('2999-01-01')
+
+    expect(section.getByText(t('birthday.problem.range'))).toBeInTheDocument()
+    expect(section.queryByRole('button', { name: t('birthday.confirm') })).not.toBeInTheDocument()
+  })
+
+  it('ДАТА УЖЕ УКАЗАНА С ДРУГОГО ТЕЛЕФОНА — ГОСТЬ ВИДИТ ОТВЕТ, А НЕ ПОЛОМКУ', async () => {
+    stubApi({
+      '/v1/guest/me/birthday': () =>
+        json({ error: { code: 'BIRTHDAY_ALREADY_SET', message: 'День рождения уже указан' } }, 409),
+      '/v1/guest/me': () => json(WITHOUT_BIRTHDAY),
+    })
+    render(<App />)
+
+    await signIn()
+    const section = await enterDate('1990-09-17')
+    fireEvent.click(section.getByRole('button', { name: t('birthday.confirm') }))
+
+    expect(await section.findByRole('alert')).toHaveTextContent(t('birthday.already'))
+  })
+
+  it('ДЕНЬ РОЖДЕНИЯ УЖЕ УКАЗАН — ВОПРОСА НА КАРТЕ НЕТ', async () => {
+    stubApi()
+    render(<App />)
+
+    await signIn()
+    await screen.findByRole('region', { name: t('card.venues.title') })
+    await waitFor(() => {
+      expect(fetchCalls().some(([input]) => pathOf(input).endsWith('/guest/me'))).toBe(true)
+    })
+    // Ответ профиля успевает дойти до экрана: без паузы тест прошёл бы и на вопросе.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(screen.queryByRole('region', { name: t('birthday.title') })).not.toBeInTheDocument()
   })
 })
