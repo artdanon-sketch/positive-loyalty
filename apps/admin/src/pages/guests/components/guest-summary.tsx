@@ -48,6 +48,23 @@ export function GuestSummary({ card }: { card: AdminGuestCard }): ReactElement {
           <dt>{t('guestCard.lastVisit')}</dt>
           <dd>{formatDateTime(card.lastVisitAt)}</dd>
         </div>
+        {card.referral.invitedBy === null ? null : (
+          <div>
+            <dt>{t('guestCard.referral.invitedBy')}</dt>
+            <dd>{card.referral.invitedBy.displayName ?? t('guestCard.referral.noName')}</dd>
+          </div>
+        )}
+        {card.referral.invited === 0 ? null : (
+          <div>
+            <dt>{t('guestCard.referral.invited')}</dt>
+            <dd>
+              {fill(t('guestCard.referral.count'), {
+                invited: card.referral.invited,
+                rewarded: card.referral.rewarded,
+              })}
+            </dd>
+          </div>
+        )}
       </dl>
 
       {card.isControlGroup ? (

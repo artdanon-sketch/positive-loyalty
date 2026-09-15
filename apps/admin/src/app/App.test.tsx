@@ -1093,6 +1093,9 @@ const TIER_SETTINGS = {
   welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
 }
 
+/** Приглашения друзей заведения: не включались. */
+const REFERRAL_SETTINGS = { enabled: false, reward: 0, limit: 10 }
+
 /** Теги заведения: один стоит на госте, второй — чтобы было что отметить. */
 const TAG_VIP = { id: '16161616-1616-4161-8161-161616161616', name: 'VIP', color: 'amber' }
 const TAG_BLOGGER = { id: '17171717-1717-4171-8171-171717171717', name: 'Блогер', color: 'violet' }
@@ -1119,6 +1122,7 @@ describe('Настройки программы', () => {
     // принимают, глядя на деньги.
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1140,6 +1144,7 @@ describe('Настройки программы', () => {
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': (init) =>
         init?.method === 'PUT'
@@ -1173,6 +1178,7 @@ describe('Настройки программы', () => {
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1192,6 +1198,7 @@ describe('Настройки программы', () => {
   it('без изменений сохранять нечего — кнопка неактивна', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1207,6 +1214,7 @@ describe('Настройки программы', () => {
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/tags': (init) =>
         init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json([TAG_VIP]),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1234,6 +1242,70 @@ describe('Настройки программы', () => {
     await waitFor(() => {
       expect(deleted()).toBe(true)
     })
+  })
+
+  it('НАГРАДА ЗА ДРУГА НАБИРАЕТСЯ В БАТАХ И УХОДИТ В САТАНГАХ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': (init) =>
+        init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+    const section = screen.getByRole('region', { name: t('referral.title') })
+
+    fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
+    fireEvent.change(within(section).getByLabelText(t('referral.reward')), {
+      target: { value: '75' },
+    })
+    fireEvent.change(within(section).getByLabelText(t('referral.limit')), {
+      target: { value: '3' },
+    })
+    fireEvent.click(within(section).getByRole('button', { name: t('referral.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/referral') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        enabled: true,
+        reward: 7_500,
+        limit: 3,
+      })
+    })
+
+    expect(await within(section).findByText(t('referral.saved'))).toBeInTheDocument()
+  })
+
+  it('включённая награда без суммы не отправляется и объясняется рядом', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+    const section = screen.getByRole('region', { name: t('referral.title') })
+
+    fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
+
+    expect(within(section).getByText(t('referral.problem.reward'))).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: t('referral.save') })).toBeDisabled()
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/referral') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      ),
+    ).toBe(false)
   })
 })
 
@@ -1273,6 +1345,7 @@ const GUEST_CARD = {
   tier: { id: 'gold', name: 'Золото', manual: false },
   note: 'Аллергия на арахис',
   tags: [TAG_VIP],
+  referral: { invitedBy: null, invited: 2, rewarded: 1 },
   firstVisitAt: '2026-08-20T12:00:00.000Z',
   lastVisitAt: '2026-09-05T13:10:00.000Z',
   pointsBalance: 30_175,
@@ -1394,6 +1467,10 @@ describe('Гости: поиск и карточка', () => {
 
     expect(within(card).getByText('Аллергия на арахис')).toBeInTheDocument()
     expect(within(card).getByText('VIP')).toBeInTheDocument()
+    // Скольких друзей привёл и за скольких получил баллы — в шапке, рядом с визитом.
+    expect(
+      within(card).getByText(fill(t('guestCard.referral.count'), { invited: 2, rewarded: 1 })),
+    ).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: t('noteForm.edit') })).toBeInTheDocument()
     expect(
       within(card).queryByRole('button', { name: t('pointsForm.open') }),
@@ -2713,6 +2790,7 @@ describe('Статусы гостей в настройках', () => {
   it('НОВЫЙ СТАТУС С ПОРОГОМ В БАТАХ УХОДИТ В САТАНГАХ, ПРИВЕТСТВЕННЫЕ БАЛЛЫ — ТОЖЕ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -2768,6 +2846,7 @@ describe('Статусы гостей в настройках', () => {
   it('ДВА СТАТУСА С ОДНИМ НАЗВАНИЕМ — НЕ ОТПРАВЛЯЕТСЯ, И СКАЗАНО ПОЧЕМУ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -2798,6 +2877,7 @@ describe('Статус в карточке гостя', () => {
   it('ВЛАДЕЛЕЦ НАЗНАЧАЕТ СКРЫТЫЙ СТАТУС — ТОЛЬКО С ПРИЧИНОЙ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () =>
         json({
           ...TIER_SETTINGS,
@@ -2914,6 +2994,7 @@ describe('Гости: фильтры и выгрузка', () => {
 
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/guests/export': () =>
         new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } }),

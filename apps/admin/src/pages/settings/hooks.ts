@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
-import type { ProgramSettings, TierSettings } from '@positive/contracts'
+import type { ProgramSettings, ReferralSettings, TierSettings } from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 
@@ -14,6 +14,7 @@ import { useAuth } from '../../shared/auth/auth-context'
 
 const KEY = ['admin', 'settings', 'program'] as const
 const TIERS_KEY = ['admin', 'settings', 'tiers'] as const
+const REFERRAL_KEY = ['admin', 'settings', 'referral'] as const
 
 export function useProgramSettings(): UseQueryResult<ProgramSettings, Error> {
   const { authFetch } = useAuth()
@@ -74,6 +75,37 @@ export function useSaveTierSettings(): UseMutationResult<TierSettings, Error, Ti
     onSuccess: (saved) => {
       queryClient.setQueryData(TIERS_KEY, saved)
       void queryClient.invalidateQueries({ queryKey: ['admin', 'guest-card'] })
+    },
+  })
+}
+
+/** Приглашения друзей — своим входом (docs/02, раздел 5.6.2). */
+export function useReferralSettings(): UseQueryResult<ReferralSettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: REFERRAL_KEY,
+    queryFn: () => authFetch<ReferralSettings>('/admin/settings/program/referral'),
+  })
+}
+
+export function useSaveReferralSettings(): UseMutationResult<
+  ReferralSettings,
+  Error,
+  ReferralSettings
+> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (settings) =>
+      authFetch<ReferralSettings>('/admin/settings/program/referral', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(REFERRAL_KEY, saved)
     },
   })
 }
