@@ -16,6 +16,7 @@ import type {
   RedeemGrantResult,
   ReversalReason,
   SaleKind,
+  Tier,
 } from '@positive/contracts'
 import {
   ENGINE_OFFER_TYPES,
@@ -31,6 +32,7 @@ import { AccessTokenInvalidError } from '../common/tenant/tenant.errors'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError } from '../core/ledger.errors'
 import { LedgerService } from '../core/ledger.service'
+import { MembershipRulesService } from '../core/membership-rules.service'
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
 import type { GrantView } from '../core/offer-grant.service'
 import { PrismaService } from '../core/prisma.service'
@@ -152,6 +154,12 @@ const guestMode = async (tx: Tx, guestId: string): Promise<'TOURIST' | 'RESIDENT
   return guest?.mode ?? 'TOURIST'
 }
 
+/** Статус на кассе: название и ставки, по которым считается этот чек. */
+const tierBadge = (tier: Tier | null): PosGuest['tier'] =>
+  tier === null
+    ? null
+    : { id: tier.id, name: tier.name, earnRate: tier.earnRate, redeemRate: tier.redeemRate }
+
 @Injectable()
 export class PosService {
   private readonly logger = new Logger(PosService.name)
@@ -160,6 +168,7 @@ export class PosService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly grants: OfferGrantService,
+    private readonly rules: MembershipRulesService,
   ) {}
 
   /**
@@ -204,7 +213,9 @@ export class PosService {
         return null
       }
 
-      return { guest, membership }
+      const { tier } = await this.rules.tierFor(tx, tenantId, config, membership)
+
+      return { guest, membership, tier }
     })
 
     if (found === null) {
@@ -215,7 +226,7 @@ export class PosService {
       })
     }
 
-    const { guest, membership } = found
+    const { guest, membership, tier } = found
 
     return {
       guestId: guest.id,
@@ -230,6 +241,7 @@ export class PosService {
           ? Math.round(membership.spentTotal / membership.visitsTotal)
           : null,
       isControlGroup: membership.isControlGroup,
+      tier: tierBadge(tier),
     }
   }
 
@@ -259,7 +271,9 @@ export class PosService {
       })
     }
 
-    return this.prisma.forTenant(tenantId, async (tx) => {
+    const config = await this.loadConfig(tenantId)
+
+    const found = await this.prisma.forTenant(tenantId, async (tx) => {
       const guest = await tx.guest.findFirst({ where: { id: guestId } })
 
       const membership =
@@ -279,21 +293,34 @@ export class PosService {
         })
       }
 
-      return {
-        guestId: visibleGuest.id,
-        membershipId: membership.id,
-        displayName: visibleGuest.displayName,
-        isNew: membership.visitsTotal === 0,
-        mode: visibleGuest.mode,
-        points: membership.pointsBalance,
-        visitsTotal: membership.visitsTotal,
-        avgCheck:
-          membership.visitsTotal > 0
-            ? Math.round(membership.spentTotal / membership.visitsTotal)
-            : null,
-        isControlGroup: membership.isControlGroup,
-      }
+      const { tier } = await this.rules.tierFor(tx, tenantId, config, membership)
+
+      return { guest: visibleGuest, membership, tier }
     })
+
+    const { guest, membership, tier } = found
+
+    // Приветственные баллы «при вступлении» — после транзакции: журнал пишет своей
+    // транзакцией и участия, созданного в чужой незавершённой, не увидел бы.
+    // Условие «визитов ещё нет» и один ключ на участие делают вызов безопасным
+    // на каждом сканировании.
+    const welcomed = await this.rules.grantWelcome(tenantId, membership, config, 'JOIN')
+
+    return {
+      guestId: guest.id,
+      membershipId: membership.id,
+      displayName: guest.displayName,
+      isNew: membership.visitsTotal === 0,
+      mode: guest.mode,
+      points: welcomed ?? membership.pointsBalance,
+      visitsTotal: membership.visitsTotal,
+      avgCheck:
+        membership.visitsTotal > 0
+          ? Math.round(membership.spentTotal / membership.visitsTotal)
+          : null,
+      isControlGroup: membership.isControlGroup,
+      tier: tierBadge(tier),
+    }
   }
 
   /**
@@ -343,7 +370,9 @@ export class PosService {
 
       // Потолок списания: доля чека из настроек, но не больше того, что есть.
       // Округление вниз: в пользу заведения, потому что баллы — обязательство.
-      const rateCap = Math.floor((input.amount * config.baseRedeemRate) / 100)
+      // Статус гостя заменяет базовые ставки — и в потолке оплаты баллами, и в начислении.
+      const { rates } = await this.rules.tierFor(tx, tenantId, config, membership)
+      const rateCap = Math.floor((input.amount * rates.redeemRate) / 100)
       const maxRedeemable = Math.max(0, Math.min(rateCap, membership.pointsBalance))
       const redeem = Math.min(input.redeemRequested, maxRedeemable)
       const amountToPay = input.amount - redeem
@@ -373,7 +402,7 @@ export class PosService {
         : // Начисляем от суммы, реально уплаченной деньгами: начислять на часть,
           // оплаченную баллами, значит платить проценты на собственный долг.
           // Кэшбэк акций — сверху, от той же суммы.
-          Math.floor((amountToPay * config.baseEarnRate) / 100) + outcome.earnDelta
+          Math.floor((amountToPay * rates.earnRate) / 100) + outcome.earnDelta
 
       const expiresAt = new Date(now.getTime() + PREVIEW_TTL_MINUTES * 60_000)
 
@@ -481,19 +510,24 @@ export class PosService {
 
     // Баланс мог измениться: гость потратил баллы в соседнем заведении сети,
     // пока кассир пробивал чек. Списывать по устаревшему расчёту нельзя.
-    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
-      const membership = await tx.membership.findFirst({
+    const current = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.membership.findFirst({
         where: { id: preview.membershipId, tenantId },
-        select: { pointsBalance: true },
-      })
-      return membership?.pointsBalance ?? null
-    })
+        select: { id: true, pointsBalance: true, visitsTotal: true, isControlGroup: true },
+      }),
+    )
 
-    if (balanceNow === null) {
+    if (current === null) {
       throw new NotFoundException({
         error: { code: 'NOT_FOUND', message: 'Участие не найдено' },
       })
     }
+
+    const balanceNow = current.pointsBalance
+
+    // Настройки — до первой записи в журнал: сбой их чтения посреди чека оставил бы
+    // списание без начисления.
+    const config = await this.loadConfig(tenantId)
 
     if (balanceNow !== preview.balanceAtPreview) {
       throw new BadRequestException({
@@ -543,6 +577,12 @@ export class PosService {
       transactionId = result.entry.id
     }
 
+    // Приветственные баллы за первую покупку — ДО начисления: снимок баланса в строке
+    // начисления тогда уже включает подарок, и повтор чека вернёт тот же баланс,
+    // что и первый ответ. Ключ подарка один на участие: «первый чек» после отмены
+    // первого подарка не повторит.
+    await this.rules.grantWelcome(tenantId, current, config, 'FIRST_PURCHASE')
+
     // Начисление пишется ВСЕГДА, даже нулевое. Ноль — это визит гостя из
     // контрольной группы: баллов не положено, но сам визит обязан попасть
     // в журнал, иначе группе не с чем сравнивать основную массу гостей —
@@ -579,6 +619,9 @@ export class PosService {
         data: { committedAt: new Date(), committedReceiptId: input.receiptId },
       })
     })
+
+    // Статус — после чека: следующий чек гость пробивает уже по новым ставкам.
+    await this.rules.refreshTier(tenantId, preview.membershipId, config)
 
     const grantsIssued = await this.issueCheckGrants(tenantId, preview, input.receiptId)
 

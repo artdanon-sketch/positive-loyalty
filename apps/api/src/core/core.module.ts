@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common'
 import { AuditService } from './audit.service'
 import { LedgerEventsService } from './ledger-events.service'
 import { LedgerService } from './ledger.service'
+import { MembershipRulesService } from './membership-rules.service'
 import { OfferGrantService } from './offer-grant.service'
 import { PrismaService } from './prisma.service'
 
@@ -31,7 +32,21 @@ import { PrismaService } from './prisma.service'
  */
 @Global()
 @Module({
-  providers: [PrismaService, LedgerService, LedgerEventsService, AuditService, OfferGrantService],
-  exports: [PrismaService, LedgerService, LedgerEventsService, AuditService, OfferGrantService],
+  providers: [
+    PrismaService,
+    LedgerService,
+    LedgerEventsService,
+    AuditService,
+    OfferGrantService,
+    MembershipRulesService,
+  ],
+  exports: [
+    PrismaService,
+    LedgerService,
+    LedgerEventsService,
+    AuditService,
+    OfferGrantService,
+    MembershipRulesService,
+  ],
 })
 export class CoreModule {}

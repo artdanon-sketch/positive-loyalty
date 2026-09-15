@@ -4,10 +4,13 @@ import type { PosWebhookAccepted } from '@positive/contracts'
 
 import { verifyWebhookSignature } from './webhook-signature'
 import { LedgerService } from '../core/ledger.service'
+import { MEMBERSHIP_RULES_SELECT, MembershipRulesService } from '../core/membership-rules.service'
+import type { MembershipSnapshot } from '../core/membership-rules.service'
 import { PrismaService } from '../core/prisma.service'
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
 import { parseProgramConfig } from '@positive/contracts'
+import type { ProgramConfig } from '@positive/contracts'
 
 /**
  * Приём вебхуков от POSitive POS. docs/02, раздел 4 · docs/01, раздел 3.2.
@@ -38,6 +41,7 @@ export class PosWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
+    private readonly rules: MembershipRulesService,
   ) {}
 
   /**
@@ -198,20 +202,27 @@ export class PosWebhookService {
       return this.applyVoid(envelope, tenantId)
     }
 
-    const membershipId = await this.resolveMembership(envelope, tenantId)
+    const membership = await this.resolveMembership(envelope, tenantId)
 
-    if (membershipId === null) {
+    if (membership === null) {
       // Чек без гостя. Это НЕ ошибка: событие нужно ради доли чеков
       // с программой — главной метрики проникновения (docs/02, раздел 4.1).
       return 'SKIPPED'
     }
 
     const config = await this.loadConfig(tenantId)
-    const amount = Math.floor((envelope.receipt.total * config.baseEarnRate) / 100)
+    // Чек из кассы POSitive считается по тем же ставкам статуса, что и чек в бэк-офисе.
+    const { rates } = await this.prisma.forTenant(tenantId, async (tx) =>
+      this.rules.tierFor(tx, tenantId, config, membership),
+    )
+    const amount = Math.floor((envelope.receipt.total * rates.earnRate) / 100)
+
+    // Приветственные баллы за первую покупку — до начисления, как и на кассе.
+    await this.rules.grantWelcome(tenantId, membership, config, 'FIRST_PURCHASE')
 
     await this.ledger.earn(
       {
-        membershipId,
+        membershipId: membership.id,
         amount,
         basisAmount: envelope.receipt.total,
         // Ключ — идентификатор чека кассы: повтор того же чека любым путём
@@ -233,6 +244,8 @@ export class PosWebhookService {
       },
       { tenantId },
     )
+
+    await this.rules.refreshTier(tenantId, membership.id, config)
 
     return 'PROCESSED'
   }
@@ -284,7 +297,7 @@ export class PosWebhookService {
   private async resolveMembership(
     envelope: PosWebhookEnvelope,
     tenantId: string,
-  ): Promise<string | null> {
+  ): Promise<MembershipSnapshot | null> {
     const token = envelope.receipt.loyalty?.guestToken
 
     if (token === undefined) {
@@ -297,14 +310,14 @@ export class PosWebhookService {
     const membership = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.membership.findFirst({
         where: { tenantId, guestId: claims.guestId },
-        select: { id: true },
+        select: MEMBERSHIP_RULES_SELECT,
       }),
     )
 
-    return membership?.id ?? null
+    return membership
   }
 
-  private async loadConfig(tenantId: string): Promise<{ baseEarnRate: number }> {
+  private async loadConfig(tenantId: string): Promise<ProgramConfig> {
     const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
     )

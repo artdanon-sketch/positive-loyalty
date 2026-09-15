@@ -232,6 +232,35 @@ export const RedeemInput = z
 export type RedeemInput = z.infer<typeof RedeemInput>
 
 /**
+ * Вход LedgerService.grant — баллы, которые гость получил не за покупку:
+ * приветственные, ко дню рождения, за рекомендацию.
+ *
+ * Отличие от earn — не в знаке, а в счётчиках: визит и оборот не двигаются.
+ * Приветственные баллы, записанные начислением, сделали бы из гостя, ни разу
+ * не покупавшего, «гостя с визитом» — и испортили бы и статусы, и сравнение
+ * с контрольной группой. Поэтому суммы чека во входе нет вовсе.
+ *
+ * Ноль запрещён: подарок в ноль баллов — пустая строка в журнале.
+ */
+export const GrantInput = z
+  .object({
+    membershipId: z.uuid(),
+    /** Сколько баллов подарить. Строго положительное целое. */
+    amount: z.number().int().positive().max(INT32_MAX),
+    idempotencyKey: IdempotencyKey,
+    /** Если не передана — берётся Tenant.currency. */
+    currency: CurrencyCode.optional(),
+    /** Акция, по которой подарено, если подарок породила акция. */
+    offerId: z.uuid().optional(),
+    ...refShape,
+    ...originShape,
+  })
+  .strict()
+  .refine(hasCompleteRef, refIssue)
+
+export type GrantInput = z.infer<typeof GrantInput>
+
+/**
  * Вход LedgerService.reverse — компенсация ранее проведённой операции.
  *
  * Суммы во входе нет намеренно. Компенсация равна исходной записи с обратным знаком,

@@ -79,6 +79,8 @@ export type AuditAction =
   | 'OFFER_CREATED'
   /** Акция запущена, поставлена на паузу или завершена. */
   | 'OFFER_STATUS_CHANGED'
+  /** Владелец назначил гостю статус вручную или вернул на лестницу — с причиной. */
+  | 'GUEST_TIER_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction
@@ -103,6 +105,7 @@ const REASON_REQUIRED: ReadonlySet<AuditAction> = new Set<AuditAction>([
   'IMPERSONATE_START',
   'BALANCE_ADJUSTED',
   'DATABASE_EXPORTED',
+  'GUEST_TIER_CHANGED',
 ])
 
 /** Причина не может быть пробелом ради галочки. */

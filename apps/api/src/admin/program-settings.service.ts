@@ -1,6 +1,6 @@
 import { InternalServerErrorException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { parseProgramConfig } from '@positive/contracts'
-import type { ProgramConfig, ProgramSettings } from '@positive/contracts'
+import type { ProgramConfig, ProgramSettings, TierSettings } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
@@ -48,6 +48,11 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
     maxManualAmount: config.cashierRules.maxManualAmount,
     allowManualEntry: config.cashierRules.allowManualEntry,
   },
+})
+
+const pickTiers = (config: ProgramConfig): TierSettings => ({
+  tiers: config.tiers,
+  welcomeBonus: config.welcomeBonus,
 })
 
 @Injectable()
@@ -111,6 +116,78 @@ export class ProgramSettingsService {
       })
 
       return { before: pick(current), after: pick(checked) }
+    })
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Статусы гостей и приветственные баллы. docs/02, раздел 5.6.1. */
+  async getTiers(): Promise<TierSettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickTiers(this.parse(tenantId, tenant.settings))
+  }
+
+  /**
+   * Заменить лестницу статусов и приветственные баллы — тем же подмешиванием,
+   * что и три настройки выше: остальные ключи не трогаются.
+   *
+   * Удалённый из лестницы статус у гостей руками не отбирается: касса вернёт их
+   * на лестницу со следующего чека (core/tiers.ts).
+   */
+  async updateTiers(input: TierSettings): Promise<TierSettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+
+      const merged: Record<string, unknown> = {
+        ...raw,
+        tiers: input.tiers,
+        welcomeBonus: input.welcomeBonus,
+      }
+
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickTiers(current), after: pickTiers(checked) }
     })
 
     await this.audit.write({
