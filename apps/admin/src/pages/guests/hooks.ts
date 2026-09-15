@@ -3,23 +3,29 @@ import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import type {
   AdminGuestCard,
   AdminGuestsList,
+  GuestExportInput,
   IssueGiftInput,
   IssueGiftResult,
+  TierSettings,
 } from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 import { useLocale } from '../../shared/i18n'
+import { filterParams } from './filters'
+import type { GuestFilters } from './filters'
 
 export const GUESTS_PAGE_SIZE = 20
 
 export function useGuestsPage(
   offset: number,
   search: string,
+  filters: GuestFilters,
 ): UseQueryResult<AdminGuestsList, Error> {
   const { authFetch } = useAuth()
+  const extra = filterParams(filters)
 
   return useQuery({
-    queryKey: ['admin', 'guests', search, offset],
+    queryKey: ['admin', 'guests', search, offset, extra],
     queryFn: () => {
       const params = new URLSearchParams({
         limit: String(GUESTS_PAGE_SIZE),
@@ -30,9 +36,48 @@ export function useGuestsPage(
         params.set('q', search)
       }
 
+      for (const [key, value] of extra) {
+        params.set(key, value)
+      }
+
       return authFetch<AdminGuestsList>(`/admin/guests?${params.toString()}`)
     },
     placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Лестница статусов для фильтра. Только владельцу: настройки программы его,
+ * и менеджер получил бы отказ — запрос у него не отправляется вовсе.
+ * Ключ кэша общий с экраном настроек.
+ */
+export function useTierOptions(enabled: boolean): UseQueryResult<TierSettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['admin', 'settings', 'tiers'],
+    queryFn: () => authFetch<TierSettings>('/admin/settings/program/tiers'),
+    enabled,
+  })
+}
+
+/**
+ * Выгрузка гостей. Ответ — текст CSV, а не JSON, поэтому через authStream:
+ * тот отдаёт ответ целиком, с тем же обновлением токена, что и authFetch.
+ */
+export function useExportGuests(): UseMutationResult<string, Error, GuestExportInput> {
+  const { authStream } = useAuth()
+
+  return useMutation({
+    mutationFn: async (input) => {
+      const response = await authStream('/admin/guests/export', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      return response.text()
+    },
   })
 }
 

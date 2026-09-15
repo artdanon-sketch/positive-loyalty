@@ -2917,3 +2917,40 @@ body {
   padding: 0 6px;
   font-weight: 700;
 }
+
+/* ── Гости: фильтры и выгрузка ─────────────────────────────────────────────── */
+
+.guest-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.guest-filters .field {
+  min-width: min(170px, 100%);
+}
+
+.guest-filters__toggle {
+  align-self: center;
+}
+
+.guests-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.guest-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.guest-export__form {
+  flex-basis: 100%;
+  margin-bottom: 0;
+}

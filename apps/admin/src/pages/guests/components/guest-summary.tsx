@@ -1,10 +1,10 @@
 import type { ReactElement } from 'react'
-import type { AdminGuestCard, GuestSource } from '@positive/contracts'
+import type { AdminGuestCard } from '@positive/contracts'
 
 import { fill } from '../../../shared/format/fill'
 import { formatBaht, formatDate, formatDateTime } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
-import type { TranslationKey } from '../../../shared/i18n'
+import { SOURCE_LABELS } from '../labels'
 
 /**
  * Шапка карточки: кто это для заведения и четыре цифры.
@@ -12,14 +12,6 @@ import type { TranslationKey } from '../../../shared/i18n'
  * Контрольная группа объясняется словами прямо здесь: иначе владелец увидит
  * у постоянного гостя ноль баллов и решит, что касса сломалась.
  */
-
-const SOURCE_LABELS: Readonly<Record<GuestSource, TranslationKey>> = {
-  ORGANIC: 'guestCard.source.organic',
-  CATALOG: 'guestCard.source.catalog',
-  REFERRAL: 'guestCard.source.referral',
-  STAFF: 'guestCard.source.staff',
-  IMPORT: 'guestCard.source.import',
-}
 
 export function GuestSummary({ card }: { card: AdminGuestCard }): ReactElement {
   const t = useT()
