@@ -210,7 +210,11 @@ model Membership {
   visitsTotal    Int               @default(0)
   spentTotal     Int               @default(0) // в минорных единицах (сатанги)
   source         AcquisitionSource @default(ORGANIC)
-  referredById   String? // Membership, приведший этого гостя; FK появится вместе с рефералкой
+  /// Участие, чья ссылка привела этого гостя, — в том же заведении. docs/11, У6.
+  referredById   String?
+  /// Код приглашения гостя в этом заведении. Появляется при первом открытии
+  /// «Пригласить друга»; уникален в пределах заведения.
+  referralCode   String?
   isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
   /// Статус назначен владельцем вручную: после чека не пересчитывается. docs/11, У3.
   tierManual     Boolean           @default(false)
@@ -223,14 +227,18 @@ model Membership {
   ledgerEntries LedgerEntry[]
   previews      TransactionPreview[]
   guestTags     GuestTag[]
+  referredBy    Membership?          @relation("MembershipReferrals", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  referrals     Membership[]         @relation("MembershipReferrals")
 
   @@unique([guestId, tenantId])
+  @@unique([tenantId, referralCode])
   // Под политику RLS на Guest: она делает EXISTS по участиям на каждую строку.
   // Индекс создан миграцией 20260826120000_tenant_isolation_rls; объявлен здесь,
   // иначе следующий diff посчитал бы его лишним и удалил — тихая деградация
   // в последовательный скан на каждом чтении гостя.
   @@index([guestId, tenantId])
   @@index([tenantId, lastVisitAt])
+  @@index([tenantId, referredById])
 }
 
 /// Журнал операций с баллами. Append-only: единственная разрешённая операция — INSERT.

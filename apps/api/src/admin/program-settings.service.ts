@@ -1,6 +1,11 @@
 import { InternalServerErrorException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { parseProgramConfig } from '@positive/contracts'
-import type { ProgramConfig, ProgramSettings, TierSettings } from '@positive/contracts'
+import type {
+  ProgramConfig,
+  ProgramSettings,
+  ReferralSettings,
+  TierSettings,
+} from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
@@ -54,6 +59,12 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
 const pickTiers = (config: ProgramConfig): TierSettings => ({
   tiers: config.tiers,
   welcomeBonus: config.welcomeBonus,
+})
+
+const pickReferral = (config: ProgramConfig): ReferralSettings => ({
+  enabled: config.referral.enabled,
+  reward: config.referral.reward,
+  limit: config.referral.limit,
 })
 
 @Injectable()
@@ -195,6 +206,72 @@ export class ProgramSettingsService {
     // Статусы гостей — сразу по новой лестнице: иначе список с фильтром по статусу
     // до следующего чека жил бы вчерашними порогами, а карточка — сегодняшними.
     await this.rules.refreshTenantTiers(tenantId, config)
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Приглашения друзей. docs/02, раздел 5.6.2. */
+  async getReferral(): Promise<ReferralSettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickReferral(this.parse(tenantId, tenant.settings))
+  }
+
+  /**
+   * Включить, выключить или поменять награду за друга — тем же подмешиванием:
+   * остальные ключи не трогаются. Касса применяет со следующего чека. Выданные
+   * награды не отзываются, а друзья, пришедшие по ссылкам, остаются «по приглашению».
+   */
+  async updateReferral(input: ReferralSettings): Promise<ReferralSettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+
+      const merged: Record<string, unknown> = { ...raw, referral: input }
+
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickReferral(current), after: pickReferral(checked) }
+    })
 
     await this.audit.write({
       action: 'PROGRAM_CONFIG_CHANGED',

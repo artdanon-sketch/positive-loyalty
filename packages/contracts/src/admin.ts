@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { AdminGuestReferral } from './referral.js'
 import { Tag } from './tag.js'
 
 import { LedgerSource, LedgerType } from './ledger.js'
@@ -286,6 +287,8 @@ export const AdminGuestCard = z
     note: z.string().nullable(),
     /** Теги заведения на госте, по названию. Гостю не показываются. */
     tags: z.array(Tag),
+    /** Приглашения: кто привёл гостя, скольких привёл он и за скольких получил баллы. */
+    referral: AdminGuestReferral,
     /** Новые сверху. */
     timeline: z.array(AdminTimelineItem),
     /** Сколько последних операций и подарков показывается. */

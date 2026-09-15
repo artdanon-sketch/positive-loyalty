@@ -513,7 +513,13 @@ export class PosService {
     const current = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.membership.findFirst({
         where: { id: preview.membershipId, tenantId },
-        select: { id: true, pointsBalance: true, visitsTotal: true, isControlGroup: true },
+        select: {
+          id: true,
+          pointsBalance: true,
+          visitsTotal: true,
+          isControlGroup: true,
+          referredById: true,
+        },
       }),
     )
 
@@ -583,6 +589,10 @@ export class PosService {
     // первого подарка не повторит.
     await this.rules.grantWelcome(tenantId, current, config, 'FIRST_PURCHASE')
 
+    // Награда пригласившему — за первую покупку друга и тем же порядком: до начисления,
+    // один ключ на участие друга (docs/05, раздел 6.2).
+    await this.rules.grantReferral(tenantId, current, config)
+
     // Начисление пишется ВСЕГДА, даже нулевое. Ноль — это визит гостя из
     // контрольной группы: баллов не положено, но сам визит обязан попасть
     // в журнал, иначе группе не с чем сравнивать основную массу гостей —
@@ -622,6 +632,8 @@ export class PosService {
 
     // Статус — после чека: следующий чек гость пробивает уже по новым ставкам.
     await this.rules.refreshTier(tenantId, preview.membershipId, config)
+    // Друг купил впервые — у пригласившего стало на одну рекомендацию больше.
+    await this.rules.refreshInviterTier(tenantId, current, config)
 
     const grantsIssued = await this.issueCheckGrants(tenantId, preview, input.receiptId)
 
