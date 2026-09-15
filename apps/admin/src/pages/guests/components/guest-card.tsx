@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 
+import { useAuth } from '../../../shared/auth/auth-context'
 import { useT } from '../../../shared/i18n'
 import { useGuestCard } from '../hooks'
 import { GiftForm } from './gift-form'
 import { GuestSummary } from './guest-summary'
+import { GuestTierForm } from './guest-tier-form'
 import { GuestTimeline } from './guest-timeline'
 
 /**
@@ -25,6 +27,7 @@ export function GuestCard({
 }): ReactElement {
   const t = useT()
   const card = useGuestCard(guestId)
+  const isOwner = useAuth().session?.subject.role === 'OWNER'
   const closeRef = useRef<HTMLButtonElement>(null)
   // Свежий обработчик без перезапуска эффекта: иначе каждая перерисовка
   // страницы заново отбирала бы фокус в пользу кнопки «Закрыть».
@@ -101,6 +104,7 @@ export function GuestCard({
         ) : (
           <>
             <GuestSummary card={card.data} />
+            {isOwner ? <GuestTierForm guestId={guestId} current={card.data.tier} /> : null}
             <GiftForm guestId={guestId} />
             <GuestTimeline card={card.data} />
           </>

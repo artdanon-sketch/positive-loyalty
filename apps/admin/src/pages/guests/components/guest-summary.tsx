@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import type { AdminGuestCard, GuestSource } from '@positive/contracts'
 
+import { fill } from '../../../shared/format/fill'
 import { formatBaht, formatDate, formatDateTime } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
@@ -29,6 +30,13 @@ export function GuestSummary({ card }: { card: AdminGuestCard }): ReactElement {
         <span className={`chip ${card.mode === 'TOURIST' ? 'chip--neutral' : 'chip--good'}`}>
           {t(card.mode === 'TOURIST' ? 'guests.mode.tourist' : 'guests.mode.resident')}
         </span>
+        {card.tier === null ? null : (
+          <span className="chip chip--good">
+            {card.tier.manual
+              ? fill(t('guestCard.tier.manual'), { name: card.tier.name })
+              : card.tier.name}
+          </span>
+        )}
         {card.isControlGroup ? (
           <span className="chip chip--muted">{t('guests.controlGroup')}</span>
         ) : null}

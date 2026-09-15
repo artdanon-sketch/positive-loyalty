@@ -2,14 +2,16 @@ import type { ReactElement } from 'react'
 
 import { useT } from '../../shared/i18n'
 import { SettingsForm } from './components/settings-form'
+import { TierSettingsSection } from './components/tier-settings'
 import { useProgramSettings } from './hooks'
 
 /**
  * Экран «Настройки программы»: сколько гость получает и как тратит баллы.
  *
  * ТОЛЬКО ТО, ЧТО КАССА УЖЕ СОБЛЮДАЕТ. В конфигурации программы описаны ещё
- * режим «скидка», срок жизни баллов, приветственные баллы и статусы — но касса
- * их не применяет. Переключатель, который ничего не делает, хуже отсутствующего:
+ * режим «скидка» и срок жизни баллов — но касса их не применяет. Статусы гостей
+ * и приветственные баллы касса соблюдает: они — отдельным блоком со своей
+ * кнопкой сохранения. Переключатель, который ничего не делает, хуже отсутствующего:
  * владелец включит «сгорание через год» и будет уверен, что баллы сгорают.
  * Эти настройки появятся на экране вместе со своими механиками.
  *
@@ -48,7 +50,10 @@ export function SettingsPage(): ReactElement {
           </button>
         </div>
       ) : (
-        <SettingsForm initial={settings.data} />
+        <>
+          <SettingsForm initial={settings.data} />
+          <TierSettingsSection />
+        </>
       )}
     </section>
   )

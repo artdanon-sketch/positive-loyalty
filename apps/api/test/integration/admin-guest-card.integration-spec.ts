@@ -416,3 +416,35 @@ describe('Карточка гостя', () => {
     await card(own.guestId, managerToken, '?locale=de').expect(400)
   })
 })
+
+describe('Статус гостя в карточке', () => {
+  it('СТАТУС — ТЕМ ЖЕ РАСЧЁТОМ, ЧТО У КАССЫ; РУЧНОЙ ПОМЕЧЕН', async () => {
+    const venue = await createMembershipFixture(prisma)
+    await prisma.tenant.update({
+      where: { id: venue.tenantId },
+      data: {
+        settings: {
+          tiers: [
+            { id: 'base', name: 'Гость', earnRate: 5, redeemRate: 20, conditions: [] },
+            { id: 'friends', name: 'Друзья', earnRate: 20, redeemRate: 100, hidden: true },
+          ],
+        },
+      },
+    })
+    const token = signAccessToken(
+      { tenantId: venue.tenantId, actorId: null, role: 'MANAGER' },
+      SECRET,
+    )
+    const tierOf = async (): Promise<unknown> =>
+      ((await card(venue.guestId, token).expect(200)).body as { tier: unknown }).tier
+
+    expect(await tierOf()).toEqual({ id: 'base', name: 'Гость', manual: false })
+
+    await prisma.membership.update({
+      where: { id: venue.membershipId },
+      data: { tierId: 'friends', tierManual: true },
+    })
+
+    expect(await tierOf()).toEqual({ id: 'friends', name: 'Друзья', manual: true })
+  })
+})
