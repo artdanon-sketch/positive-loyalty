@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { ReversalReason } from './ledger.js'
 import { AppliedOffer, IssuedGrant, SkippedOffer } from './offer-rules.js'
+import { TierBadge } from './tier.js'
 
 /**
  * Контракты кассы. docs/02_API_контракты.md, раздел 3.
@@ -89,6 +90,11 @@ export const PosGuest = z
      * Кассир обязан знать заранее, иначе объяснять придётся постфактум.
      */
     isControlGroup: z.boolean(),
+    /**
+     * Статус гостя и ставки, по которым считается этот чек. null — лестницы
+     * в заведении нет, чек считается по базовым ставкам.
+     */
+    tier: TierBadge.nullable(),
   })
   .strict()
 

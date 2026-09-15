@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import {
   EarnInput,
+  GrantInput,
   RedeemInput,
   ReverseInput,
   LedgerOperationResult,
@@ -572,6 +573,60 @@ export class LedgerService {
           },
         })
 
+        await tx.membership.update({
+          where: { id: membership.id },
+          data: { pointsBalance: balanceAfter },
+        })
+
+        return row
+      },
+    })
+  }
+
+  /**
+   * Подарок баллами — не за покупку: приветственные баллы и им подобные.
+   *
+   * Визит и оборот не двигаются: гость, получивший приветственные баллы, ещё
+   * ничего не купил. Начисление через earn сделало бы из него «гостя с визитом»
+   * и испортило бы и статусы, и сравнение с контрольной группой.
+   *
+   * Идемпотентность та же, что у остальных операций: ключ несёт смысл подарка
+   * (`welcome:{membershipId}`), и второй раз тот же подарок не запишется.
+   * Отменяется подарок обычной компенсацией — счётчиков она не тронет.
+   */
+  async grant(input: GrantInput, scope: TenantScope): Promise<LedgerOperationResult> {
+    const parsed = parseInput(GrantInput, input, 'grant')
+
+    return this.commit({
+      operation: 'grant',
+      idempotencyKey: parsed.idempotencyKey,
+      tenantId: scope.tenantId,
+      expectation: { type: 'GRANT', membershipId: parsed.membershipId, amount: parsed.amount },
+      write: async (tx) => {
+        const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
+        const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
+
+        const row = await tx.ledgerEntry.create({
+          data: {
+            tenantId: membership.tenantId,
+            guestId: membership.guestId,
+            membershipId: membership.id,
+            type: 'GRANT',
+            amount: parsed.amount,
+            balanceAfter,
+            basisAmount: null,
+            currency: parsed.currency ?? membership.tenant.currency,
+            refType: parsed.refType ?? null,
+            refId: parsed.refId ?? null,
+            idempotencyKey: parsed.idempotencyKey,
+            offerId: parsed.offerId ?? null,
+            saleKindId: null,
+            occurredAt: null,
+            ...originColumns(parsed),
+          },
+        })
+
+        // Только баланс: визит и оборот двигает покупка, а не подарок.
         await tx.membership.update({
           where: { id: membership.id },
           data: { pointsBalance: balanceAfter },

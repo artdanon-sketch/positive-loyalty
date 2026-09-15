@@ -211,6 +211,8 @@ model Membership {
   source         AcquisitionSource @default(ORGANIC)
   referredById   String? // Membership, приведший этого гостя; FK появится вместе с рефералкой
   isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
+  /// Статус назначен владельцем вручную: после чека не пересчитывается. docs/11, У3.
+  tierManual     Boolean           @default(false)
 
   guest         Guest                @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)

@@ -7,7 +7,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger'
-import { ProgramSettings } from '@positive/contracts'
+import { ProgramSettings, TierSettings } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -62,5 +62,47 @@ export class ProgramSettingsController {
     }
 
     return this.settings.update(parsed.data)
+  }
+
+  @Get('tiers')
+  @ApiOperation({
+    summary: 'Статусы гостей и приветственные баллы',
+    description: 'Лестница статусов снизу вверх и приветственные баллы. docs/02, раздел 5.6.1.',
+  })
+  @ApiOkResponse({ description: 'Текущие статусы и приветственные баллы' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async getTiers(): Promise<TierSettings> {
+    return this.settings.getTiers()
+  }
+
+  @Put('tiers')
+  @ApiOperation({
+    summary: 'Изменить статусы и приветственные баллы',
+    description:
+      'Заменяет лестницу и приветственные баллы целиком; остальные настройки не трогает. ' +
+      'Касса применяет со следующего чека.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({
+    description:
+      'Два статуса с одним id или названием, ставка вне диапазона, включённые приветственные баллы — ноль',
+  })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async updateTiers(@Body() body: unknown): Promise<TierSettings> {
+    const parsed = TierSettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректные статусы',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateTiers(parsed.data)
   }
 }
