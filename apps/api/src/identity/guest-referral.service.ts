@@ -7,9 +7,9 @@ import {
 import type { AcceptReferralResult, GuestReferral, ReferralConfig } from '@positive/contracts'
 import { ProgramConfig, REFERRAL_CODE_LENGTH } from '@positive/contracts'
 
-import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
 import { isUniqueViolation, randomCode } from '../core/random-code'
+import { currentGuestId } from './current-guest'
 
 /**
  * «Пригласить друга» в приложении гостя. docs/02, раздел 2.5 · docs/11, У6.
@@ -44,19 +44,8 @@ const referralOf = (settings: unknown): ReferralConfig | null => {
 export class GuestReferralService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private guestId(): string {
-    const guestId = TenantContext.getOrThrow().guestId
-    if (guestId === null) {
-      // Недостижимо за GuestGuard; страховка от вызова мимо него.
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Гость не найден' },
-      })
-    }
-    return guestId
-  }
-
   async referral(tenantId: string): Promise<GuestReferral> {
-    const guestId = this.guestId()
+    const guestId = currentGuestId()
 
     const own = await this.prisma.forGuest(guestId, async (tx) =>
       tx.membership.findFirst({
@@ -113,7 +102,7 @@ export class GuestReferralService {
    * второе вступление упирается в «участие уже есть».
    */
   async accept(tenantId: string, code: string): Promise<AcceptReferralResult> {
-    const guestId = this.guestId()
+    const guestId = currentGuestId()
 
     try {
       return await this.join(tenantId, guestId, code)

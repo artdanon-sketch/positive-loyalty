@@ -147,6 +147,7 @@ model Tenant {
   offers                 Offer[]
   offerGrants            OfferGrant[]
   tags                   Tag[]
+  acquisitionChannels    AcquisitionChannel[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -215,6 +216,10 @@ model Membership {
   /// Код приглашения гостя в этом заведении. Появляется при первом открытии
   /// «Пригласить друга»; уникален в пределах заведения.
   referralCode   String?
+  /// Источник, по ссылке которого гость вступил. Первое касание: потом не меняется. docs/11, У7.
+  channelId      String?
+  /// Когда гость стал гостем заведения. У строк, заведённых до миграции, — момент миграции.
+  createdAt      DateTime          @default(now())
   isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
   /// Статус назначен владельцем вручную: после чека не пересчитывается. docs/11, У3.
   tierManual     Boolean           @default(false)
@@ -229,6 +234,7 @@ model Membership {
   guestTags     GuestTag[]
   referredBy    Membership?          @relation("MembershipReferrals", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   referrals     Membership[]         @relation("MembershipReferrals")
+  channel       AcquisitionChannel?  @relation(fields: [channelId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([guestId, tenantId])
   @@unique([tenantId, referralCode])
@@ -239,6 +245,7 @@ model Membership {
   @@index([guestId, tenantId])
   @@index([tenantId, lastVisitAt])
   @@index([tenantId, referredById])
+  @@index([tenantId, channelId])
 }
 
 /// Журнал операций с баллами. Append-only: единственная разрешённая операция — INSERT.
@@ -1504,4 +1511,25 @@ model GuestTag {
 
   @@id([membershipId, tagId])
   @@index([tenantId, tagId])
+}
+
+/// Источник трафика: именованная ссылка со своим кодом — табличка на столе, Instagram.
+/// docs/11, У7 · docs/02, раздел 5.9.
+///
+/// Не удаляется, а выключается: на него ссылаются гости, пришедшие по нему, и отчёт
+/// за прошлый месяц не должен терять строку.
+model AcquisitionChannel {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  /// Код ссылки: восемь знаков без 0, O, 1, I и L. Выдаёт сервер.
+  code      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  memberships Membership[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
 }

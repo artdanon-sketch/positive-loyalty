@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { HUMAN_CODE_LENGTH, HumanCode } from './code.js'
+
 /**
  * Приглашения друзей — реферальная программа первого уровня.
  * docs/02, разделы 2.5 и 5.6.2 · docs/11, У6 · docs/05, раздел 6.2.
@@ -18,17 +20,13 @@ export const REFERRAL_REWARD_MAX = 1_000_000
 export const REFERRAL_LIMIT_MAX = 100
 
 /** Восемь знаков: код диктуют и набирают руками, а перебирать его бессмысленно. */
-export const REFERRAL_CODE_LENGTH = 8
+export const REFERRAL_CODE_LENGTH = HUMAN_CODE_LENGTH
 
 /**
  * Код приглашения. Алфавит без 0, O, 1, I и L — тот же, что у промокодов.
  * Регистр не важен: «7kq2mx4p», набранный с телефона, — тот же код.
  */
-export const ReferralCode = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[2-9A-HJKMNP-Z]{8}$/, 'Код приглашения — восемь букв и цифр')
+export const ReferralCode = HumanCode
 
 /** Настройки приглашений, как их сохраняет владелец. */
 export const ReferralSettings = z

@@ -4,6 +4,8 @@ import { CoreModule } from '../core/core.module'
 
 import { GuestAuthController } from './guest-auth.controller'
 import { GuestAuthService } from './guest-auth.service'
+import { GuestJoinController } from './guest-join.controller'
+import { GuestJoinService } from './guest-join.service'
 import { GuestReferralController } from './guest-referral.controller'
 import { GuestReferralService } from './guest-referral.service'
 import { GuestController } from './guest.controller'
@@ -22,11 +24,13 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestSocialController,
     GuestController,
     GuestReferralController,
+    GuestJoinController,
   ],
   providers: [
     GuestAuthService,
     GuestService,
     GuestReferralService,
+    GuestJoinService,
     GuestGuard,
     TelegramBotService,
     TelegramLoginService,

@@ -4,6 +4,9 @@ import { CoreModule } from '../core/core.module'
 
 import { AdminController } from './admin.controller'
 import { AdminService } from './admin.service'
+import { ChannelReportService } from './channel-report.service'
+import { ChannelsController } from './channels.controller'
+import { ChannelsService } from './channels.service'
 import { DashboardService } from './dashboard.service'
 import { ProgramSettingsController } from './program-settings.controller'
 import { ProgramSettingsService } from './program-settings.service'
@@ -26,6 +29,7 @@ import { StuckReceiptsController } from './stuck-receipts.controller'
 import { StuckReceiptsService } from './stuck-receipts.service'
 import { OffersController } from './offers.controller'
 import { OffersService } from './offers.service'
+import { ReportsController } from './reports.controller'
 import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
@@ -44,6 +48,8 @@ import { StaffService } from './staff.service'
     GuestTagsController,
     StuckReceiptsController,
     OffersController,
+    ChannelsController,
+    ReportsController,
   ],
   providers: [
     AdminService,
@@ -59,6 +65,8 @@ import { StaffService } from './staff.service'
     GuestTagsService,
     StuckReceiptsService,
     OffersService,
+    ChannelsService,
+    ChannelReportService,
   ],
 })
 export class AdminModule {}
