@@ -33,6 +33,11 @@ export function GuestSummary({ card }: { card: AdminGuestCard }): ReactElement {
           <span className="chip chip--muted">{t('guests.controlGroup')}</span>
         ) : null}
         <span className="chip chip--muted">{t(SOURCE_LABELS[card.source])}</span>
+        {card.channel === null ? null : (
+          <span className="chip chip--neutral">
+            {fill(t('guestCard.channel'), { name: card.channel.name })}
+          </span>
+        )}
       </div>
 
       <dl className="guest-card__facts">

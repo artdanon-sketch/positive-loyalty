@@ -2343,6 +2343,57 @@ body {
   gap: var(--sp-4);
 }
 
+/* ── Источники трафика в настройках ─────────────────────────────────────────── */
+
+.channel-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.channel-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.channel-list__item--off {
+  opacity: 0.7;
+}
+
+.channel-list__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.channel-list__head .button {
+  margin-left: auto;
+}
+
+.channel-list__link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-list__link .field__input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* Строка «без источника» — итоговая, не обычный источник. */
+.report-row--rest td {
+  color: var(--tx-2);
+  border-top: 1px solid var(--line-2);
+}
+
 /* ── Погашение промокода на кассе ───────────────────────────────────────────── */
 
 .pos__redeem {

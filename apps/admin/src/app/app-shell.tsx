@@ -45,6 +45,8 @@ interface NavItem {
 const NAV_GROUPS: ReadonlyArray<readonly NavItem[]> = [
   [
     { to: '/', label: 'nav.overview', icon: 'overview', end: true },
+    // Отчёты — сразу под обзором: у владельца их спрашивают чаще всего (docs/11, раздел 2).
+    { to: '/reports', label: 'nav.reports', icon: 'reports' },
     { to: '/operations', label: 'nav.operations', icon: 'operations' },
     { to: '/guests', label: 'nav.guests', icon: 'guests' },
     { to: '/offers', label: 'nav.offers', icon: 'offers' },

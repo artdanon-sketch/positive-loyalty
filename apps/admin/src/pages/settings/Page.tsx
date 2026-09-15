@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { useT } from '../../shared/i18n'
+import { ChannelSettingsSection } from './components/channel-settings'
 import { ReferralSettingsSection } from './components/referral-settings'
 import { SettingsForm } from './components/settings-form'
 import { TagSettingsSection } from './components/tag-settings'
@@ -57,6 +58,7 @@ export function SettingsPage(): ReactElement {
           <TierSettingsSection />
           <ReferralSettingsSection />
           <TagSettingsSection />
+          <ChannelSettingsSection />
         </>
       )}
     </section>
