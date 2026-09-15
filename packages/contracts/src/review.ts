@@ -114,7 +114,9 @@ export const AdminReview = z
     createdAt: z.iso.datetime(),
     guest: z
       .object({
-        /** Участие — чтобы открыть карточку гостя. */
+        /** Гость — чтобы открыть его карточку. */
+        guestId: z.uuid(),
+        /** Участие гостя в этом заведении. */
         membershipId: z.uuid(),
         displayName: z.string().nullable(),
         /** Целиком у владельца, маскированный у менеджера — как в списке гостей. */

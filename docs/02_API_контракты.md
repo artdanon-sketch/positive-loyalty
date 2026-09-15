@@ -2235,7 +2235,7 @@ POST /v1/admin/reviews/{id}/reply   { "text": "Спасибо, что напис
                "comment": "Ждали заказ сорок минут", "reply": "Нам очень жаль…",
                "repliedAt": "2026-09-15T13:02:11.000Z", "autoReply": true,
                "createdAt": "2026-09-15T13:02:11.000Z",
-               "guest": { "membershipId": "9f3a…", "displayName": "Анна", "phone": "+66 •• •• 4821" },
+               "guest": { "guestId": "5d2e…", "membershipId": "9f3a…", "displayName": "Анна", "phone": "+66 •• •• 4821" },
                "staff": { "id": "2222…", "displayName": "Сомчай" }, "amount": 45000 } ]
 }
 ```

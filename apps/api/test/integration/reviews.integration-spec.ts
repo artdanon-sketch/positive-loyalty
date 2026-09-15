@@ -87,7 +87,7 @@ interface AdminListBody {
   total: number
   items: Array<
     ReviewBody & {
-      guest: { membershipId: string }
+      guest: { guestId: string; membershipId: string }
       staff: { id: string; displayName: string } | null
       amount: number | null
     }
@@ -297,7 +297,7 @@ describe('Отзывы: бэк-офис', () => {
     expect(body.items[0]).toMatchObject({
       id: reviewId,
       autoReply: true,
-      guest: { membershipId: venue.membershipId },
+      guest: { guestId: venue.guestId, membershipId: venue.membershipId },
       staff: { id: cashierId, displayName: 'Сомчай' },
       amount: 45_000,
     })

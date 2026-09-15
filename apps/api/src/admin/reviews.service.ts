@@ -34,6 +34,7 @@ type Tx = Prisma.TransactionClient
 
 const REVIEW_SELECT = {
   id: true,
+  guestId: true,
   staffId: true,
   rating: true,
   tags: true,
@@ -65,6 +66,7 @@ const toAdminReview = (
     autoReply: row.autoReply,
     createdAt: row.createdAt.toISOString(),
     guest: {
+      guestId: row.guestId,
       membershipId: row.ledgerEntry.membershipId,
       displayName: row.guest.displayName,
       phone: showFullPhone ? row.guest.phoneE164 : maskPhone(row.guest.phoneE164),
