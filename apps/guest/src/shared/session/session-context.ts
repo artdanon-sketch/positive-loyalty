@@ -44,6 +44,12 @@ export interface SessionContextValue {
   readonly signOut: () => void
   /** Запрос от имени гостя: подставляет токен, на 401 обновляет сессию и повторяет. */
   readonly authGet: <T>(path: string, schema: import('zod').ZodType<T>) => Promise<T>
+  /** То же для записи: тело уходит JSON, ответ разбирается схемой. */
+  readonly authPost: <T>(
+    path: string,
+    body: unknown,
+    schema: import('zod').ZodType<T>,
+  ) => Promise<T>
 }
 
 export const SessionContext = createContext<SessionContextValue | null>(null)

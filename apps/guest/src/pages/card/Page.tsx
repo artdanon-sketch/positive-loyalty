@@ -7,7 +7,9 @@ import { ThemeToggle } from '../../shared/theme/theme-toggle'
 import { CardEmpty } from './components/card-empty'
 import { CardError } from './components/card-error'
 import { CardLoading } from './components/card-loading'
+import { InviteClaim } from './components/invite-claim'
 import { QrCode } from './components/qr-code'
+import { VenueInvite } from './components/venue-invite'
 import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
 import { useQrToken, useWallet } from './hooks'
@@ -18,6 +20,9 @@ import { useQrToken, useWallet } from './hooks'
  * Порядок блоков — от того, зачем экран открыли: сначала код для кассы,
  * потом баллы, потом список заведений. Гость открывает карту стоя у стойки,
  * и код должен быть под большим пальцем, а не под скроллом.
+ *
+ * Ответ на приглашение друга — над всем: гость пришёл по ссылке и ждёт
+ * подтверждения, что ссылка сработала.
  */
 export function Page(): ReactElement {
   const t = useT()
@@ -39,6 +44,8 @@ export function Page(): ReactElement {
           </button>
         </div>
       </header>
+
+      <InviteClaim />
 
       {wallet.isPending ? (
         <CardLoading />
@@ -108,6 +115,7 @@ export function Page(): ReactElement {
                         <span className="venue__badge">{t('card.venues.control')}</span>
                       ) : null}
                     </div>
+                    <VenueInvite membership={membership} />
                   </li>
                 ))}
               </ul>

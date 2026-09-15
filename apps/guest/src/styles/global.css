@@ -396,6 +396,125 @@ output {
   padding: 2px 8px;
 }
 
+/* ── «Пригласить друга» ─────────────────────────────────────────────────────
+   Кнопка и панель — во всю ширину карточки заведения, под названием и баллами. */
+
+.venue {
+  flex-wrap: wrap;
+}
+
+.venue__inviteOpen,
+.venue__invite {
+  flex-basis: 100%;
+}
+
+.venue__inviteOpen,
+.venue__inviteLink {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mint);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.venue__invite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.venue__inviteHint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--tx-2);
+}
+
+.venue__inviteHint--error {
+  color: var(--bad);
+}
+
+.venue__inviteLabel {
+  font-size: 11px;
+  color: var(--tx-3);
+}
+
+.venue__inviteUrl {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surf-2);
+  color: var(--tx);
+  font: inherit;
+  font-size: 13px;
+}
+
+.venue__inviteCode {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.venue__inviteActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.venue__inviteShare {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Ответ на приглашение — строкой над картой. */
+.invite-claim {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--mint) 30%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mint) 12%, var(--surf));
+}
+
+.invite-claim--error {
+  border-color: color-mix(in srgb, var(--bad) 30%, var(--line));
+  background: color-mix(in srgb, var(--bad) 10%, var(--surf));
+}
+
+.invite-claim__text {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.invite-claim__dismiss {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tx);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .voucher-list {
   list-style: none;
   margin: 0;

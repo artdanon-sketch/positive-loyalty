@@ -82,10 +82,11 @@ export class GuestService {
 
     const memberships = rows.map((row) => {
       // Статус — тем же расчётом, что у кассы. Рекомендации гостю не посчитать:
-      // чужие участия гостевой контур не отдаёт, — поэтому ноль. Условие по
-      // рекомендациям на карте и не показывается: программы ещё нет (docs/11, У6).
+      // чужие участия гостевой контур не отдаёт, — поэтому ноль, и условие
+      // по рекомендациям на карте не показывается.
       const program = ProgramConfig.safeParse(row.tenant.settings ?? {})
       const tiers = program.success ? program.data.tiers : []
+      const referral = program.success ? program.data.referral : null
       const facts = {
         tierId: row.tierId,
         tierManual: row.tierManual,
@@ -103,6 +104,11 @@ export class GuestService {
         visitsTotal: row.visitsTotal,
         lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
         isControlGroup: row.isControlGroup,
+        // Тем же правилом, что GET …/referral: группе сравнения баллов не положено.
+        inviteReward:
+          referral !== null && referral.enabled && referral.reward > 0 && !row.isControlGroup
+            ? referral.reward
+            : null,
         tier: tier === null ? null : { name: tier.name },
         nextTier:
           progress === null

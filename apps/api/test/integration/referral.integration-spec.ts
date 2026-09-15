@@ -154,7 +154,25 @@ afterAll(async () => {
   await app.close()
 })
 
+const walletReward = async (
+  guestId: string,
+  tenantId: string,
+): Promise<number | null | undefined> => {
+  const wallet = await request(server())
+    .get('/v1/guest/wallet')
+    .set('Authorization', `Bearer ${guestToken(guestId)}`)
+  const body = wallet.body as {
+    memberships: Array<{ tenantId: string; inviteReward: number | null }>
+  }
+
+  return body.memberships.find((membership) => membership.tenantId === tenantId)?.inviteReward
+}
+
 describe('Пригласить друга: код', () => {
+  it('В КОШЕЛЬКЕ ВИДНО, СКОЛЬКО БАЛЛОВ ДАДУТ ЗА ДРУГА', async () => {
+    expect(await walletReward(inviter.guestId, inviter.tenantId)).toBe(REWARD)
+  })
+
   it('ГОСТЬ ПОЛУЧАЕТ СВОЙ КОД, И ОТ ОТКРЫТИЯ К ОТКРЫТИЮ ОН НЕ МЕНЯЕТСЯ', async () => {
     const first = await getReferral(inviter.tenantId, inviter.guestId)
 
@@ -237,6 +255,8 @@ describe('Пригласить друга: вступление', () => {
 
       const body = (await getReferral(inviter.tenantId, inviter.guestId)).body as ReferralBody
       expect(body).toMatchObject({ enabled: false, code: null, invited: 1 })
+      // И кнопки «Пригласить друга» в кошельке больше нет.
+      expect(await walletReward(inviter.guestId, inviter.tenantId)).toBeNull()
     } finally {
       await writeSettings(inviter.tenantId, REFERRAL_ON)
     }
