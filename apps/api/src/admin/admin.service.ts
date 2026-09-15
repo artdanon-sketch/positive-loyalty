@@ -269,7 +269,10 @@ export class AdminService {
     const data = await this.prisma.forTenant(tenantId, async (tx) => {
       const membership = await tx.membership.findFirst({
         where: { guestId, tenantId },
-        include: { guest: { select: { displayName: true, phoneE164: true, mode: true } } },
+        include: {
+          guest: { select: { displayName: true, phoneE164: true, mode: true } },
+          channel: { select: { id: true, name: true } },
+        },
       })
 
       if (membership === null) {
@@ -460,6 +463,7 @@ export class AdminService {
       note: membership.note,
       tags,
       referral,
+      channel: membership.channel,
       averageCheck:
         membership.visitsTotal > 0
           ? Math.floor(membership.spentTotal / membership.visitsTotal)

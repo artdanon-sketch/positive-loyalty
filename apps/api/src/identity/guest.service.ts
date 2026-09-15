@@ -5,9 +5,9 @@ import { offerHowTo, offerTitle, ProgramConfig } from '@positive/contracts'
 import { getEnv } from '../common/config/env'
 import { maskPhone } from '../common/pii/mask-phone'
 import { signGuestQrToken } from '../common/tenant/access-token'
-import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
 import { resolveTier, tierProgress } from '../core/tiers'
+import { currentGuestId } from './current-guest'
 
 /** Токен на кассу живёт пять минут: экран открыт у стойки, а не хранится. */
 const QR_TTL_SECONDS = 300
@@ -31,19 +31,8 @@ const daysUntil = (expiresAt: Date, now: Date): number =>
 export class GuestService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private guestId(): string {
-    const guestId = TenantContext.getOrThrow().guestId
-    if (guestId === null) {
-      // Недостижимо за GuestGuard; страховка от вызова мимо него.
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Гость не найден' },
-      })
-    }
-    return guestId
-  }
-
   async me(): Promise<GuestMe> {
-    const guestId = this.guestId()
+    const guestId = currentGuestId()
 
     const guest = await this.prisma.forGuest(guestId, async (tx) =>
       tx.guest.findFirst({ where: { id: guestId } }),
@@ -70,7 +59,7 @@ export class GuestService {
    * Никакого перебора тенантов в коде: изоляцию держит база.
    */
   async wallet(): Promise<GuestWallet> {
-    const guestId = this.guestId()
+    const guestId = currentGuestId()
 
     const rows = await this.prisma.forGuest(guestId, async (tx) =>
       tx.membership.findMany({
@@ -186,7 +175,7 @@ export class GuestService {
   // Не async: подпись токена синхронная, а пустой async обещает ожидание,
   // которого нет. Promise в сигнатуре контроллера это не ломает.
   qrToken(): GuestQrToken {
-    const guestId = this.guestId()
+    const guestId = currentGuestId()
 
     return {
       token: signGuestQrToken({ guestId }, getEnv().accessTokenSecret, QR_TTL_SECONDS),

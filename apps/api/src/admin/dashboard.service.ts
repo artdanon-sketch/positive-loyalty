@@ -53,7 +53,7 @@ import { stuckReceiptsWhere } from './stuck-receipts.service'
  */
 
 /** Длина периода в днях. Ключи — значения `DashboardPeriod`. */
-const PERIOD_DAYS: Record<DashboardPeriod, number> = { '7d': 7, '30d': 30, '90d': 90 }
+export const PERIOD_DAYS: Record<DashboardPeriod, number> = { '7d': 7, '30d': 30, '90d': 90 }
 
 /** Гость считается спящим, если не заходил больше месяца (docs/03, раздел 2). */
 const SLEEPING_AFTER_DAYS = 30
@@ -113,7 +113,7 @@ const QUIET_HOURS_MIN_RUN = 3
  * молча превращался в ноль — «данных пока мало» горело на заведении
  * с трёхмесячной историей.
  */
-const toNumber = (value: unknown): number => {
+export const toNumber = (value: unknown): number => {
   if (typeof value === 'number') {
     return value
   }

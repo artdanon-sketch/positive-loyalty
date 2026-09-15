@@ -289,6 +289,8 @@ export const AdminGuestCard = z
     tags: z.array(Tag),
     /** Приглашения: кто привёл гостя, скольких привёл он и за скольких получил баллы. */
     referral: AdminGuestReferral,
+    /** Источник, по ссылке которого гость вступил (docs/11, У7). null — не по ссылке источника. */
+    channel: z.object({ id: z.uuid(), name: z.string() }).strict().nullable(),
     /** Новые сверху. */
     timeline: z.array(AdminTimelineItem),
     /** Сколько последних операций и подарков показывается. */
