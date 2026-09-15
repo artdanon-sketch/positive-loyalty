@@ -2281,3 +2281,68 @@ describe('Касса: акции в чеке', () => {
     expect(screen.queryByRole('list', { name: t('pos.offers.skipped') })).toBeNull()
   })
 })
+
+describe('Каркас: левое меню', () => {
+  it('ЛЕВОЕ МЕНЮ ВЛАДЕЛЬЦА: ВСЕ РАЗДЕЛЫ, ТЕКУЩИЙ ОТМЕЧЕН', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const nav = await screen.findByRole('navigation', { name: t('nav.label') })
+    const sections = [
+      'nav.overview',
+      'nav.operations',
+      'nav.guests',
+      'nav.offers',
+      'nav.partners',
+      'nav.team',
+      'nav.pos',
+      'nav.saleKinds',
+      'nav.settings',
+    ] as const
+
+    for (const section of sections) {
+      expect(within(nav).getByRole('link', { name: t(section) })).toBeInTheDocument()
+    }
+
+    expect(within(nav).getByRole('link', { name: t('nav.overview') })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  it('на телефоне меню выдвигается кнопкой и закрывается после перехода', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const toggle = await screen.findByRole('button', { name: t('nav.menu') })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(screen.getByRole('link', { name: t('nav.guests') }))
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    })
+  })
+
+  it('У КАССИРА БОКОВОГО МЕНЮ НЕТ — ТОЛЬКО КАССА', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(CASHIER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+
+    const nav = await screen.findByRole('navigation', { name: t('nav.label') })
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual([t('nav.pos')])
+    expect(screen.queryByRole('button', { name: t('nav.menu') })).toBeNull()
+  })
+})
