@@ -30,6 +30,7 @@ import { StuckReceiptsService } from './stuck-receipts.service'
 import { OffersController } from './offers.controller'
 import { OffersService } from './offers.service'
 import { ReportsController } from './reports.controller'
+import { ReportsService } from './reports.service'
 import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
@@ -67,6 +68,7 @@ import { StaffService } from './staff.service'
     OffersService,
     ChannelsService,
     ChannelReportService,
+    ReportsService,
   ],
 })
 export class AdminModule {}
