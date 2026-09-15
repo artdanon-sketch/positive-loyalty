@@ -1212,6 +1212,9 @@ const GUEST_ROWS = {
       spentTotal: 603_500,
       lastVisitAt: '2026-09-05T13:10:00.000Z',
       isControlGroup: false,
+      source: 'ORGANIC',
+      firstVisitAt: '2026-08-20T12:00:00.000Z',
+      tier: { id: 'gold', name: 'Золото' },
     },
   ],
   total: 1,
@@ -2716,5 +2719,97 @@ describe('Статус в карточке гостя', () => {
 
     expect(within(dialog).getByText('Золото')).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: t('tierForm.open') })).toBeNull()
+  })
+})
+
+describe('Гости: фильтры и выгрузка', () => {
+  const openGuests = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.guests') }))
+    await screen.findByRole('button', { name: 'Анна Ковалёва' })
+  }
+
+  it('ФИЛЬТРЫ УХОДЯТ НА СЕРВЕР И ЖИВУТ В АДРЕСЕ; СТАТУС ГОСТЯ — В ТАБЛИЦЕ', async () => {
+    const fetchMock = stubApi({ '/v1/admin/guests': () => json(GUEST_ROWS) })
+    render(<App />)
+
+    await openGuests()
+
+    expect(screen.getByRole('cell', { name: 'Золото' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('guests.filter.mode')), {
+      target: { value: 'RESIDENT' },
+    })
+    fireEvent.change(screen.getByLabelText(t('guests.filter.sleeping')), {
+      target: { value: '30' },
+    })
+
+    await waitFor(() => {
+      expect(requested(fetchMock, 'mode=RESIDENT&sleeping=30')).toBe(true)
+    })
+    expect(window.location.search).toContain('mode=RESIDENT')
+
+    // Статус и выгрузка — у владельца: менеджер фильтрует по остальному.
+    expect(screen.queryByLabelText(t('guests.filter.tier'))).toBeNull()
+    expect(screen.queryByRole('button', { name: t('guests.export.open') })).toBeNull()
+  })
+
+  it('ВЛАДЕЛЕЦ ВЫГРУЖАЕТ ТО, ЧТО НА ЭКРАНЕ, — ТОЛЬКО С ПРИЧИНОЙ; ФАЙЛ СОХРАНЯЕТСЯ', async () => {
+    const csv = `${String.fromCharCode(0xfeff)}Имя,Телефон\r\nАнна Ковалёва,'+66 •• •• 4821\r\n`
+    const created = vi.fn(() => 'blob:guests')
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: created,
+      configurable: true,
+      writable: true,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      value: vi.fn(),
+      configurable: true,
+      writable: true,
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/guests/export': () =>
+        new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } }),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await openGuests()
+
+    fireEvent.change(await screen.findByLabelText(t('guests.filter.tier')), {
+      target: { value: 'gold' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('guests.export.open') }))
+
+    const submit = screen.getByRole('button', { name: t('guests.export.submit') })
+    expect(submit).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(t('guests.export.reason')), {
+      target: { value: 'Рассылка гостям со статусом' },
+    })
+    fireEvent.click(submit)
+
+    await waitFor(() => {
+      expect(click).toHaveBeenCalled()
+    })
+
+    const post = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        requestOf(input as RequestInfo | URL).includes('/v1/admin/guests/export') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+      reason: 'Рассылка гостям со статусом',
+      filters: { tier: 'gold' },
+      locale: 'ru',
+    })
+    expect(created).toHaveBeenCalled()
+    expect(await screen.findByText(fill(t('guests.export.done'), { n: 1 }))).toBeInTheDocument()
+
+    click.mockRestore()
   })
 })
