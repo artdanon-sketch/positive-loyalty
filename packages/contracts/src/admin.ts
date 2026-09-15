@@ -278,6 +278,8 @@ export const AdminGuestCard = z
     spentTotal: z.number().int().nonnegative(),
     /** Сатанги. null — визитов не было, делить не на что. */
     averageCheck: z.number().int().nonnegative().nullable(),
+    /** Заметка заведения о госте. null — заметки нет. Гостю не показывается. */
+    note: z.string().nullable(),
     /** Новые сверху. */
     timeline: z.array(AdminTimelineItem),
     /** Сколько последних операций и подарков показывается. */

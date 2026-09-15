@@ -426,6 +426,7 @@ export class AdminService {
       pointsBalance: membership.pointsBalance,
       visitsTotal: membership.visitsTotal,
       spentTotal: membership.spentTotal,
+      note: membership.note,
       averageCheck:
         membership.visitsTotal > 0
           ? Math.floor(membership.spentTotal / membership.visitsTotal)

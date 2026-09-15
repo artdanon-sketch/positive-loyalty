@@ -261,6 +261,35 @@ export const GrantInput = z
 export type GrantInput = z.infer<typeof GrantInput>
 
 /**
+ * Вход LedgerService.adjust — ручная правка баланса владельцем.
+ *
+ * Сумма СО ЗНАКОМ: правка бывает в обе стороны, и два метода «начислить вручную»
+ * и «списать вручную» однажды разошлись бы в проверках. Ноль запрещён — правка
+ * на ноль ничего не меняет. Суммы чека нет: правка — не покупка, визит и оборот
+ * она не двигает.
+ *
+ * Причины во входе нет: у журнала нет такой колонки. Она обязательна в аудите
+ * BALANCE_ADJUSTED, который пишет вызывающий.
+ */
+export const AdjustInput = z
+  .object({
+    membershipId: z.uuid(),
+    amount: z
+      .number()
+      .int()
+      .min(-INT32_MAX)
+      .max(INT32_MAX)
+      .refine((value) => value !== 0, 'Правка на ноль ничего не меняет'),
+    idempotencyKey: IdempotencyKey,
+    /** Если не передана — берётся Tenant.currency. */
+    currency: CurrencyCode.optional(),
+    ...originShape,
+  })
+  .strict()
+
+export type AdjustInput = z.infer<typeof AdjustInput>
+
+/**
  * Вход LedgerService.reverse — компенсация ранее проведённой операции.
  *
  * Суммы во входе нет намеренно. Компенсация равна исходной записи с обратным знаком,

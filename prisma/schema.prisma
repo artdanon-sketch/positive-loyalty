@@ -213,6 +213,9 @@ model Membership {
   isControlGroup Boolean           @default(false) // 5% без начислений — доказательство ROI
   /// Статус назначен владельцем вручную: после чека не пересчитывается. docs/11, У3.
   tierManual     Boolean           @default(false)
+  /// Заметка заведения о госте: аллергии, предпочтения. До 1000 знаков — проверяет контракт.
+  /// Гостю не показывается. docs/11, У5.
+  note           String?
 
   guest         Guest                @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
