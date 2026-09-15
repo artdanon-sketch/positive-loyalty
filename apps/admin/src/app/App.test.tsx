@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fill } from '../shared/format/fill'
 import { formatBaht, formatDate } from '../shared/format/format'
 import { t } from '../shared/i18n'
+import { GUEST_URL } from '../shared/config/env'
 import { App } from './App'
 
 /**
@@ -229,6 +230,14 @@ const stubApi = (
     }
     if (path.startsWith('/v1/admin/ledger')) {
       return Promise.resolve(json(EMPTY_LEDGER))
+    }
+    if (path.startsWith('/v1/admin/channels')) {
+      return Promise.resolve(json([]))
+    }
+    if (path.startsWith('/v1/admin/reports/channels')) {
+      return Promise.resolve(
+        json({ period: '30d', channels: [], unattributed: { guests: 0, buyers: 0, revenue: 0 } }),
+      )
     }
     if (path.startsWith('/v1/admin/tags')) {
       return Promise.resolve(json([]))
@@ -1309,6 +1318,173 @@ describe('Настройки программы', () => {
   })
 })
 
+const CHANNEL_ID = '19191919-1919-4191-8191-191919191919'
+
+/** Источник заведения: табличка на столе с кодом, который выдал сервер. */
+const TABLE_CHANNEL = {
+  id: CHANNEL_ID,
+  name: 'Табличка на столе',
+  code: 'TBR2K7QX',
+  isActive: true,
+}
+
+describe('Источники в настройках', () => {
+  const openSources = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    return screen.findByRole('region', { name: t('channelSettings.title') })
+  }
+
+  const settingsApi = {
+    '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+    '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+    '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+  }
+
+  it('ВЛАДЕЛЕЦ ЗАВОДИТ ИСТОЧНИК И ПОЛУЧАЕТ ГОТОВУЮ ССЫЛКУ ДЛЯ ТАБЛИЧКИ', async () => {
+    let channels: unknown[] = []
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/channels': (init) => {
+        if (init?.method === 'POST') {
+          channels = [TABLE_CHANNEL]
+          return json(TABLE_CHANNEL, 201)
+        }
+        return json(channels)
+      },
+      ...settingsApi,
+    })
+    render(<App />)
+
+    const section = await openSources()
+
+    fireEvent.change(await within(section).findByLabelText(t('channelSettings.name')), {
+      target: { value: 'Табличка на столе' },
+    })
+    fireEvent.click(within(section).getByRole('button', { name: t('channelSettings.create') }))
+
+    const link = await within(section).findByLabelText(
+      fill(t('channelSettings.link'), { name: 'Табличка на столе' }),
+    )
+    // Ссылка ведёт в приложение гостя, в это заведение, с кодом источника.
+    expect(link).toHaveValue(
+      `${GUEST_URL}/?venue=${OWNER_TOKENS.subject.tenantId}&src=${TABLE_CHANNEL.code}`,
+    )
+
+    const post = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        requestOf(input as RequestInfo | URL).endsWith('/admin/channels') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+      name: 'Табличка на столе',
+    })
+  })
+
+  it('источник выключается, а не удаляется', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/channels': (init) =>
+        init?.method === 'PATCH'
+          ? json({ ...TABLE_CHANNEL, isActive: false })
+          : json([TABLE_CHANNEL]),
+      ...settingsApi,
+    })
+    render(<App />)
+
+    const section = await openSources()
+
+    fireEvent.click(
+      await within(section).findByRole('button', { name: t('channelSettings.disable') }),
+    )
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+      )
+      expect(patch).toBeDefined()
+      expect(requestOf(patch?.[0] as RequestInfo | URL)).toContain(`/admin/channels/${CHANNEL_ID}`)
+      expect(JSON.parse((patch?.[1] as RequestInit).body as string)).toEqual({ isActive: false })
+    })
+    expect(
+      fetchMock.mock.calls.some(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+      ),
+    ).toBe(false)
+  })
+})
+
+/** Отчёт за месяц: табличка принесла деньги, флаер выключен, остальные пришли сами. */
+const CHANNEL_REPORT = {
+  period: '30d',
+  channels: [
+    {
+      channelId: CHANNEL_ID,
+      name: TABLE_CHANNEL.name,
+      code: TABLE_CHANNEL.code,
+      isActive: true,
+      guests: 24,
+      buyers: 17,
+      revenue: 1_850_000,
+    },
+    {
+      channelId: '20202020-2020-4202-8202-202020202020',
+      name: 'Флаер на пляже',
+      code: 'FRY7QXR2',
+      isActive: false,
+      guests: 0,
+      buyers: 0,
+      revenue: 0,
+    },
+  ],
+  unattributed: { guests: 61, buyers: 40, revenue: 5_120_000 },
+}
+
+describe('Отчёты', () => {
+  it('ИСТОЧНИКИ: ГОСТИ, ПОКУПАТЕЛИ И ВЫРУЧКА — И ОТДЕЛЬНО ТЕ, КТО ПРИШЁЛ БЕЗ ИСТОЧНИКА', async () => {
+    const fetchMock = stubApi({ '/v1/admin/reports/channels': () => json(CHANNEL_REPORT) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+
+    const table = await screen.findByRole('table', { name: t('reports.channels.title') })
+    const tableRow = within(table).getByRole('row', { name: /Табличка на столе/ })
+
+    expect(within(tableRow).getByText('24')).toBeInTheDocument()
+    expect(within(tableRow).getByText('17')).toBeInTheDocument()
+    // Выручка в батах, хотя пришла в сатангах.
+    expect(within(tableRow).getByText(/18\s500,00 ฿/)).toBeInTheDocument()
+    expect(within(table).getByText(t('reports.channels.off'))).toBeInTheDocument()
+
+    const rest = within(table).getByRole('row', {
+      name: new RegExp(t('reports.channels.unattributed')),
+    })
+    expect(within(rest).getByText(/51\s200,00 ฿/)).toBeInTheDocument()
+
+    // По умолчанию — месяц; неделя запрашивается по нажатию.
+    expect(requested(fetchMock, 'period=30d')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: t('overview.period.7d') }))
+    await waitFor(() => {
+      expect(requested(fetchMock, 'period=7d')).toBe(true)
+    })
+  })
+
+  it('источников нет — владельцу подсказка, где их завести', async () => {
+    stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+
+    expect(await screen.findByText(t('reports.channels.empty.owner'))).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t('reports.channels.toSettings') })).toHaveAttribute(
+      'href',
+      '/settings',
+    )
+  })
+})
+
 const GUEST_ID = '12121212-1212-4121-8121-121212121212'
 const GUEST_MEMBERSHIP_ID = '13131313-1313-4131-8131-131313131313'
 
@@ -1346,6 +1522,7 @@ const GUEST_CARD = {
   note: 'Аллергия на арахис',
   tags: [TAG_VIP],
   referral: { invitedBy: null, invited: 2, rewarded: 1 },
+  channel: { id: CHANNEL_ID, name: 'Табличка на столе' },
   firstVisitAt: '2026-08-20T12:00:00.000Z',
   lastVisitAt: '2026-09-05T13:10:00.000Z',
   pointsBalance: 30_175,
@@ -1467,6 +1644,9 @@ describe('Гости: поиск и карточка', () => {
 
     expect(within(card).getByText('Аллергия на арахис')).toBeInTheDocument()
     expect(within(card).getByText('VIP')).toBeInTheDocument()
+    expect(
+      within(card).getByText(fill(t('guestCard.channel'), { name: 'Табличка на столе' })),
+    ).toBeInTheDocument()
     // Скольких друзей привёл и за скольких получил баллы — в шапке, рядом с визитом.
     expect(
       within(card).getByText(fill(t('guestCard.referral.count'), { invited: 2, rewarded: 1 })),
@@ -2540,6 +2720,7 @@ describe('Каркас: левое меню', () => {
     const nav = await screen.findByRole('navigation', { name: t('nav.label') })
     const sections = [
       'nav.overview',
+      'nav.reports',
       'nav.operations',
       'nav.guests',
       'nav.offers',

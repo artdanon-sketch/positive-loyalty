@@ -1,11 +1,12 @@
 /**
  * Переменные окружения бэк-офиса.
  *
- * Без zod: у фронта ровно одна переменная, и тянуть на неё схему — это
- * зависимость ради зависимости. Появится вторая-третья — переедем на разбор
+ * Без zod: у фронта две простые переменные, и тянуть на них схему — это
+ * зависимость ради зависимости. Появится третья-четвёртая — переедем на разбор
  * схемой, как в apps/guest.
  */
 const raw: unknown = import.meta.env.VITE_API_URL
+const rawGuest: unknown = import.meta.env.VITE_GUEST_URL
 const isNative = import.meta.env.VITE_NATIVE === 'true'
 
 /**
@@ -33,3 +34,17 @@ if (typeof raw !== 'string' || !/^https?:\/\//.test(raw)) {
 /** База API вместе с версией пути, без завершающего слеша. */
 export const API_URL: string =
   typeof raw === 'string' && /^https?:\/\//.test(raw) ? raw.replace(/\/+$/, '') : NATIVE_PLACEHOLDER
+
+/**
+ * Приложение гостя — туда ведут ссылки источников и таблички на столах.
+ *
+ * Адрес публичный и один на сеть, поэтому значение по умолчанию — боевое:
+ * сборка без переменной не падает и не печатает табличку со ссылкой в никуда.
+ * Для разработки его переопределяет VITE_GUEST_URL.
+ */
+const GUEST_URL_DEFAULT = 'https://positive-guest.pages.dev'
+
+export const GUEST_URL: string =
+  typeof rawGuest === 'string' && /^https?:\/\//.test(rawGuest)
+    ? rawGuest.replace(/\/+$/, '')
+    : GUEST_URL_DEFAULT

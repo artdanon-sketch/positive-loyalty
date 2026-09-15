@@ -11,6 +11,7 @@ import type { ReactElement } from 'react'
 
 export type NavIconName =
   | 'overview'
+  | 'reports'
   | 'operations'
   | 'guests'
   | 'offers'
@@ -23,6 +24,7 @@ export type NavIconName =
 
 const PATHS: Readonly<Record<NavIconName, string>> = {
   overview: 'M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5',
+  reports: 'M3.5 20h17M6.5 20v-7M11.5 20V5M16.5 20v-10',
   operations: 'M7 3.5h10a1 1 0 0 1 1 1V20l-3-2-3 2-3-2-3 2V4.5a1 1 0 0 1 1-1ZM9 8.5h6M9 12.5h6',
   guests:
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20c.6-3.4 3.1-5.5 6.5-5.5s5.9 2.1 6.5 5.5M16 4.3a3.3 3.3 0 0 1 0 6.4M17.8 14.6c2 .7 3.3 2.5 3.7 5.4',
