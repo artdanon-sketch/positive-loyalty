@@ -4,6 +4,7 @@ import type { ProgramConfig, ProgramSettings, TierSettings } from '@positive/con
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
+import { MembershipRulesService } from '../core/membership-rules.service'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 
@@ -62,6 +63,7 @@ export class ProgramSettingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly rules: MembershipRulesService,
   ) {}
 
   async get(): Promise<ProgramSettings> {
@@ -159,7 +161,7 @@ export class ProgramSettingsService {
   async updateTiers(input: TierSettings): Promise<TierSettings> {
     const { tenantId, actorId, role } = TenantContext.getOrThrow()
 
-    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+    const { before, after, config } = await this.prisma.forTenant(tenantId, async (tx) => {
       const tenant = await tx.tenant.findFirst({
         where: { id: tenantId },
         select: { settings: true },
@@ -187,8 +189,12 @@ export class ProgramSettingsService {
         data: { settings: merged as Prisma.InputJsonValue },
       })
 
-      return { before: pickTiers(current), after: pickTiers(checked) }
+      return { before: pickTiers(current), after: pickTiers(checked), config: checked }
     })
+
+    // Статусы гостей — сразу по новой лестнице: иначе список с фильтром по статусу
+    // до следующего чека жил бы вчерашними порогами, а карточка — сегодняшними.
+    await this.rules.refreshTenantTiers(tenantId, config)
 
     await this.audit.write({
       action: 'PROGRAM_CONFIG_CHANGED',

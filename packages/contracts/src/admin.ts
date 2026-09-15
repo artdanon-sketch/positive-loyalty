@@ -73,6 +73,10 @@ export const AdminListQuery = z
 
 export type AdminListQuery = z.infer<typeof AdminListQuery>
 
+/** Откуда гость пришёл в программу. */
+export const GuestSource = z.enum(['ORGANIC', 'CATALOG', 'REFERRAL', 'STAFF', 'IMPORT'])
+export type GuestSource = z.infer<typeof GuestSource>
+
 /** Гость в списке бэк-офиса — участие плюс витринные поля гостя. */
 export const AdminGuestRow = z
   .object({
@@ -95,6 +99,14 @@ export const AdminGuestRow = z
     spentTotal: z.number().int().nonnegative(),
     lastVisitAt: z.iso.datetime().nullable(),
     isControlGroup: z.boolean(),
+    source: GuestSource,
+    /** С какого визита гость в программе. null — визитов ещё не было. */
+    firstVisitAt: z.iso.datetime().nullable(),
+    /**
+     * Статус из настроек программы. Лестница пересчитывается сразу после правки
+     * настроек, поэтому здесь тот же статус, что в карточке. null — статуса нет.
+     */
+    tier: z.object({ id: z.string(), name: z.string() }).strict().nullable(),
   })
   .strict()
 
@@ -123,10 +135,41 @@ export const AdminGuestsQuery = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
     offset: z.coerce.number().int().min(0).default(0),
     q: z.string().trim().max(64).optional(),
+    /** Турист или резидент. */
+    mode: z.enum(['TOURIST', 'RESIDENT']).optional(),
+    /** id статуса из настроек программы. */
+    tier: z.string().min(1).max(40).optional(),
+    source: GuestSource.optional(),
+    /** Были, но не заходили дольше, дней. От недели: реже — это не сон, а график. */
+    sleeping: z.coerce.number().int().min(7).max(365).optional(),
+    /** `none` — ни разу не покупали. */
+    buyers: z.enum(['none']).optional(),
   })
   .strict()
 
 export type AdminGuestsQuery = z.infer<typeof AdminGuestsQuery>
+
+/**
+ * Фильтры списка гостей — те же в списке и в выгрузке. docs/02, раздел 5.2 · docs/11, У4.
+ *
+ * Складываются через «и»: «спящие резиденты со статусом Золото» — три фильтра сразу.
+ */
+export type AdminGuestFilters = Omit<AdminGuestsQuery, 'limit' | 'offset'>
+
+/**
+ * Выгрузка гостей. Только владелец, причина обязательна и уходит в аудит:
+ * «ваша база принадлежит вам» — часть продажи, но каждая выгрузка на виду.
+ */
+export const GuestExportInput = z
+  .object({
+    reason: z.string().trim().min(8).max(300),
+    filters: AdminGuestsQuery.omit({ limit: true, offset: true }).default({}),
+    /** Язык заголовков и подписей в файле. */
+    locale: z.enum(['ru', 'en']).default('ru'),
+  })
+  .strict()
+
+export type GuestExportInput = z.infer<typeof GuestExportInput>
 
 /** Язык названий подарков в карточке — язык интерфейса того, кто смотрит. */
 export const AdminGuestCardQuery = z
@@ -136,10 +179,6 @@ export const AdminGuestCardQuery = z
   .strict()
 
 export type AdminGuestCardQuery = z.infer<typeof AdminGuestCardQuery>
-
-/** Откуда гость пришёл в программу. */
-export const GuestSource = z.enum(['ORGANIC', 'CATALOG', 'REFERRAL', 'STAFF', 'IMPORT'])
-export type GuestSource = z.infer<typeof GuestSource>
 
 /**
  * Судьба подарка.
