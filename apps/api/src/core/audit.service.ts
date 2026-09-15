@@ -75,6 +75,10 @@ export type AuditAction =
   | 'INVITE_SPAM_REPORTED'
   /** Админ платформы разобрал жалобы на спам — приостановка приглашений снята. */
   | 'INVITE_COMPLAINTS_REVIEWED'
+  /** Владелец собрал акцию в конструкторе — правила целиком. */
+  | 'OFFER_CREATED'
+  /** Акция запущена, поставлена на паузу или завершена. */
+  | 'OFFER_STATUS_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction

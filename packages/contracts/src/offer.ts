@@ -120,6 +120,9 @@ export type AdminOffersQuery = z.infer<typeof AdminOffersQuery>
  *
  * Партнёрская приходит с `partner`: её условия меняются только через
  * партнёрство (docs/10, раздел 5.3), и экран ведёт туда, а не в редактор.
+ *
+ * Статус — тот, что видит владелец: запущенная акция, чьё начало впереди,
+ * приходит запланированной, чей конец позади, — завершённой.
  */
 export const AdminOfferCard = z
   .object({
@@ -133,6 +136,12 @@ export const AdminOfferCard = z
     redeemed: z.number().int().nonnegative(),
     /** Гости, пришедшие снова после погашения: другой чек и позже, чем через час. */
     returned: z.number().int().nonnegative(),
+    /**
+     * Что можно сделать с акцией сейчас. Считает сервер: он знает роль,
+     * партнёрство и то, умеет ли касса эту акцию считать. У менеджера и у
+     * партнёрской акции всё false.
+     */
+    actions: z.object({ publish: z.boolean(), pause: z.boolean(), end: z.boolean() }).strict(),
     createdAt: z.iso.datetime(),
   })
   .strict()
