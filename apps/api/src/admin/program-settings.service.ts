@@ -11,6 +11,7 @@ import type {
   ProgramConfig,
   ProgramSettings,
   ReferralSettings,
+  ReviewSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -79,6 +80,10 @@ const pickReferral = (config: ProgramConfig): ReferralSettings => ({
   enabled: config.referral.enabled,
   reward: config.referral.reward,
   limit: config.referral.limit,
+})
+
+const pickReviews = (config: ProgramConfig): ReviewSettings => ({
+  autoReplies: config.reviews.autoReplies,
 })
 
 @Injectable()
@@ -372,6 +377,66 @@ export class ProgramSettingsService {
       })
 
       return { before: pickBirthday(current), after: pickBirthday(checked) }
+    })
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Автоответы на отзывы. docs/02, раздел 5.6.4. */
+  async getReviews(): Promise<ReviewSettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickReviews(this.parse(tenantId, tenant.settings))
+  }
+
+  /** Автоответы — тем же подмешиванием: остальные настройки заведения не трогаются. */
+  async updateReviews(input: ReviewSettings): Promise<ReviewSettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+      const merged: Record<string, unknown> = { ...raw, reviews: input }
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickReviews(current), after: pickReviews(checked) }
     })
 
     await this.audit.write({

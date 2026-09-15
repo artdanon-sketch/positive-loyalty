@@ -211,6 +211,15 @@ export const TENANTS: readonly TenantSeed[] = [
         daysBefore: 3,
         daysAfter: 3,
       },
+      reviews: {
+        autoReplies: [
+          'Нам очень жаль. Напишите, что случилось, — разберёмся и исправим.',
+          'Нам очень жаль. Напишите, что случилось, — разберёмся и исправим.',
+          null,
+          null,
+          'Спасибо! Ждём вас снова.',
+        ],
+      },
       tiers: [
         tier('base', 'Гость', 5, 30, []),
         tier('regular', 'Постоянный', 7, 40, [{ type: 'VISITS_TOTAL', gt: 5 }]),
@@ -254,6 +263,7 @@ export const TENANTS: readonly TenantSeed[] = [
         daysBefore: 3,
         daysAfter: 3,
       },
+      reviews: { autoReplies: [null, null, null, null, null] },
       tiers: [
         tier('base', 'Гость', 8, 25, []),
         tier('care', 'Забота', 12, 35, [{ type: 'VISITS_TOTAL', gt: 3 }]),
@@ -296,6 +306,7 @@ export const TENANTS: readonly TenantSeed[] = [
         daysBefore: 3,
         daysAfter: 3,
       },
+      reviews: { autoReplies: [null, null, null, null, null] },
       tiers: [tier('base', 'Гость', 4, 20, [])],
       cashierRules: {
         requireReceiptNumber: false,

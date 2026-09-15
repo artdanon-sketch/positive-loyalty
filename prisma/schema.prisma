@@ -148,6 +148,7 @@ model Tenant {
   offerGrants            OfferGrant[]
   tags                   Tag[]
   acquisitionChannels    AcquisitionChannel[]
+  reviews                Review[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -192,6 +193,7 @@ model Guest {
   identities    GuestIdentity[]
   ledgerEntries LedgerEntry[]
   offerGrants   OfferGrant[]
+  reviews       Review[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -317,6 +319,7 @@ model LedgerEntry {
   // а UPDATE на этой таблице запрещён триггером — FK просто перестал бы работать.
   reversalOf LedgerEntry? @relation("LedgerReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reversedBy LedgerEntry? @relation("LedgerReversal")
+  review     Review?
 
   @@index([tenantId, createdAt])
   // Аналитика группирует по времени СОБЫТИЯ, а не записи: без этого индекса
@@ -1532,4 +1535,38 @@ model AcquisitionChannel {
 
   @@unique([tenantId, code])
   @@index([tenantId, isActive])
+}
+
+/// Отзыв гостя о визите. docs/02, разделы 2.8 и 5.12 · docs/11, У10.
+///
+/// Якорь — начисление по чеку: оно есть у каждого чека, даже нулевое. Оценка 1–5
+/// проверяется ограничением в миграции 20260916040000 — Prisma его не описывает.
+model Review {
+  id            String    @id @default(uuid())
+  tenantId      String
+  guestId       String
+  /// Начисление по чеку. UNIQUE — второй отзыв на тот же чек не пустит база.
+  ledgerEntryId String    @unique
+  /// Кто провёл чек — сотрудник из журнала. null — чек пришёл из кассы вебхуком.
+  /// Не FK, как и LedgerEntry.actorId: журнал сотрудника не выбирает, а записывает.
+  staffId       String?
+  rating        Int
+  /// Быстрые отзывы: QUALITY, PRICE, ASSORTMENT, SERVICE, STAFF — проверяет контракт.
+  tags          String[]  @default([])
+  comment       String?
+  /// Ответ заведения — владельца или автоответ. Гость видит его в приложении.
+  reply         String?
+  repliedAt     DateTime?
+  /// Кто ответил. null — автоответ.
+  repliedBy     String?
+  /// Ответ — автоответ по числу звёзд, а не слова владельца.
+  autoReply     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest       Guest       @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerEntry LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([guestId, createdAt])
 }

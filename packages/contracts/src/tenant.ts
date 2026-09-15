@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { BirthdayConfig } from './birthday.js'
+import { ReviewConfig } from './review-config.js'
 
 /**
  * Конфигурация программы лояльности заведения.
@@ -130,6 +131,7 @@ export const ProgramConfig = z
     welcomeBonus: WelcomeBonus.default(WelcomeBonus.parse({})),
     referral: ReferralConfig.default(ReferralConfig.parse({})),
     birthday: BirthdayConfig.default(BirthdayConfig.parse({})),
+    reviews: ReviewConfig.default(ReviewConfig.parse({})),
     tiers: z.array(Tier).default([]),
     cashierRules: CashierRules.default(CashierRules.parse({})),
     staffReward: StaffRewardConfig.default(StaffRewardConfig.parse({})),

@@ -33,6 +33,8 @@ import { OffersController } from './offers.controller'
 import { OffersService } from './offers.service'
 import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
+import { ReviewsController } from './reviews.controller'
+import { ReviewsService } from './reviews.service'
 import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
@@ -54,6 +56,7 @@ import { StaffService } from './staff.service'
     ChannelsController,
     ReportsController,
     CertificatesController,
+    ReviewsController,
   ],
   providers: [
     AdminService,
@@ -73,6 +76,7 @@ import { StaffService } from './staff.service'
     ChannelReportService,
     ReportsService,
     CertificatesService,
+    ReviewsService,
   ],
 })
 export class AdminModule {}
