@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { AdminGuestReferral } from './referral.js'
+import { RfmSegment } from './rfm.js'
 import { Tag } from './tag.js'
 
 import { LedgerSource, LedgerType } from './ledger.js'
@@ -149,6 +150,8 @@ export const AdminGuestsQuery = z
     buyers: z.enum(['none']).optional(),
     /** Тег заведения (id из справочника). */
     tag: z.uuid().optional(),
+    /** RFM-сегмент на сегодня — из отчёта «RFM» (docs/11, У8). */
+    segment: RfmSegment.optional(),
   })
   .strict()
 

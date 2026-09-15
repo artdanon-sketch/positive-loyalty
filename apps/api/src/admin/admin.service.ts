@@ -8,6 +8,7 @@ import type {
   AdminLedgerList,
   AdminMembership,
   AdminTimelineItem,
+  AdminGuestFilters,
   AdminGuestsQuery,
   GuestExportInput,
 } from '@positive/contracts'
@@ -20,6 +21,7 @@ import { PrismaService } from '../core/prisma.service'
 import { needsReferrals, resolveTier } from '../core/tiers'
 import { guestsCsv } from './guest-export'
 import { guestFilterWhere } from './guest-search'
+import { ReportsService } from './reports.service'
 
 /**
  * Сколько последних операций и сколько последних подарков идёт в карточку.
@@ -73,6 +75,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly reports: ReportsService,
   ) {}
 
   async listLedger(limit: number, offset: number): Promise<AdminLedgerList> {
@@ -132,11 +135,9 @@ export class AdminService {
     const { tenantId, role } = TenantContext.getOrThrow()
     const showFullPhone = role === 'OWNER'
     const { limit, offset, ...filters } = query
-    // tenantId стоит рядом с фильтрами, а не внутри них: фильтр может только
-    // сузить список своего заведения, но не расширить его.
-    const where = { tenantId, ...guestFilterWhere(tenantId, filters, new Date()) }
 
     return this.prisma.forTenant(tenantId, async (tx) => {
+      const where = await this.guestsWhere(tx, tenantId, filters)
       const [rows, total, tierNames] = await Promise.all([
         tx.membership.findMany({
           where,
@@ -189,9 +190,8 @@ export class AdminService {
    */
   async exportGuests(input: GuestExportInput): Promise<string> {
     const { tenantId, actorId, requestId } = TenantContext.getOrThrow()
-    const where = { tenantId, ...guestFilterWhere(tenantId, input.filters, new Date()) }
-
     const { rows, tierNames, timezone } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const where = await this.guestsWhere(tx, tenantId, input.filters)
       const tenant = await tx.tenant.findFirst({
         where: { id: tenantId },
         select: { timezone: true },
@@ -236,6 +236,33 @@ export class AdminService {
       })),
       { locale: input.locale, timezone },
     )
+  }
+
+  /**
+   * Условие списка гостей и выгрузки — одно на оба.
+   *
+   * tenantId стоит рядом с фильтрами, а не внутри них: фильтр может только сузить
+   * список своего заведения, но не расширить его. RFM-сегмент в базе не хранится
+   * и считается на лету (reports.service.ts), поэтому условие собирается внутри
+   * транзакции.
+   */
+  private async guestsWhere(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    filters: AdminGuestFilters,
+  ): Promise<Prisma.MembershipWhereInput> {
+    const where: Prisma.MembershipWhereInput = {
+      tenantId,
+      ...guestFilterWhere(tenantId, filters, new Date()),
+    }
+
+    if (filters.segment === undefined) {
+      return where
+    }
+
+    const ids = await this.reports.membershipIdsIn(tx, tenantId, filters.segment)
+
+    return { AND: [where, { id: { in: ids } }] }
   }
 
   /** Названия статусов по id. Неразборчивые настройки список не роняют — статусов просто нет. */

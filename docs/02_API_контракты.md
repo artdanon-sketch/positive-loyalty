@@ -2024,6 +2024,85 @@ GET /v1/admin/reports/channels?period=30d
 | `CHANNEL_EXISTS` | такое название уже есть — 409 |
 | `TOO_MANY_CHANNELS` | источников больше 100 |
 
+### 5.10 Отчёты: клиенты, операции, RFM, сотрудники — работает (У8, сервер)
+
+**Менеджер и владелец**, как дашборд. `period` — `7d | 30d | 90d`, по умолчанию `30d`.
+Суммы в сатангах, границы суток — по часам заведения, отменённые чеки не считаются нигде.
+Выручка — то, что заплачено деньгами: база начисления на кассе — сумма после оплаты баллами.
+
+```http
+GET /v1/admin/reports/customers?period=30d
+```
+
+```json
+{
+  "period": "30d", "total": 748, "buyers": 512, "buyersPct": 68.4,
+  "newGuests": 61, "firstPurchases": 44, "tourists": 430, "residents": 318,
+  "series": [ { "date": "2026-09-16", "newGuests": 3, "firstPurchases": 2 } ]
+}
+```
+
+- `total`, `buyers`, `tourists`, `residents` — на сегодня; `newGuests` — вступили за период,
+  `firstPurchases` — впервые купили за период. `buyersPct: null` — гостей нет.
+
+```http
+GET /v1/admin/reports/operations?period=30d
+```
+
+```json
+{
+  "period": "30d", "turnover": 18450000, "purchases": 402, "averageCheck": 45895,
+  "earned": 922500, "redeemed": 310000, "voided": 6,
+  "series": [ { "date": "2026-09-16", "turnover": 640000, "purchases": 14 } ]
+}
+```
+
+- `earned` — начислено баллов, `redeemed` — оплачено баллами, `voided` — отменённых чеков.
+
+```http
+GET /v1/admin/reports/rfm
+```
+
+```json
+{
+  "buyers": 512,
+  "segments": [
+    { "segment": "CHAMPIONS", "guests": 38, "purchases": 612, "averageCheck": 51200, "turnover": 31334400 }
+  ]
+}
+```
+
+- Все десять сегментов, пустые — нулями, в порядке: `CHAMPIONS, LOYAL, POTENTIAL, NEW, PROMISING,
+  NEED_ATTENTION, ABOUT_TO_SLEEP, AT_RISK, CANT_LOSE, HIBERNATING`.
+- **Пороги, а не квантили.** Давность: до 14 дней — 5, до 30 — 4, до 60 — 3, до 120 — 2, дольше — 1.
+  Частота: 10 визитов и больше — 5, 5–9 — 4, 3–4 — 3, 2 — 2, 1 — 1. Сегмент — по сетке
+  «давность × частота» (`apps/api/src/admin/rfm.ts`). Квантили в кафе, где все были по разу,
+  сделали бы каждого «чемпионом».
+- Считается по покупателям на лету; оборот и покупки сегмента — за всё время.
+- Сегмент кликается: `GET /v1/admin/guests?segment=AT_RISK` и выгрузка отдают ровно этих гостей.
+
+```http
+GET /v1/admin/reports/staff?period=30d
+```
+
+```json
+{
+  "period": "30d",
+  "staff": [ { "staffId": "22222222-…", "displayName": "Сомчай", "role": "CASHIER", "isActive": true,
+               "operations": 212, "turnover": 9650000, "newGuests": 31 } ],
+  "system": { "operations": 190, "turnover": 8800000, "newGuests": 13 }
+}
+```
+
+- `newGuests` — гости, чей первый неотменённый чек в заведении провёл этот сотрудник.
+- `system` — чеки без сотрудника: пришли вебхуком из кассы POSitive. Средняя оценка гостей
+  появится вместе с обратной связью (У10).
+
+| Код | Когда |
+|---|---|
+| `VALIDATION_FAILED` | неизвестный период, неизвестный сегмент в списке гостей |
+| `FORBIDDEN` | кассир |
+
 ## 6. Админка платформы
 
 Отдельный неймспейс `/v1/platform/*`, отдельная роль, отдельный контур входа с обязательной 2FA.
