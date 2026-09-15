@@ -4,7 +4,10 @@ import type {
   AcceptReferralResult,
   GuestMe,
   GuestQrToken,
+  CreateReviewInput,
   GuestReferral,
+  GuestReview,
+  GuestReviews,
   GuestWallet,
   JoinVenueResult,
 } from '@positive/contracts'
@@ -13,9 +16,11 @@ import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
 import {
   acceptReferral,
+  createReview,
   fetchMe,
   fetchQrToken,
   fetchReferral,
+  fetchReviews,
   fetchWallet,
   joinVenue,
   saveBirthday,
@@ -24,6 +29,7 @@ import {
 export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
 export const QR_QUERY_KEY = ['guest', 'qr'] as const
 export const ME_QUERY_KEY = ['guest', 'me'] as const
+export const REVIEWS_QUERY_KEY = ['guest', 'reviews'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -123,6 +129,30 @@ export function useSaveBirthday(): UseMutationResult<GuestMe, Error, string> {
     onSuccess: (me) => {
       queryClient.setQueryData(ME_QUERY_KEY, me)
       void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
+    },
+  })
+}
+
+/** «Оцените визит» и ответы заведений — один запрос на оба блока. */
+export function useGuestReviews(): UseQueryResult<GuestReviews, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: REVIEWS_QUERY_KEY,
+    queryFn: () => fetchReviews(authGet),
+    enabled: session !== null,
+  })
+}
+
+/** Оценить визит. После — отзывы перечитываются: визит уходит из «оцените», ответ — в список. */
+export function useCreateReview(): UseMutationResult<GuestReview, Error, CreateReviewInput> {
+  const { authPost } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input) => createReview(authPost, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: REVIEWS_QUERY_KEY })
     },
   })
 }

@@ -109,15 +109,15 @@ const pathOf = (input: RequestInfo | URL): string => {
   return url.replace(/^https?:\/\/[^/]+/, '')
 }
 
-const stubApi = (overrides: Record<string, () => Response> = {}): void => {
+const stubApi = (overrides: Record<string, (init?: RequestInit) => Response> = {}): void => {
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: RequestInfo | URL): Promise<Response> => {
+    vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const path = pathOf(input)
 
       for (const [prefix, respond] of Object.entries(overrides)) {
         if (path.startsWith(prefix)) {
-          return Promise.resolve(respond())
+          return Promise.resolve(respond(init))
         }
       }
 
@@ -125,6 +125,9 @@ const stubApi = (overrides: Record<string, () => Response> = {}): void => {
       if (path.startsWith('/v1/auth/otp/verify')) return Promise.resolve(json(AUTH_RESPONSE))
       if (path.startsWith('/v1/guest/wallet')) return Promise.resolve(json(WALLET_RESPONSE))
       if (path.startsWith('/v1/guest/me')) return Promise.resolve(json(ME_RESPONSE))
+      if (path.startsWith('/v1/guest/reviews')) {
+        return Promise.resolve(json({ pending: [], items: [] }))
+      }
       if (path.startsWith('/v1/guest/qr-token')) return Promise.resolve(json(QR_RESPONSE))
 
       return Promise.resolve(
@@ -534,5 +537,96 @@ describe('День рождения', () => {
     })
 
     expect(screen.queryByRole('region', { name: t('birthday.title') })).not.toBeInTheDocument()
+  })
+})
+
+describe('Оценка визита', () => {
+  const VISIT = {
+    ledgerEntryId: '5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a',
+    tenantId: KATA_ID,
+    venue: 'Kata Beach Kitchen',
+    visitedAt: '2026-09-15T12:40:00.000Z',
+    amount: 45_000,
+  }
+
+  const REVIEWED = {
+    id: '6b6b6b6b-6b6b-46b6-86b6-6b6b6b6b6b6b',
+    tenantId: KATA_ID,
+    venue: 'Kata Beach Kitchen',
+    rating: 2,
+    tags: ['SERVICE'],
+    comment: 'Ждали заказ сорок минут',
+    reply: 'Нам очень жаль. Напишите, что случилось, — разберёмся.',
+    repliedAt: '2026-09-15T13:02:11.000Z',
+    createdAt: '2026-09-15T13:02:11.000Z',
+  }
+
+  const rate = async (): Promise<ReturnType<typeof within>> => {
+    const section = within(
+      await screen.findByRole('region', {
+        name: t('review.title').replace('{venue}', 'Kata Beach Kitchen'),
+      }),
+    )
+
+    // Без звезды отправлять нечего — кнопки ещё нет.
+    expect(section.queryByRole('button', { name: t('review.send') })).not.toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: t('review.star').replace('{n}', '2') }))
+    fireEvent.click(section.getByRole('button', { name: t('review.tag.SERVICE') }))
+    fireEvent.change(section.getByLabelText(t('review.comment')), {
+      target: { value: '  Ждали заказ сорок минут  ' },
+    })
+    fireEvent.click(section.getByRole('button', { name: t('review.send') }))
+
+    return section
+  }
+
+  it('ГОСТЬ СТАВИТ «2» С ТЕМОЙ И КОММЕНТАРИЕМ — И СРАЗУ ВИДИТ ОТВЕТ ЗАВЕДЕНИЯ', async () => {
+    stubApi({
+      '/v1/guest/reviews': (init) =>
+        init?.method === 'POST' ? json(REVIEWED, 201) : json({ pending: [VISIT], items: [] }),
+    })
+    render(<App />)
+
+    await signIn()
+    await rate()
+
+    expect(await screen.findByText(REVIEWED.reply)).toBeInTheDocument()
+
+    const post = fetchCalls().find(
+      ([input, init]) => pathOf(input).endsWith('/guest/reviews') && init?.method === 'POST',
+    )
+    expect(JSON.parse(post?.[1]?.body as string)).toEqual({
+      ledgerEntryId: VISIT.ledgerEntryId,
+      rating: 2,
+      tags: ['SERVICE'],
+      comment: 'Ждали заказ сорок минут',
+    })
+  })
+
+  it('ОЦЕНЁННЫЙ ВИЗИТ НЕ ПЕРЕСПРАШИВАЕТСЯ, А ОТВЕТЫ ЗАВЕДЕНИЙ ВИДНЫ НА КАРТЕ', async () => {
+    stubApi({ '/v1/guest/reviews': () => json({ pending: [], items: [REVIEWED] }) })
+    render(<App />)
+
+    await signIn()
+
+    const replies = within(await screen.findByRole('region', { name: t('review.replies') }))
+    expect(replies.getByText(REVIEWED.reply)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t('review.send') })).not.toBeInTheDocument()
+  })
+
+  it('ВИЗИТ УЖЕ ОЦЕНЁН С ДРУГОГО ТЕЛЕФОНА — ГОСТЬ ВИДИТ ОТВЕТ, А НЕ ПОЛОМКУ', async () => {
+    stubApi({
+      '/v1/guest/reviews': (init) =>
+        init?.method === 'POST'
+          ? json({ error: { code: 'REVIEW_EXISTS', message: 'Этот визит вы уже оценили' } }, 409)
+          : json({ pending: [VISIT], items: [] }),
+    })
+    render(<App />)
+
+    await signIn()
+    const section = await rate()
+
+    expect(await section.findByRole('alert')).toHaveTextContent(t('review.error.exists'))
   })
 })

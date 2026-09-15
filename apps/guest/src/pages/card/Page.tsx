@@ -10,6 +10,8 @@ import { CardError } from './components/card-error'
 import { CardLoading } from './components/card-loading'
 import { InviteClaim } from './components/invite-claim'
 import { QrCode } from './components/qr-code'
+import { ReviewPrompt } from './components/review-prompt'
+import { ReviewReplies } from './components/review-replies'
 import { VenueInvite } from './components/venue-invite'
 import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
@@ -91,6 +93,11 @@ export function Page(): ReactElement {
           {/* День рождения — после подарков: вопрос задаётся один раз и не должен
               отодвигать код для кассы. Без заведений спрашивать не о чем. */}
           {wallet.data.memberships.length > 0 ? <BirthdayPrompt /> : null}
+
+          {/* Оценка визита и ответы заведений — ниже подарков и дня рождения:
+              гость у стойки сначала показывает код, отзыв пишет потом. */}
+          {wallet.data.memberships.length > 0 ? <ReviewPrompt /> : null}
+          <ReviewReplies />
 
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />
