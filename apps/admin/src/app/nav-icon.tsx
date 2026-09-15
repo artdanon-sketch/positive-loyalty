@@ -14,6 +14,7 @@ export type NavIconName =
   | 'reports'
   | 'operations'
   | 'guests'
+  | 'reviews'
   | 'offers'
   | 'partners'
   | 'team'
@@ -28,6 +29,8 @@ const PATHS: Readonly<Record<NavIconName, string>> = {
   operations: 'M7 3.5h10a1 1 0 0 1 1 1V20l-3-2-3 2-3-2-3 2V4.5a1 1 0 0 1 1-1ZM9 8.5h6M9 12.5h6',
   guests:
     'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20c.6-3.4 3.1-5.5 6.5-5.5s5.9 2.1 6.5 5.5M16 4.3a3.3 3.3 0 0 1 0 6.4M17.8 14.6c2 .7 3.3 2.5 3.7 5.4',
+  reviews:
+    'M5 4.5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4.5 3.5v-3.5H5a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1ZM8 9h8M8 12h5',
   offers:
     'M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.8 7.8a1 1 0 0 1-1.4 0ZM8 8h.01',
   partners:

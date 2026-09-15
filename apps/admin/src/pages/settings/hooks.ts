@@ -4,6 +4,7 @@ import type {
   BirthdaySettings,
   ProgramSettings,
   ReferralSettings,
+  ReviewSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -21,6 +22,7 @@ const KEY = ['admin', 'settings', 'program'] as const
 const TIERS_KEY = ['admin', 'settings', 'tiers'] as const
 const REFERRAL_KEY = ['admin', 'settings', 'referral'] as const
 const BIRTHDAY_KEY = ['admin', 'settings', 'birthday'] as const
+const REVIEWS_KEY = ['admin', 'settings', 'reviews'] as const
 
 export function useProgramSettings(): UseQueryResult<ProgramSettings, Error> {
   const { authFetch } = useAuth()
@@ -143,6 +145,33 @@ export function useSaveBirthdaySettings(): UseMutationResult<
       }),
     onSuccess: (saved) => {
       queryClient.setQueryData(BIRTHDAY_KEY, saved)
+    },
+  })
+}
+
+/** Автоответы на отзывы — своим входом (docs/02, раздел 5.6.4). */
+export function useReviewSettings(): UseQueryResult<ReviewSettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: REVIEWS_KEY,
+    queryFn: () => authFetch<ReviewSettings>('/admin/settings/program/reviews'),
+  })
+}
+
+export function useSaveReviewSettings(): UseMutationResult<ReviewSettings, Error, ReviewSettings> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (settings) =>
+      authFetch<ReviewSettings>('/admin/settings/program/reviews', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(REVIEWS_KEY, saved)
     },
   })
 }

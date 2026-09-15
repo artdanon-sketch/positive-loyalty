@@ -1120,6 +1120,9 @@ const TIER_SETTINGS = {
   welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
 }
 
+/** Автоответы на отзывы: не заданы. */
+const REVIEW_SETTINGS = { autoReplies: [null, null, null, null, null] }
+
 /** Подарок ко дню рождения: не включался. */
 const BIRTHDAY_SETTINGS = {
   enabled: false,
@@ -1157,6 +1160,7 @@ describe('Настройки программы', () => {
     // принимают, глядя на деньги.
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1180,6 +1184,7 @@ describe('Настройки программы', () => {
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1215,6 +1220,7 @@ describe('Настройки программы', () => {
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1236,6 +1242,7 @@ describe('Настройки программы', () => {
   it('без изменений сохранять нечего — кнопка неактивна', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1253,6 +1260,7 @@ describe('Настройки программы', () => {
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/tags': (init) =>
         init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json([TAG_VIP]),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1287,6 +1295,7 @@ describe('Настройки программы', () => {
   it('НАГРАДА ЗА ДРУГА НАБИРАЕТСЯ В БАТАХ И УХОДИТ В САТАНГАХ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REFERRAL_SETTINGS),
@@ -1327,6 +1336,7 @@ describe('Настройки программы', () => {
   it('включённая награда без суммы не отправляется и объясняется рядом', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1369,6 +1379,7 @@ describe('Источники в настройках', () => {
   }
 
   const settingsApi = {
+    '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
     '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
     '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
     '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -1804,6 +1815,7 @@ describe('Сертификаты', () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
       '/v1/admin/certificates': () => json([CERTIFICATE]),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
@@ -1840,6 +1852,147 @@ describe('Сертификаты', () => {
         reward: { kind: 'CERTIFICATE', certificateId: CERTIFICATE.id },
         daysBefore: 5,
         daysAfter: 3,
+      })
+    })
+  })
+})
+
+const REVIEW = {
+  id: '91919191-9191-4919-8919-919191919191',
+  rating: 2,
+  tags: ['SERVICE', 'STAFF'],
+  comment: 'Ждали заказ сорок минут',
+  reply: 'Нам очень жаль. Напишите, что случилось, — разберёмся.',
+  repliedAt: '2026-09-15T13:02:11.000Z',
+  autoReply: true,
+  createdAt: '2026-09-15T13:02:11.000Z',
+  guest: {
+    guestId: '92929292-9292-4929-8929-929292929292',
+    membershipId: '93939393-9393-4939-8939-939393939393',
+    displayName: 'Анна Ковалёва',
+    phone: '+66 •• •• 4821',
+  },
+  staff: { id: '94949494-9494-4949-8949-949494949494', displayName: 'Сомчай' },
+  amount: 45_000,
+}
+
+const REVIEWS_LIST = {
+  period: '30d',
+  summary: {
+    total: 1,
+    average: 2,
+    distribution: [0, 1, 0, 0, 0],
+    tags: [
+      { tag: 'SERVICE', count: 1 },
+      { tag: 'STAFF', count: 1 },
+      { tag: 'QUALITY', count: 0 },
+      { tag: 'PRICE', count: 0 },
+      { tag: 'ASSORTMENT', count: 0 },
+    ],
+    unanswered: 0,
+  },
+  total: 1,
+  items: [REVIEW],
+}
+
+describe('Отзывы', () => {
+  it('МЕНЕДЖЕР ВИДИТ СВОДКУ И ОТЗЫВ С КАССИРОМ; АВТООТВЕТ ЗАМЕНЯЕТ СВОИМ ОТВЕТОМ', async () => {
+    const fetchMock = stubApi({
+      [`/v1/admin/reviews/${REVIEW.id}/reply`]: () =>
+        json({ ...REVIEW, reply: 'Разобрались с кухней.', autoReply: false }),
+      '/v1/admin/reviews': () => json(REVIEWS_LIST),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reviews') }))
+
+    const summary = await screen.findByRole('region', { name: t('reviews.summary') })
+    expect(within(summary).getByText('2,0')).toBeInTheDocument()
+
+    const card = await screen.findByRole('article', { name: /Анна Ковалёва/ })
+    expect(within(card).getByText(/Сомчай/)).toBeInTheDocument()
+    expect(within(card).getByText(t('reviews.autoReply'))).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Анна Ковалёва' })).toHaveAttribute(
+      'href',
+      `/guests?guest=${REVIEW.guest.guestId}`,
+    )
+
+    fireEvent.click(within(card).getByRole('button', { name: t('reviews.replyYourself') }))
+    fireEvent.change(within(card).getByLabelText(t('reviews.replyLabel')), {
+      target: { value: '  Разобрались с кухней.  ' },
+    })
+    fireEvent.click(within(card).getByRole('button', { name: t('reviews.send') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/reply') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+        text: 'Разобрались с кухней.',
+      })
+    })
+  })
+
+  it('ФИЛЬТРЫ «ЖДУТ ОТВЕТА» И ОЦЕНКА УХОДЯТ В ЗАПРОС', async () => {
+    const fetchMock = stubApi({ '/v1/admin/reviews': () => json(REVIEWS_LIST) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reviews') }))
+
+    const answer = await screen.findByRole('group', { name: t('reviews.filter.answer') })
+    fireEvent.click(within(answer).getByRole('button', { name: t('reviews.filter.unanswered') }))
+    const rating = screen.getByRole('group', { name: t('reviews.filter.rating') })
+    fireEvent.click(within(rating).getByRole('button', { name: '★ 2' }))
+
+    await waitFor(() => {
+      const urls = fetchMock.mock.calls.map(([input]) => requestOf(input as RequestInfo | URL))
+      expect(
+        urls.some(
+          (url) =>
+            url.includes('/admin/reviews?') &&
+            url.includes('answered=no') &&
+            url.includes('rating=2'),
+        ),
+      ).toBe(true)
+    })
+  })
+
+  it('АВТООТВЕТЫ В НАСТРОЙКАХ: ПУСТОЕ ПОЛЕ — БЕЗ АВТООТВЕТА', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': (init) =>
+        init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REVIEW_SETTINGS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    const section = await screen.findByRole('region', { name: t('reviewReplies.title') })
+
+    fireEvent.change(
+      await within(section).findByLabelText(t('reviewReplies.rating').replace('{n}', '5')),
+      { target: { value: ' Спасибо! Ждём вас снова. ' } },
+    )
+    fireEvent.click(within(section).getByRole('button', { name: t('reviewReplies.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/program/reviews') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        autoReplies: [null, null, null, null, 'Спасибо! Ждём вас снова.'],
       })
     })
   })
@@ -3331,6 +3484,7 @@ describe('Статусы гостей в настройках', () => {
   it('НОВЫЙ СТАТУС С ПОРОГОМ В БАТАХ УХОДИТ В САТАНГАХ, ПРИВЕТСТВЕННЫЕ БАЛЛЫ — ТОЖЕ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': (init) =>
@@ -3388,6 +3542,7 @@ describe('Статусы гостей в настройках', () => {
   it('ДВА СТАТУСА С ОДНИМ НАЗВАНИЕМ — НЕ ОТПРАВЛЯЕТСЯ, И СКАЗАНО ПОЧЕМУ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
@@ -3420,6 +3575,7 @@ describe('Статус в карточке гостя', () => {
   it('ВЛАДЕЛЕЦ НАЗНАЧАЕТ СКРЫТЫЙ СТАТУС — ТОЛЬКО С ПРИЧИНОЙ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () =>
@@ -3538,6 +3694,7 @@ describe('Гости: фильтры и выгрузка', () => {
 
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),

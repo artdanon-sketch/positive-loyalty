@@ -49,6 +49,8 @@ const NAV_GROUPS: ReadonlyArray<readonly NavItem[]> = [
     { to: '/reports', label: 'nav.reports', icon: 'reports' },
     { to: '/operations', label: 'nav.operations', icon: 'operations' },
     { to: '/guests', label: 'nav.guests', icon: 'guests' },
+    // Отзывы — рядом с гостями: на них отвечают каждый день (docs/11, У10).
+    { to: '/reviews', label: 'nav.reviews', icon: 'reviews' },
     { to: '/offers', label: 'nav.offers', icon: 'offers' },
     // Смотреть партнёрства может и менеджер; договариваться — только владелец,
     // и кнопок у менеджера на экранах нет.
