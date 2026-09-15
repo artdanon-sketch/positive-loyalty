@@ -15,6 +15,7 @@ import {
   createMembershipFixture,
   createTenant,
   idempotencyKey,
+  type MembershipFixture,
   POS_ORIGIN,
 } from './ledger-test-context'
 
@@ -43,6 +44,7 @@ let endedOfferId: string
 let scheduledOfferId: string
 let goodwillOfferId: string
 let managerToken: string
+let ledgerService: LedgerService
 
 interface OfferBody {
   id: string
@@ -53,6 +55,7 @@ interface OfferBody {
   issued: number
   redeemed: number
   returned: number
+  actions: { publish: boolean; pause: boolean; end: boolean }
 }
 
 const server = (): Server => app.getHttpServer() as Server
@@ -107,6 +110,7 @@ beforeAll(async () => {
 
   prisma = moduleRef.get(PrismaService)
   const ledger = moduleRef.get(LedgerService)
+  ledgerService = ledger
 
   restaurantId = await createTenant(prisma)
   const studioId = await createTenant(prisma)
@@ -305,4 +309,259 @@ describe('Список акций', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .expect(400)
   })
+})
+
+const RETURN_TOMORROW = {
+  type: 'PROMO_ON_CHECK',
+  title: 'Вернём 200 ฿',
+  limits: { minCheck: 80_000, perGuestQty: 1 },
+  reward: { kind: 'GIFT_CODE', gift: { kind: 'FIXED_OFF', amount: 20_000 }, validityDays: 1 },
+}
+
+const NO_ACTIONS = { publish: false, pause: false, end: false }
+
+const tokenFor = (tenantId: string, role: 'OWNER' | 'MANAGER' | 'CASHIER'): string =>
+  signAccessToken({ tenantId, actorId: null, role }, SECRET)
+
+interface Sent {
+  readonly status: number
+  readonly body: Record<string, unknown>
+}
+
+const send = async (token: string, path: string, body: object = {}): Promise<Sent> => {
+  const response = await request(server())
+    .post(`/v1/admin/offers${path}`)
+    .set('Authorization', `Bearer ${token}`)
+    .send(body)
+
+  return { status: response.status, body: response.body as Record<string, unknown> }
+}
+
+const storedStatus = async (id: string): Promise<string> =>
+  (await prisma.offer.findUniqueOrThrow({ where: { id }, select: { status: true } })).status
+
+describe('Конструктор акций', () => {
+  let venueId: string
+  let owner: string
+
+  beforeAll(async () => {
+    venueId = await createTenant(prisma)
+    owner = tokenFor(venueId, 'OWNER')
+  })
+
+  it('ВЛАДЕЛЕЦ СОБРАЛ АКЦИЮ — ОНА СРАЗУ ИДЁТ: ТЕ ЖЕ ПРАВИЛА, ЧТО ЧИТАЕТ КАССА, И УСЛОВИЕ СЛОВАМИ', async () => {
+    const created = await send(owner, '', RETURN_TOMORROW)
+
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({ status: 'LIVE' })
+
+    const id = created.body['id'] as string
+
+    expect((await list(owner)).find((item) => item.id === id)).toMatchObject({
+      status: 'LIVE',
+      title: 'Вернём 200 ฿',
+      howTo: ['Покажите код на кассе', 'Скидка 200 ฿', 'Действует 1 день с выдачи'],
+      partner: null,
+      actions: { publish: false, pause: true, end: true },
+    })
+
+    expect(
+      await prisma.offer.findUniqueOrThrow({
+        where: { id },
+        select: { type: true, visibility: true, audience: true, limits: true, reward: true },
+      }),
+    ).toEqual({
+      type: 'PROMO_ON_CHECK',
+      visibility: 'VENUE_ONLY',
+      audience: { kind: 'ALL' },
+      limits: RETURN_TOMORROW.limits,
+      reward: RETURN_TOMORROW.reward,
+    })
+  })
+
+  it('ЧЕРНОВИК → ИДЁТ → ПАУЗА → ИДЁТ → ЗАВЕРШЕНА; ПОВТОР ШАГА НЕ ОШИБКА; ИЗ ЗАВЕРШЁННОЙ ХОДА НЕТ', async () => {
+    const draft = await send(owner, '', { ...RETURN_TOMORROW, title: 'Черновик', launch: 'DRAFT' })
+
+    expect(draft.body).toMatchObject({ status: 'DRAFT' })
+
+    const id = draft.body['id'] as string
+
+    expect((await list(owner)).find((item) => item.id === id)?.actions).toEqual({
+      publish: true,
+      pause: false,
+      end: true,
+    })
+
+    expect((await send(owner, `/${id}/publish`)).body).toMatchObject({ status: 'LIVE' })
+    expect((await send(owner, `/${id}/pause`)).body).toMatchObject({ status: 'PAUSED' })
+
+    const again = await send(owner, `/${id}/pause`)
+
+    expect(again.status).toBe(200)
+    expect(again.body).toMatchObject({ status: 'PAUSED' })
+
+    expect((await send(owner, `/${id}/publish`)).body).toMatchObject({ status: 'LIVE' })
+    expect((await send(owner, `/${id}/end`)).body).toMatchObject({ status: 'ENDED' })
+
+    const revived = await send(owner, `/${id}/publish`)
+
+    expect(revived.status).toBe(409)
+    expect(revived.body).toMatchObject({ error: { code: 'INVALID_TRANSITION' } })
+    expect(await storedStatus(id)).toBe('ENDED')
+
+    // Повторная пауза в аудит не попала: она ничего не изменила.
+    expect(
+      await prisma.auditLog.count({
+        where: { tenantId: venueId, entityId: id, action: 'OFFER_STATUS_CHANGED' },
+      }),
+    ).toBe(4)
+  })
+
+  it('С НАЧАЛОМ ЗАВТРА — «ЗАПЛАНИРОВАНА», ХОТЯ КАССА ЕЁ УЖЕ ЗНАЕТ; С ПРОШЕДШИМ КОНЦОМ ЗАПУСТИТЬ НЕЛЬЗЯ', async () => {
+    const created = await send(owner, '', {
+      ...RETURN_TOMORROW,
+      title: 'Завтра',
+      schedule: { startsAt: new Date(Date.now() + DAY_MS).toISOString() },
+    })
+
+    expect(created.body).toMatchObject({ status: 'SCHEDULED' })
+
+    const id = created.body['id'] as string
+
+    expect((await list(owner, '?filter=SCHEDULED')).map((item) => item.id)).toContain(id)
+    expect((await list(owner, '?filter=LIVE')).map((item) => item.id)).not.toContain(id)
+    expect(await storedStatus(id)).toBe('LIVE')
+
+    const late = await send(owner, '', {
+      ...RETURN_TOMORROW,
+      title: 'Вчера',
+      schedule: { endsAt: new Date(Date.now() - DAY_MS).toISOString() },
+    })
+
+    expect(late.status).toBe(409)
+    expect(late.body).toMatchObject({ error: { code: 'OFFER_EXPIRED' } })
+  })
+
+  it('МЕНЕДЖЕР ВИДИТ, НО НЕ СОБИРАЕТ И НЕ ПЕРЕКЛЮЧАЕТ; КАССИРУ — 403; КРИВЫЕ ПРАВИЛА — 400', async () => {
+    const manager = tokenFor(venueId, 'MANAGER')
+    const id = (await send(owner, '', { ...RETURN_TOMORROW, title: 'Для менеджера' })).body[
+      'id'
+    ] as string
+
+    expect((await list(manager)).find((item) => item.id === id)?.actions).toEqual(NO_ACTIONS)
+    expect((await send(manager, '', RETURN_TOMORROW)).status).toBe(403)
+    expect((await send(manager, `/${id}/pause`)).status).toBe(403)
+    expect((await send(manager, '/simulate', RETURN_TOMORROW)).status).toBe(403)
+    expect((await send(tokenFor(venueId, 'CASHIER'), '', RETURN_TOMORROW)).status).toBe(403)
+    expect(await storedStatus(id)).toBe('LIVE')
+
+    const mismatch = await send(owner, '', { ...RETURN_TOMORROW, type: 'CASHBACK' })
+
+    expect(mismatch.status).toBe(400)
+    expect(mismatch.body).toMatchObject({ error: { code: 'VALIDATION_FAILED' } })
+    expect((await send(owner, '', { ...RETURN_TOMORROW, tenantId: restaurantId })).status).toBe(400)
+  })
+
+  it('ПАРТНЁРСКУЮ АКЦИЮ ИЗ СПИСКА НЕ ПЕРЕКЛЮЧИТЬ — 409; ЧУЖУЮ И ПОДАРОК ИЗ КАРТОЧКИ — 404', async () => {
+    const restaurantOwner = tokenFor(restaurantId, 'OWNER')
+    const partner = await send(restaurantOwner, `/${partnerOfferId}/pause`)
+
+    expect(partner.status).toBe(409)
+    expect(partner.body).toMatchObject({ error: { code: 'PARTNER_OFFER' } })
+    expect(await storedStatus(partnerOfferId)).toBe('LIVE')
+    expect(
+      (await list(restaurantOwner)).find((item) => item.id === partnerOfferId)?.actions,
+    ).toEqual(NO_ACTIONS)
+
+    expect((await send(owner, `/${scheduledOfferId}/end`)).status).toBe(404)
+    expect(await storedStatus(scheduledOfferId)).toBe('SCHEDULED')
+
+    expect((await send(restaurantOwner, `/${goodwillOfferId}/end`)).status).toBe(404)
+    expect(await storedStatus(goodwillOfferId)).toBe('LIVE')
+  })
+})
+
+describe('Прогноз акции на своей истории', () => {
+  const { title: _title, ...rules } = RETURN_TOMORROW
+
+  it('НОВОЕ ЗАВЕДЕНИЕ — ЦИФР НЕТ, ТОЛЬКО ПРИЧИНА', async () => {
+    const fresh = await createTenant(prisma)
+    const outcome = await send(tokenFor(fresh, 'OWNER'), '/simulate', rules)
+
+    expect(outcome.status).toBe(200)
+    expect(outcome.body).toMatchObject({ insufficientData: true })
+    expect(outcome.body).not.toHaveProperty('guests')
+  })
+
+  it('ЧЕКИ ЗА 30 ДНЕЙ ИДУТ ЧЕРЕЗ ДВИЖОК КАССЫ: ПОРОГ И ЛИМИТ НА ГОСТЯ КАК НА КАССЕ, ОТМЕНЁННЫЙ ЧЕК — НЕ ВИЗИТ', async () => {
+    const venue = await createTenant(prisma)
+
+    const visit = async (
+      fixture: MembershipFixture,
+      amount: number,
+      daysAgo: number,
+    ): Promise<string> => {
+      const earned = await ledgerService.earn(
+        {
+          membershipId: fixture.membershipId,
+          amount: Math.max(1, Math.floor(amount / 20)),
+          basisAmount: amount,
+          idempotencyKey: idempotencyKey('offers-simulate'),
+          refType: 'receipt',
+          refId: `R-${randomUUID().slice(0, 8)}`,
+          occurredAt: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
+          ...POS_ORIGIN,
+        },
+        fixture.scope,
+      )
+
+      return earned.entry.id
+    }
+
+    // Первый чек — 40 дней назад: заведение в программе дольше окна.
+    await visit(await createMembershipFixture(prisma, { tenantId: venue }), 50_000, 40)
+
+    // Двадцать мелких чеков: история есть, порог 800 ฿ не пройден.
+    for (let index = 0; index < 20; index += 1) {
+      await visit(
+        await createMembershipFixture(prisma, { tenantId: venue }),
+        30_000,
+        1 + (index % 25),
+      )
+    }
+
+    // Анна трижды выше порога — но код один: лимит на гостя.
+    const anna = await createMembershipFixture(prisma, { tenantId: venue })
+    await visit(anna, 90_000, 3)
+    await visit(anna, 95_000, 2)
+    await visit(anna, 99_000, 1)
+
+    // Борис ровно на пороге.
+    await visit(await createMembershipFixture(prisma, { tenantId: venue }), 80_000, 4)
+
+    // Большой чек отменили — визита не было.
+    const cancelled = await createMembershipFixture(prisma, { tenantId: venue })
+    const entryId = await visit(cancelled, 150_000, 2)
+    await ledgerService.reverse(
+      {
+        entryId,
+        idempotencyKey: idempotencyKey('offers-simulate-reverse'),
+        reason: 'WRONG_AMOUNT',
+        ...POS_ORIGIN,
+      },
+      cancelled.scope,
+    )
+
+    const outcome = await send(tokenFor(venue, 'OWNER'), '/simulate', rules)
+
+    expect(outcome.status).toBe(200)
+    expect(outcome.body).toEqual({
+      insufficientData: false,
+      days: 30,
+      guests: 2,
+      grants: 2,
+      bonusPoints: null,
+      cost: 40_000,
+    })
+  }, 120_000)
 })
