@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { engineOfferTexts } from './offer-texts'
+import { engineOfferTexts } from './offer-texts.js'
 
 describe('Тексты акции из конструктора', () => {
   it('«ВЕРНЁМ 200 ฿»: ЧТО ПОКАЗАТЬ, ЧТО ДАЁТ, СКОЛЬКО ЖИВЁТ — БЕЗ ПОРОГА, ЗА КОТОРЫЙ ВЫДАН', () => {

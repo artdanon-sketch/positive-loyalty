@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 import type { AdminOfferCard, OfferStatus } from '@positive/contracts'
@@ -5,6 +6,8 @@ import type { AdminOfferCard, OfferStatus } from '@positive/contracts'
 import { fill } from '../../../shared/format/fill'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
+import { useOfferTransition } from '../hooks'
+import type { OfferAction } from '../hooks'
 
 /**
  * Карточка акции: статус, название, условие словами и три цифры — выдано,
@@ -12,6 +15,10 @@ import type { TranslationKey } from '../../../shared/i18n'
  *
  * Партнёрская — с пометкой «партнёр: Студия», которая ведёт в партнёрство:
  * её условия меняются только там (docs/10, раздел 5.3).
+ *
+ * КНОПКИ — ТЕ, ЧТО ДАЛ СЕРВЕР. «Запустить», «Пауза», «Завершить» появляются
+ * по `actions`: сервер знает роль, партнёрство и то, умеет ли касса эту акцию
+ * считать. «Завершить» переспрашивает — вернуть завершённую акцию нельзя.
  */
 
 const STATUS_LABELS: Readonly<Record<OfferStatus, TranslationKey>> = {
@@ -32,6 +39,14 @@ const STATUS_TONES: Readonly<Record<OfferStatus, string>> = {
 
 export function OfferCard({ offer }: { offer: AdminOfferCard }): ReactElement {
   const t = useT()
+  const transition = useOfferTransition()
+  const [confirmingEnd, setConfirmingEnd] = useState(false)
+  const { actions } = offer
+
+  const act = (action: OfferAction): void => {
+    setConfirmingEnd(false)
+    transition.mutate({ id: offer.id, action })
+  }
 
   return (
     <article className={offer.status === 'ENDED' ? 'offer-card offer-card--ended' : 'offer-card'}>
@@ -75,6 +90,80 @@ export function OfferCard({ offer }: { offer: AdminOfferCard }): ReactElement {
       </dl>
 
       {offer.partner === null ? null : <p className="field__hint">{t('offers.partnerHint')}</p>}
+
+      {actions.publish || actions.pause || actions.end ? (
+        <div className="offer-card__actions" role="group" aria-label={t('offers.action.label')}>
+          {confirmingEnd ? (
+            <>
+              <span className="offer-card__confirm">{t('offers.action.endConfirm')}</span>
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={transition.isPending}
+                onClick={() => {
+                  act('end')
+                }}
+              >
+                {t('offers.action.endYes')}
+              </button>
+              <button
+                className="button"
+                type="button"
+                onClick={() => {
+                  setConfirmingEnd(false)
+                }}
+              >
+                {t('offers.action.cancel')}
+              </button>
+            </>
+          ) : (
+            <>
+              {actions.publish ? (
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={transition.isPending}
+                  onClick={() => {
+                    act('publish')
+                  }}
+                >
+                  {t('offers.action.publish')}
+                </button>
+              ) : null}
+              {actions.pause ? (
+                <button
+                  className="button"
+                  type="button"
+                  disabled={transition.isPending}
+                  onClick={() => {
+                    act('pause')
+                  }}
+                >
+                  {t('offers.action.pause')}
+                </button>
+              ) : null}
+              {actions.end ? (
+                <button
+                  className="button button--danger"
+                  type="button"
+                  disabled={transition.isPending}
+                  onClick={() => {
+                    setConfirmingEnd(true)
+                  }}
+                >
+                  {t('offers.action.end')}
+                </button>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {transition.isError ? (
+        <p className="state__hint state__hint--error" role="alert">
+          {transition.error.message}
+        </p>
+      ) : null}
     </article>
   )
 }

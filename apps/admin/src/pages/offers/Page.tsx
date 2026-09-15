@@ -2,17 +2,18 @@ import type { ReactElement } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { OfferListFilter } from '@positive/contracts'
 
+import { useAuth } from '../../shared/auth/auth-context'
 import { useT } from '../../shared/i18n'
 import type { TranslationKey } from '../../shared/i18n'
 import { OfferCard } from './components/offer-card'
 import { useOffers } from './hooks'
 
 /**
- * Экран «Акции». docs/03, раздел 4 · docs/10, раздел 5.3.
+ * Экран «Акции». docs/03, раздел 4 · docs/10, раздел 5.3 · docs/11, У2.
  *
- * Пока — список. Кнопки «Создать акцию» нет, и это решение: конструктор
- * ждёт движка правил, а кнопка, которая ведёт в никуда, хуже её отсутствия.
- * Пустое состояние честно говорит, откуда сейчас берутся акции, — из партнёрств.
+ * Список и дорога в конструктор. «Собрать акцию» — у владельца: собирать
+ * и менять акции — его галочка в матрице прав (docs/05). Менеджер видит
+ * те же карточки без кнопок; запрет всё равно стоит на сервере.
  *
  * Фильтр живёт в адресе (`?filter=LIVE`): ссылку «что у нас сейчас идёт» можно
  * переслать, а «Назад» из партнёрства возвращает туда же.
@@ -30,15 +31,23 @@ const toFilter = (value: string | null): OfferListFilter =>
 
 export function OffersPage(): ReactElement {
   const t = useT()
+  const isOwner = useAuth().session?.subject.role === 'OWNER'
   const [params, setParams] = useSearchParams()
   const filter = toFilter(params.get('filter'))
   const offers = useOffers(filter)
 
   return (
     <section className="page">
-      <header className="page__head">
-        <h1 className="page__title">{t('offers.title')}</h1>
-        <p className="page__subtitle">{t('offers.subtitle')}</p>
+      <header className="page__head page__head--row">
+        <div className="page__head">
+          <h1 className="page__title">{t('offers.title')}</h1>
+          <p className="page__subtitle">{t('offers.subtitle')}</p>
+        </div>
+        {isOwner ? (
+          <Link className="button button--primary" to="/offers/new">
+            {t('offers.create')}
+          </Link>
+        ) : null}
       </header>
 
       <div className="filter-chips" role="group" aria-label={t('offers.filter.label')}>
@@ -85,7 +94,7 @@ export function OffersPage(): ReactElement {
             {t(filter === 'ALL' ? 'offers.empty.title' : 'offers.empty.filtered')}
           </p>
           <p className="state__hint">{t('offers.empty.hint')}</p>
-          <Link className="button button--primary" to="/partners">
+          <Link className={isOwner ? 'button' : 'button button--primary'} to="/partners">
             {t('offers.empty.action')}
           </Link>
         </div>

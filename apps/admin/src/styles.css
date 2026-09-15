@@ -2390,6 +2390,247 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.offer-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.offer-card__confirm {
+  flex-basis: 100%;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+/* ── Конструктор акций ─────────────────────────────────────────────────────── */
+
+.page__head--row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.constructor__back {
+  align-self: flex-start;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+  text-decoration: none;
+}
+
+.constructor__back:hover {
+  color: var(--tx);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill, 99px);
+  color: var(--tx-3);
+  font-size: var(--fs-secondary-lg);
+}
+
+.steps__item--on {
+  border-color: var(--mint);
+  color: var(--tx);
+  font-weight: 700;
+}
+
+.steps__n {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surf-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.steps__item--on .steps__n {
+  background: var(--mint);
+  color: var(--surf);
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: var(--sp-3);
+}
+
+.template {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm-lg);
+  background: var(--surf);
+  color: var(--tx);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.template:hover {
+  border-color: var(--mint);
+  background: color-mix(in srgb, var(--mint) 7%, transparent);
+}
+
+.template:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+
+.template__name {
+  font-size: 16px;
+}
+
+.template__caption {
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+.constructor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.constructor__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.constructor__main > .panel {
+  margin-bottom: 0;
+}
+
+.constructor__section {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.constructor__preview {
+  position: sticky;
+  top: calc(var(--admin-header-height) + var(--sp-4));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weekday {
+  min-width: 44px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.guest-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surf-2);
+  box-shadow: var(--shadow-raised);
+}
+
+.guest-preview__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guest-preview__title {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.guest-preview__venue {
+  color: var(--tx-3);
+  font-size: var(--fs-secondary);
+}
+
+.guest-preview__code {
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm-lg);
+  color: var(--tx-2);
+  font-size: var(--fs-secondary);
+  text-align: center;
+}
+
+.guest-preview__steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+.review {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+.review > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 170px) minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.review dt {
+  color: var(--tx-3);
+}
+
+.review dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .constructor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .constructor__preview {
+    position: static;
+  }
+
+  .review > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
 /* ── Действия в строке таблицы ────────────────────────────────────────────── */
 
 .row-actions {

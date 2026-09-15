@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
-import { offerHowTo, offerTitle } from '@positive/contracts'
+import { engineOfferTexts, offerHowTo, offerTitle } from '@positive/contracts'
 import type {
   AdminOfferCard,
   AdminOfferList,
@@ -22,7 +22,6 @@ import {
   offerActions,
 } from './offer-lifecycle'
 import type { OfferAction } from './offer-lifecycle'
-import { engineOfferTexts } from './offer-texts'
 
 /**
  * Акции заведения: список, конструктор, запуск и пауза, прогноз.

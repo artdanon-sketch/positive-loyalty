@@ -1986,6 +1986,8 @@ describe('Советы про партнёров', () => {
   })
 })
 
+const NO_OFFER_ACTIONS = { publish: false, pause: false, end: false }
+
 const OFFERS = {
   items: [
     {
@@ -1997,6 +1999,7 @@ const OFFERS = {
       issued: 12,
       redeemed: 7,
       returned: 3,
+      actions: NO_OFFER_ACTIONS,
       createdAt: '2026-09-14T10:00:00.000Z',
     },
     {
@@ -2008,6 +2011,7 @@ const OFFERS = {
       issued: 40,
       redeemed: 31,
       returned: 12,
+      actions: NO_OFFER_ACTIONS,
       createdAt: '2026-08-01T10:00:00.000Z',
     },
   ],
@@ -2344,5 +2348,190 @@ describe('Каркас: левое меню', () => {
         .map((link) => link.textContent),
     ).toEqual([t('nav.pos')])
     expect(screen.queryByRole('button', { name: t('nav.menu') })).toBeNull()
+  })
+})
+
+const NEW_OFFER_ID = '54545454-5454-4545-8545-545454545454'
+
+/** Своя акция владельца: идёт, её можно поставить на паузу и завершить. */
+const OWN_OFFER = {
+  id: NEW_OFFER_ID,
+  status: 'LIVE',
+  title: 'Вернём 200 ฿',
+  howTo: ['Покажите код на кассе', 'Скидка 200 ฿', 'Действует 1 день с выдачи'],
+  partner: null,
+  issued: 5,
+  redeemed: 2,
+  returned: 1,
+  actions: { publish: false, pause: true, end: true },
+  createdAt: '2026-09-15T10:00:00.000Z',
+}
+
+const SIMULATION = {
+  insufficientData: false,
+  days: 30,
+  guests: 84,
+  grants: 84,
+  bonusPoints: null,
+  cost: 1_680_000,
+}
+
+/** Как сумму видит поиск по тексту: неразрывные пробелы он сводит к обычным. */
+const bahtText = (minor: number): string =>
+  `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100)} ฿`.replace(
+    /\s/g,
+    ' ',
+  )
+
+describe('Конструктор акций', () => {
+  const openConstructor = async (): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.offers') }))
+    fireEvent.click(await screen.findByRole('link', { name: t('offers.create') }))
+    await screen.findByRole('heading', { level: 1, name: t('offerNew.title') })
+  }
+
+  const pickTemplate = (name: Parameters<typeof t>[0]): void => {
+    fireEvent.click(
+      screen.getByRole('button', { name: (accessible) => accessible.startsWith(t(name)) }),
+    )
+  }
+
+  it('ШАБЛОН → ЖИВОЕ ПРЕВЬЮ КАК У ГОСТЯ → ПРОГНОЗ → ЗАПУСК УХОДИТ НА СЕРВЕР ТЕМИ ЖЕ ПРАВИЛАМИ', async () => {
+    const created: unknown[] = []
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/offers/simulate': () => json(SIMULATION),
+      '/v1/admin/offers': (init) => {
+        if (init?.method === 'POST') {
+          created.push(JSON.parse(init.body as string))
+          return json({ id: NEW_OFFER_ID, status: 'LIVE' }, 201)
+        }
+
+        return json({ items: [OWN_OFFER] })
+      },
+    })
+    render(<App />)
+
+    await openConstructor()
+    pickTemplate('offerNew.template.RETURN_TOMORROW.name')
+
+    const preview = await screen.findByRole('region', { name: t('offerNew.preview.title') })
+    expect(
+      within(preview).getByText(t('offerNew.template.RETURN_TOMORROW.title')),
+    ).toBeInTheDocument()
+    expect(within(preview).getByText('Скидка 200 ฿')).toBeInTheDocument()
+
+    // Превью живое: правка суммы сразу видна в карточке гостя.
+    fireEvent.change(screen.getByLabelText(t('offerNew.field.giftAmount')), {
+      target: { value: '250' },
+    })
+    expect(within(preview).getByText('Скидка 250 ฿')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('offerNew.forecast.run') }))
+    const forecast = screen.getByRole('region', { name: t('offerNew.forecast.title') })
+    expect(await within(forecast).findByText(bahtText(1_680_000))).toBeInTheDocument()
+    expect(requested(fetchMock, '/v1/admin/offers/simulate')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: t('offerNew.next') }))
+    await screen.findByRole('heading', { level: 2, name: t('offerNew.review.title') })
+    fireEvent.click(screen.getByRole('button', { name: t('offerNew.launch') }))
+
+    await screen.findByRole('heading', { level: 1, name: t('offers.title') })
+    expect(created).toEqual([
+      {
+        type: 'PROMO_ON_CHECK',
+        title: t('offerNew.template.RETURN_TOMORROW.title'),
+        audience: { kind: 'ALL' },
+        schedule: {},
+        limits: { minCheck: 80_000, perGuestQty: 1 },
+        reward: { kind: 'GIFT_CODE', gift: { kind: 'FIXED_OFF', amount: 25_000 }, validityDays: 1 },
+        stackable: true,
+        priority: 100,
+        launch: 'NOW',
+      },
+    ])
+  })
+
+  it('СВОЯ АКЦИЯ С ЧИСТОГО ЛИСТА: «ДАЛЬШЕ» ЖДЁТ И ГОВОРИТ, ЧТО ПОПРАВИТЬ; ДАННЫХ МАЛО — ЧЕСТНАЯ СТРОКА', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/offers/simulate': () =>
+        json({
+          insufficientData: true,
+          reason: 'За 30 дней меньше 20 чеков — на такой истории прогноз случаен',
+        }),
+      '/v1/admin/offers': () => json({ items: [] }),
+    })
+    render(<App />)
+
+    await openConstructor()
+    pickTemplate('offerNew.template.CUSTOM.name')
+
+    const next = await screen.findByRole('button', { name: t('offerNew.next') })
+    expect(next).toBeDisabled()
+    expect(screen.getByText(t('offerNew.problem.title'))).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('offerNew.field.title')), {
+      target: { value: 'Минус 150 ฿' },
+    })
+    expect(screen.getByText(t('offerNew.problem.giftAmount'))).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(t('offerNew.field.giftAmount')), {
+      target: { value: '150' },
+    })
+    expect(next).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: t('offerNew.forecast.run') }))
+    expect(await screen.findByText(t('offerNew.forecast.noData'))).toBeInTheDocument()
+    expect(
+      screen.getByText('За 30 дней меньше 20 чеков — на такой истории прогноз случаен'),
+    ).toBeInTheDocument()
+  })
+
+  it('ПАУЗА И ЗАВЕРШЕНИЕ С КАРТОЧКИ — ТОЛЬКО КНОПКИ, ДАННЫЕ СЕРВЕРОМ; ЗАВЕРШЕНИЕ ПЕРЕСПРАШИВАЕТ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/offers/': () => json({ id: NEW_OFFER_ID, status: 'PAUSED' }),
+      '/v1/admin/offers': () => json({ items: [OWN_OFFER] }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.offers') }))
+
+    const actions = await screen.findByRole('group', { name: t('offers.action.label') })
+    expect(within(actions).queryByRole('button', { name: t('offers.action.publish') })).toBeNull()
+
+    fireEvent.click(within(actions).getByRole('button', { name: t('offers.action.pause') }))
+    await waitFor(() => {
+      expect(requested(fetchMock, `/v1/admin/offers/${NEW_OFFER_ID}/pause`)).toBe(true)
+    })
+    await waitFor(() => {
+      expect(within(actions).getByRole('button', { name: t('offers.action.end') })).toBeEnabled()
+    })
+
+    fireEvent.click(within(actions).getByRole('button', { name: t('offers.action.end') }))
+    expect(within(actions).getByText(t('offers.action.endConfirm'))).toBeInTheDocument()
+    expect(requested(fetchMock, '/end')).toBe(false)
+
+    fireEvent.click(within(actions).getByRole('button', { name: t('offers.action.endYes') }))
+    await waitFor(() => {
+      expect(requested(fetchMock, `/v1/admin/offers/${NEW_OFFER_ID}/end`)).toBe(true)
+    })
+  })
+
+  it('менеджер видит акции без кнопок и без дороги в конструктор', async () => {
+    stubApi({
+      '/v1/admin/offers': () => json({ items: [{ ...OWN_OFFER, actions: NO_OFFER_ACTIONS }] }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.offers') }))
+
+    await screen.findByRole('heading', { level: 2, name: 'Вернём 200 ฿' })
+    expect(screen.queryByRole('link', { name: t('offers.create') })).toBeNull()
+    expect(screen.queryByRole('group', { name: t('offers.action.label') })).toBeNull()
   })
 })
