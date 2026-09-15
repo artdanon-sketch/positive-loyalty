@@ -46,6 +46,8 @@ const WALLET_RESPONSE = {
       visitsTotal: 4,
       lastVisitAt: '2026-08-26T10:00:00.000Z',
       isControlGroup: false,
+      tier: { name: 'Свой' },
+      nextTier: { name: 'Золото', spentLeft: 250_000, visitsLeft: 3 },
     },
     {
       tenantId: '44444444-4444-4444-8444-444444444444',
@@ -54,6 +56,8 @@ const WALLET_RESPONSE = {
       visitsTotal: 0,
       lastVisitAt: null,
       isControlGroup: true,
+      tier: null,
+      nextTier: null,
     },
   ],
   vouchers: [
@@ -294,5 +298,28 @@ describe('Гостевое приложение', () => {
     await waitFor(() => {
       expect(document.documentElement.getAttribute('data-theme')).not.toBe(before)
     })
+  })
+})
+
+describe('Статус в кошельке', () => {
+  it('СТАТУС В ЗАВЕДЕНИИ И СКОЛЬКО ОСТАЛОСЬ ДО СЛЕДУЮЩЕГО — ЛЮБЫМ ИЗ СПОСОБОВ', async () => {
+    stubApi()
+    render(<App />)
+
+    await signIn()
+
+    const venues = within(await screen.findByRole('region', { name: t('card.venues.title') }))
+    const ways = [
+      t('card.tier.spentLeft').replace('{amount}', '2 500,00 ฿'),
+      t('card.tier.visitsLeft').replace('{n}', '3'),
+    ].join(` ${t('card.tier.or')} `)
+
+    expect(venues.getByText('Свой')).toBeInTheDocument()
+    // Поиск по тексту сводит неразрывные пробелы суммы к обычным — и ожидание тоже.
+    expect(
+      venues.getByText(
+        t('card.tier.next').replace('{name}', 'Золото').replace('{ways}', ways).replace(/\s/g, ' '),
+      ),
+    ).toBeInTheDocument()
   })
 })

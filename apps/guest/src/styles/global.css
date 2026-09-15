@@ -356,6 +356,24 @@ output {
   color: var(--tx-2);
 }
 
+/* Статус и дорога к следующему: цвет у названия, остальное — подпись. */
+.venue__tier {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: 12.5px;
+}
+
+.venue__tierName {
+  color: var(--mint);
+  font-weight: 700;
+}
+
+.venue__next {
+  color: var(--tx-2);
+}
+
 .venue__side {
   display: flex;
   flex-direction: column;

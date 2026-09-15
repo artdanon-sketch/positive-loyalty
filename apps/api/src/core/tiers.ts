@@ -108,3 +108,52 @@ export const checkRates = (
   tier === null
     ? { earnRate: config.baseEarnRate, redeemRate: config.baseRedeemRate }
     : { earnRate: tier.earnRate, redeemRate: tier.redeemRate }
+
+export interface TierProgress {
+  readonly next: Tier
+  /** Сколько оборота не хватает, в минорных единицах. null — у следующего статуса нет такого условия. */
+  readonly spentLeft: number | null
+  /** Сколько визитов не хватает. null — такого условия нет. */
+  readonly visitsLeft: number | null
+}
+
+/**
+ * Сколько осталось до следующего статуса — для карты гостя.
+ *
+ * СЛЕДУЮЩИЙ — ПЕРВЫЙ ОТКРЫТЫЙ СТАТУС С УСЛОВИЯМИ ВЫШЕ ТЕКУЩЕГО. Скрытые сами
+ * не даются, а статус без условий выше текущего не «достигается» — его бы уже дали.
+ *
+ * ОСТАЛОСЬ — ПО КАЖДОМУ УСЛОВИЮ ОТДЕЛЬНО: хватит любого. Порог строгий, поэтому
+ * до «больше 1 000 ฿» при обороте 600 ฿ — 400,01 ฿, а до «больше четырёх визитов»
+ * при одном — четыре.
+ *
+ * ПРОГРЕССА НЕТ у ручного и скрытого статуса — лестница к ним не применяется, —
+ * и когда у следующего статуса только условие по рекомендациям: реферальной
+ * программы ещё нет, и «приведите друзей» было бы обещанием без механики.
+ */
+export const tierProgress = (
+  tiers: readonly Tier[],
+  current: Tier | null,
+  facts: TierFacts,
+): TierProgress | null => {
+  if (facts.tierManual || current?.hidden === true) {
+    return null
+  }
+
+  const from = current === null ? -1 : tiers.indexOf(current)
+  const next = tiers.slice(from + 1).find((tier) => !tier.hidden && tier.conditions.length > 0)
+
+  if (next === undefined) {
+    return null
+  }
+
+  const left = (type: TierCondition['type'], have: number): number | null => {
+    const condition = next.conditions.find((candidate) => candidate.type === type)
+    return condition === undefined ? null : Math.max(0, condition.gt + 1 - have)
+  }
+
+  const spentLeft = left('SPENT_TOTAL', facts.spentTotal)
+  const visitsLeft = left('VISITS_TOTAL', facts.visitsTotal)
+
+  return spentLeft === null && visitsLeft === null ? null : { next, spentLeft, visitsLeft }
+}

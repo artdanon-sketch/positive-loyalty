@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import type { GuestMe, GuestQrToken, GuestWallet, WalletVoucher } from '@positive/contracts'
-import { offerHowTo, offerTitle } from '@positive/contracts'
+import { offerHowTo, offerTitle, ProgramConfig } from '@positive/contracts'
 
 import { getEnv } from '../common/config/env'
 import { maskPhone } from '../common/pii/mask-phone'
 import { signGuestQrToken } from '../common/tenant/access-token'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
+import { resolveTier, tierProgress } from '../core/tiers'
 
 /** Токен на кассу живёт пять минут: экран открыт у стойки, а не хранится. */
 const QR_TTL_SECONDS = 300
@@ -74,19 +75,45 @@ export class GuestService {
     const rows = await this.prisma.forGuest(guestId, async (tx) =>
       tx.membership.findMany({
         where: { guestId },
-        include: { tenant: { select: { brandName: true } } },
+        include: { tenant: { select: { brandName: true, settings: true } } },
         orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
       }),
     )
 
-    const memberships = rows.map((row) => ({
-      tenantId: row.tenantId,
-      brandName: row.tenant.brandName,
-      points: row.pointsBalance,
-      visitsTotal: row.visitsTotal,
-      lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
-      isControlGroup: row.isControlGroup,
-    }))
+    const memberships = rows.map((row) => {
+      // Статус — тем же расчётом, что у кассы. Рекомендации гостю не посчитать:
+      // чужие участия гостевой контур не отдаёт, — поэтому ноль. Условие по
+      // рекомендациям на карте и не показывается: программы ещё нет (docs/11, У6).
+      const program = ProgramConfig.safeParse(row.tenant.settings ?? {})
+      const tiers = program.success ? program.data.tiers : []
+      const facts = {
+        tierId: row.tierId,
+        tierManual: row.tierManual,
+        spentTotal: row.spentTotal,
+        visitsTotal: row.visitsTotal,
+        referrals: 0,
+      }
+      const tier = resolveTier(tiers, facts)
+      const progress = tierProgress(tiers, tier, facts)
+
+      return {
+        tenantId: row.tenantId,
+        brandName: row.tenant.brandName,
+        points: row.pointsBalance,
+        visitsTotal: row.visitsTotal,
+        lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
+        isControlGroup: row.isControlGroup,
+        tier: tier === null ? null : { name: tier.name },
+        nextTier:
+          progress === null
+            ? null
+            : {
+                name: progress.next.name,
+                spentLeft: progress.spentLeft,
+                visitsLeft: progress.visitsLeft,
+              },
+      }
+    })
 
     return {
       totalPoints: memberships.reduce((sum, membership) => sum + membership.points, 0),

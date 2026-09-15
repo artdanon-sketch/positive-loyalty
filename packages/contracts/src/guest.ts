@@ -107,8 +107,25 @@ export const WalletMembership = z
     visitsTotal: z.number().int().nonnegative(),
     lastVisitAt: z.iso.datetime().nullable(),
     isControlGroup: z.boolean(),
+    /** Статус гостя в заведении. null — лестницы статусов в заведении нет. */
+    tier: z.object({ name: z.string() }).strict().nullable(),
+    /**
+     * Сколько осталось до следующего статуса — хватит любого из условий.
+     * Суммы в минорных единицах. null — выше некуда, статус назначен вручную
+     * или лестницы нет.
+     */
+    nextTier: z
+      .object({
+        name: z.string(),
+        spentLeft: z.number().int().nonnegative().nullable(),
+        visitsLeft: z.number().int().nonnegative().nullable(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict()
+
+export type WalletMembership = z.infer<typeof WalletMembership>
 
 /**
  * Промокод в кошельке гостя. docs/02, раздел 2.1.
