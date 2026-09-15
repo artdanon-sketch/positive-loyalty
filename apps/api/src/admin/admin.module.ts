@@ -35,6 +35,8 @@ import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
 import { ReviewsController } from './reviews.controller'
 import { ReviewsService } from './reviews.service'
+import { TodayController } from './today.controller'
+import { TodayService } from './today.service'
 import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
@@ -57,6 +59,7 @@ import { StaffService } from './staff.service'
     ReportsController,
     CertificatesController,
     ReviewsController,
+    TodayController,
   ],
   providers: [
     AdminService,
@@ -77,6 +80,7 @@ import { StaffService } from './staff.service'
     ReportsService,
     CertificatesService,
     ReviewsService,
+    TodayService,
   ],
 })
 export class AdminModule {}
