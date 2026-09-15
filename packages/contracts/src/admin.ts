@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { Tag } from './tag.js'
+
 import { LedgerSource, LedgerType } from './ledger.js'
 
 /**
@@ -144,6 +146,8 @@ export const AdminGuestsQuery = z
     sleeping: z.coerce.number().int().min(7).max(365).optional(),
     /** `none` — ни разу не покупали. */
     buyers: z.enum(['none']).optional(),
+    /** Тег заведения (id из справочника). */
+    tag: z.uuid().optional(),
   })
   .strict()
 
@@ -280,6 +284,8 @@ export const AdminGuestCard = z
     averageCheck: z.number().int().nonnegative().nullable(),
     /** Заметка заведения о госте. null — заметки нет. Гостю не показывается. */
     note: z.string().nullable(),
+    /** Теги заведения на госте, по названию. Гостю не показываются. */
+    tags: z.array(Tag),
     /** Новые сверху. */
     timeline: z.array(AdminTimelineItem),
     /** Сколько последних операций и подарков показывается. */

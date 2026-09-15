@@ -17,6 +17,10 @@ import { GuestNoteController } from './guest-note.controller'
 import { GuestNoteService } from './guest-note.service'
 import { GuestPointsController } from './guest-points.controller'
 import { GuestPointsService } from './guest-points.service'
+import { GuestTagsController } from './guest-tags.controller'
+import { GuestTagsService } from './guest-tags.service'
+import { TagsController } from './tags.controller'
+import { TagsService } from './tags.service'
 import { StaffController } from './staff.controller'
 import { StuckReceiptsController } from './stuck-receipts.controller'
 import { StuckReceiptsService } from './stuck-receipts.service'
@@ -36,6 +40,8 @@ import { StaffService } from './staff.service'
     GuestTierController,
     GuestPointsController,
     GuestNoteController,
+    TagsController,
+    GuestTagsController,
     StuckReceiptsController,
     OffersController,
   ],
@@ -49,6 +55,8 @@ import { StaffService } from './staff.service'
     GuestTierService,
     GuestPointsService,
     GuestNoteService,
+    TagsService,
+    GuestTagsService,
     StuckReceiptsService,
     OffersService,
   ],
