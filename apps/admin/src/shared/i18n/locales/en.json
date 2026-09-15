@@ -757,5 +757,19 @@
   "tagSettings.confirm": "Tag \"{name}\" will be removed from every guest.",
   "tagSettings.deleteYes": "Yes, delete",
   "tagSettings.cancel": "Cancel",
-  "tagSettings.deleteFailed": "Could not delete the tag. Please try again."
+  "tagSettings.deleteFailed": "Could not delete the tag. Please try again.",
+  "referral.title": "Friend invitations",
+  "referral.hint": "Guests share a link from their app. A friend who comes through it joins the venue, and the inviter earns points once the friend makes a first purchase. One level only: nothing for friends of friends. Guests in the control group get no rewards.",
+  "referral.enabled": "Reward guests for invited friends",
+  "referral.reward": "Points per friend, ฿",
+  "referral.limit": "Rewards per guest",
+  "referral.limitHint": "The limit guards against account farms: past it a guest gets no more rewards, however many friends come.",
+  "referral.problem.reward": "Points per friend — above zero and at most 10,000 ฿",
+  "referral.problem.limit": "Rewards per guest — a whole number from 1 to 100",
+  "referral.save": "Save invitations",
+  "referral.saved": "Invitations saved. The till applies them from the next check.",
+  "guestCard.referral.invitedBy": "Invited by",
+  "guestCard.referral.noName": "a guest without a name",
+  "guestCard.referral.invited": "Friends brought",
+  "guestCard.referral.count": "{invited} · rewards {rewarded}"
 }

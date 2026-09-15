@@ -2337,6 +2337,12 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.referral-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
 /* ── Погашение промокода на кассе ───────────────────────────────────────────── */
 
 .pos__redeem {
