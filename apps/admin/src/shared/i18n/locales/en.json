@@ -515,5 +515,7 @@
   "pos.offers.afterPayment": "code after payment",
   "pos.offers.untitled": "Untitled offer",
   "pos.offers.issued": "Codes issued",
-  "pos.offers.issuedLine": "Code “{title}” is already in the guest's app"
+  "pos.offers.issuedLine": "Code “{title}” is already in the guest's app",
+  "nav.menu": "Menu",
+  "nav.close": "Close menu"
 }

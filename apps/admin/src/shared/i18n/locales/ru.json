@@ -515,5 +515,7 @@
   "pos.offers.afterPayment": "промокод после оплаты",
   "pos.offers.untitled": "Акция без названия",
   "pos.offers.issued": "Выданные промокоды",
-  "pos.offers.issuedLine": "Промокод «{title}» — уже в приложении гостя"
+  "pos.offers.issuedLine": "Промокод «{title}» — уже в приложении гостя",
+  "nav.menu": "Меню",
+  "nav.close": "Закрыть меню"
 }

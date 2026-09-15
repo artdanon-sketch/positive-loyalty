@@ -63,9 +63,15 @@ body {
 /* ── Каркас ────────────────────────────────────────────────────────────────── */
 
 .app-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+/* У кассира бокового меню нет: одна колонка, касса на всю ширину. */
+.app-shell--till {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
 }
 
 .app-shell__skip {
@@ -85,7 +91,10 @@ body {
   top: 12px;
 }
 
-.app-header {
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -94,6 +103,11 @@ body {
   padding: 0 var(--sp-5);
   border-bottom: 1px solid var(--line);
   background: var(--surf);
+}
+
+/* Поиск — справа, как и в любом кабинете: слева место для кнопки меню. */
+.app-body .app-topbar > :last-child {
+  margin-left: auto;
 }
 
 .app-header__brand {
@@ -378,14 +392,57 @@ body {
 
 /* ── Навигация в шапке ─────────────────────────────────────────────────── */
 
+/* ── Левое меню ─────────────────────────────────────────────────────────── */
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  height: 100dvh;
+  padding: var(--sp-4) var(--sp-3);
+  border-right: 1px solid var(--line);
+  background: var(--surf);
+  overflow-y: auto;
+}
+
+.app-sidebar .app-header__brand {
+  padding: 6px 8px 0;
+}
+
 .app-nav {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.app-nav--inline {
+  flex-direction: row;
+}
+
+.app-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-nav__group:empty {
+  display: none;
+}
+
+.app-nav__group + .app-nav__group {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
 }
 
 .app-nav__link {
-  padding: 7px 14px;
-  border-radius: var(--r-pill, 99px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm-lg);
   color: var(--tx-2);
   text-decoration: none;
   font-size: 14px;
@@ -397,6 +454,12 @@ body {
 
 .app-nav__link:hover {
   color: var(--tx);
+  background: var(--tint);
+}
+
+.app-nav__link:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
 }
 
 .app-nav__link--active {
@@ -405,10 +468,96 @@ body {
   font-weight: 700;
 }
 
-.app-header__side {
+.app-nav__icon {
+  flex: none;
+  color: var(--tx-3);
+}
+
+.app-nav__link:hover .app-nav__icon {
+  color: var(--tx-2);
+}
+
+.app-nav__link--active .app-nav__icon {
+  color: var(--mint);
+}
+
+.app-sidebar__foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: auto;
+  padding: var(--sp-3) 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.app-sidebar .app-user {
+  align-items: flex-start;
+}
+
+.app-sidebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.app-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-topbar__side {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.app-topbar__menu,
+.app-shell__scrim {
+  display: none;
+}
+
+/* Узкий экран: меню выдвигается поверх экрана и закрывается после перехода. */
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(280px, 86vw);
+    transform: translateX(-102%);
+    transition: transform var(--dur-sheet) var(--ease);
+  }
+
+  .app-shell--menu-open .app-sidebar {
+    transform: none;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .app-topbar__menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .app-shell__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    border: 0;
+    background: var(--overlay);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar {
+    transition: none;
+  }
 }
 
 .app-user {
