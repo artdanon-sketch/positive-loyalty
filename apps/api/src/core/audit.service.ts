@@ -85,6 +85,8 @@ export type AuditAction =
   | 'CERTIFICATE_CREATED'
   /** Шаблон сертификата переименован, выключен или снова включён. */
   | 'CERTIFICATE_UPDATED'
+  /** Ответ на отзыв гостя — владельца или менеджера. docs/11, У10. */
+  | 'REVIEW_REPLIED'
 
 export interface AuditEntry {
   readonly action: AuditAction

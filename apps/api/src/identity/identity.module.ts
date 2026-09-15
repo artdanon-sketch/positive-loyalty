@@ -8,6 +8,8 @@ import { GuestJoinController } from './guest-join.controller'
 import { GuestJoinService } from './guest-join.service'
 import { GuestReferralController } from './guest-referral.controller'
 import { GuestReferralService } from './guest-referral.service'
+import { GuestReviewsController } from './guest-reviews.controller'
+import { GuestReviewsService } from './guest-reviews.service'
 import { GuestController } from './guest.controller'
 import { GuestSocialController } from './guest-social.controller'
 import { GuestGuard } from './guest.guard'
@@ -25,12 +27,14 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestController,
     GuestReferralController,
     GuestJoinController,
+    GuestReviewsController,
   ],
   providers: [
     GuestAuthService,
     GuestService,
     GuestReferralService,
     GuestJoinService,
+    GuestReviewsService,
     GuestGuard,
     TelegramBotService,
     TelegramLoginService,

@@ -11,6 +11,7 @@ import {
   BirthdaySettings,
   ProgramSettings,
   ReferralSettings,
+  ReviewSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -188,5 +189,42 @@ export class ProgramSettingsController {
     }
 
     return this.settings.updateBirthday(parsed.data)
+  }
+
+  @Get('reviews')
+  @ApiOperation({
+    summary: 'Автоответы на отзывы',
+    description: 'Пять мест — на оценки от 1 до 5; null — без автоответа. docs/02, раздел 5.6.4.',
+  })
+  @ApiOkResponse({ description: 'Текущие автоответы' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async getReviews(): Promise<ReviewSettings> {
+    return this.settings.getReviews()
+  }
+
+  @Put('reviews')
+  @ApiOperation({
+    summary: 'Изменить автоответы на отзывы',
+    description: 'Заменяет автоответы целиком; остальное не трогает.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({ description: 'Мест не пять, ответ пустой или длиннее 1000 знаков' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async updateReviews(@Body() body: unknown): Promise<ReviewSettings> {
+    const parsed = ReviewSettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректные автоответы',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateReviews(parsed.data)
   }
 }
