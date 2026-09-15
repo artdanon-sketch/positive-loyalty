@@ -8,6 +8,8 @@ import type {
   SimulateOfferInput,
 } from '@positive/contracts'
 
+import { bahtToMinor } from '../../shared/format/baht-input'
+
 /**
  * Черновик акции в конструкторе и его перевод в правила. docs/03, раздел 4 · docs/11, У2.
  *
@@ -181,19 +183,6 @@ const wholeIn = (value: string, min: number, max: number): number | null => {
   const number = Number(trimmed)
 
   return number >= min && number <= max ? number : null
-}
-
-/** «800», «799,5», «799.99» → сатанги. Ноль, минус и мусор — null. */
-export const bahtToMinor = (value: string): number | null => {
-  const trimmed = value.trim().replace(',', '.')
-
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(trimmed)) {
-    return null
-  }
-
-  const minor = Math.round(Number(trimmed) * 100)
-
-  return minor > 0 ? minor : null
 }
 
 const draftGift = (draft: OfferDraft): GiftValue | DraftProblem => {

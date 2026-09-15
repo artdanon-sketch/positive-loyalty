@@ -33,6 +33,17 @@ describe('Фильтры гостей в адресе', () => {
     expect(filtersFromParams(new URLSearchParams('sleeping=45'))).toEqual({ sleeping: 45 })
   })
 
+  it('ТЕГ ИЗ АДРЕСА — ТОЛЬКО ИДЕНТИФИКАТОР: НАЗВАНИЕ СЕРВЕР ОТВЕРГ БЫ ЦЕЛИКОМ', () => {
+    const id = '16161616-1616-4161-8161-161616161616'
+
+    expect(filtersFromParams(new URLSearchParams(`tag=${id}`))).toEqual({ tag: id })
+    expect(filtersFromParams(new URLSearchParams('tag=VIP'))).toEqual({})
+    expect(filterParams({ tag: id, mode: 'TOURIST' })).toEqual([
+      ['mode', 'TOURIST'],
+      ['tag', id],
+    ])
+  })
+
   it('запрос к серверу — в постоянном порядке, как бы ни кликали', () => {
     expect(filterParams({ buyers: 'none', mode: 'TOURIST' })).toEqual([
       ['mode', 'TOURIST'],

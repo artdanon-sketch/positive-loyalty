@@ -5,7 +5,10 @@ import { useAuth } from '../../../shared/auth/auth-context'
 import { useT } from '../../../shared/i18n'
 import { useGuestCard } from '../hooks'
 import { GiftForm } from './gift-form'
+import { GuestNoteForm } from './guest-note-form'
+import { GuestPointsForm } from './guest-points-form'
 import { GuestSummary } from './guest-summary'
+import { GuestTagsForm } from './guest-tags-form'
 import { GuestTierForm } from './guest-tier-form'
 import { GuestTimeline } from './guest-timeline'
 
@@ -13,6 +16,10 @@ import { GuestTimeline } from './guest-timeline'
  * Карточка гостя — выдвижная панель справа, а не отдельная страница
  * (docs/03, раздел 3): список остаётся на месте, и следующий гость у стойки —
  * в одном шаге.
+ *
+ * Заметка и теги — сразу под шапкой, до действий: «аллергия на арахис» должна
+ * попасться на глаза раньше, чем кнопка «Подарить». Статус и баллы вручную —
+ * у владельца (docs/11, У5).
  *
  * Ведёт себя как настоящий диалог: фокус переходит на «Закрыть», Esc закрывает,
  * после закрытия фокус возвращается туда, откуда карточку открыли, — человек
@@ -104,7 +111,10 @@ export function GuestCard({
         ) : (
           <>
             <GuestSummary card={card.data} />
+            <GuestNoteForm guestId={guestId} note={card.data.note} />
+            <GuestTagsForm guestId={guestId} current={card.data.tags} />
             {isOwner ? <GuestTierForm guestId={guestId} current={card.data.tier} /> : null}
+            {isOwner ? <GuestPointsForm guestId={guestId} /> : null}
             <GiftForm guestId={guestId} />
             <GuestTimeline card={card.data} />
           </>

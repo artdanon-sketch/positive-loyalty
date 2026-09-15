@@ -2240,6 +2240,103 @@ body {
   font-size: var(--fs-secondary-lg);
 }
 
+/* ── Заметка и теги в карточке гостя ────────────────────────────────────────── */
+
+.guest-note,
+.guest-tags {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.guest-note__text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.guest-note__input {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.guest-tags__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guest-tags__pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.guest-tags__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.guest-tags__list .chip + .chip {
+  margin-left: 0;
+}
+
+/* Цвет тега — подложкой и рамкой, текст в текстовом токене: светлый мятный
+   на светлой теме не читается, а подложка читается в обеих. */
+.tag-chip {
+  color: var(--tx);
+  background: color-mix(in srgb, var(--tag) 16%, transparent);
+  border-color: color-mix(in srgb, var(--tag) 45%, transparent);
+}
+
+.tag-chip--slate {
+  --tag: var(--tx-3);
+}
+
+.tag-chip--mint {
+  --tag: var(--mint);
+}
+
+.tag-chip--sky {
+  --tag: var(--cyan);
+}
+
+.tag-chip--amber {
+  --tag: var(--amber);
+}
+
+.tag-chip--rose {
+  --tag: var(--coral);
+}
+
+.tag-chip--violet {
+  --tag: var(--violet);
+}
+
+.tag-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
 /* ── Погашение промокода на кассе ───────────────────────────────────────────── */
 
 .pos__redeem {

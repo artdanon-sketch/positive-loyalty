@@ -230,6 +230,9 @@ const stubApi = (
     if (path.startsWith('/v1/admin/ledger')) {
       return Promise.resolve(json(EMPTY_LEDGER))
     }
+    if (path.startsWith('/v1/admin/tags')) {
+      return Promise.resolve(json([]))
+    }
     if (path.startsWith('/v1/admin/guests')) {
       return Promise.resolve(json({ items: [], total: 0 }))
     }
@@ -1090,6 +1093,10 @@ const TIER_SETTINGS = {
   welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_FIRST_PURCHASE' },
 }
 
+/** Теги заведения: один стоит на госте, второй — чтобы было что отметить. */
+const TAG_VIP = { id: '16161616-1616-4161-8161-161616161616', name: 'VIP', color: 'amber' }
+const TAG_BLOGGER = { id: '17171717-1717-4171-8171-171717171717', name: 'Блогер', color: 'violet' }
+
 describe('Настройки программы', () => {
   const openSettings = async (): Promise<void> => {
     await fillAndSubmitLogin()
@@ -1194,6 +1201,40 @@ describe('Настройки программы', () => {
 
     expect(screen.getByRole('button', { name: t('settings.save') })).toBeDisabled()
   })
+
+  it('УДАЛЕНИЕ ТЕГА ПЕРЕСПРАШИВАЕТ: ТЕГ СОЙДЁТ СО ВСЕХ ГОСТЕЙ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/tags': (init) =>
+        init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json([TAG_VIP]),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    const deleted = (): boolean =>
+      fetchMock.mock.calls.some(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+      )
+    render(<App />)
+
+    await openSettings()
+    const section = screen.getByRole('region', { name: t('tagSettings.title') })
+
+    fireEvent.click(
+      await within(section).findByRole('button', {
+        name: fill(t('tagSettings.delete'), { name: 'VIP' }),
+      }),
+    )
+    expect(
+      within(section).getByText(fill(t('tagSettings.confirm'), { name: 'VIP' })),
+    ).toBeInTheDocument()
+    expect(deleted()).toBe(false)
+
+    fireEvent.click(within(section).getByRole('button', { name: t('tagSettings.deleteYes') }))
+
+    await waitFor(() => {
+      expect(deleted()).toBe(true)
+    })
+  })
 })
 
 const GUEST_ID = '12121212-1212-4121-8121-121212121212'
@@ -1230,6 +1271,8 @@ const GUEST_CARD = {
   source: 'ORGANIC',
   isControlGroup: false,
   tier: { id: 'gold', name: 'Золото', manual: false },
+  note: 'Аллергия на арахис',
+  tags: [TAG_VIP],
   firstVisitAt: '2026-08-20T12:00:00.000Z',
   lastVisitAt: '2026-09-05T13:10:00.000Z',
   pointsBalance: 30_175,
@@ -1333,6 +1376,106 @@ describe('Гости: поиск и карточка', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
+  it('ЗАМЕТКА И ТЕГИ ВИДНЫ СРАЗУ, А «БАЛЛЫ ВРУЧНУЮ» — ТОЛЬКО У ВЛАДЕЛЬЦА', async () => {
+    // «Аллергия на арахис» нужна у стойки без лишнего нажатия. Баланс — деньги
+    // владельца: менеджер кнопки не видит, а сервер ему всё равно откажет.
+    stubApi({
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await openGuests()
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    const card = await screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+
+    expect(within(card).getByText('Аллергия на арахис')).toBeInTheDocument()
+    expect(within(card).getByText('VIP')).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: t('noteForm.edit') })).toBeInTheDocument()
+    expect(
+      within(card).queryByRole('button', { name: t('pointsForm.open') }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('ВЛАДЕЛЕЦ СПИСЫВАЕТ 150 ฿ — УХОДИТ −15 000 САТАНГ С ПРИЧИНОЙ И КЛЮЧОМ ПОВТОРА', async () => {
+    // Списание — переключателем, а не минусом в поле: сумма набирается
+    // положительной, знак ставит форма. Ключ повтора — чтобы второе нажатие
+    // при обрыве связи не списало дважды.
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      [`/v1/admin/guests/${GUEST_ID}/points`]: () =>
+        json({
+          entryId: '18181818-1818-4181-8181-181818181818',
+          amount: -15_000,
+          balance: 15_175,
+          replayed: false,
+        }),
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await openGuests()
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    const card = await screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+
+    fireEvent.click(within(card).getByRole('button', { name: t('pointsForm.open') }))
+    fireEvent.click(within(card).getByRole('button', { name: t('pointsForm.spend') }))
+    fireEvent.change(within(card).getByLabelText(t('pointsForm.amount')), {
+      target: { value: '150' },
+    })
+    fireEvent.change(within(card).getByLabelText(t('pointsForm.reason')), {
+      target: { value: 'Гость вернул заказ' },
+    })
+    fireEvent.click(within(card).getByRole('button', { name: t('pointsForm.submitSpend') }))
+
+    // Форма закрылась — сервер принял правку.
+    await waitFor(() => {
+      expect(within(card).queryByLabelText(t('pointsForm.amount'))).not.toBeInTheDocument()
+    })
+
+    const call = fetchMock.mock.calls.find(([input]) =>
+      requestOf(input as RequestInfo | URL).endsWith('/points'),
+    )
+    const init = call?.[1] as RequestInit
+    expect(JSON.parse(init.body as string)).toEqual({
+      amount: -15_000,
+      reason: 'Гость вернул заказ',
+    })
+    expect(new Headers(init.headers).get('Idempotency-Key')).toMatch(/^[\w-]{8,}$/)
+  })
+
+  it('ТЕГИ ГОСТЯ СОХРАНЯЮТСЯ НАБОРОМ: ЧТО ОТМЕЧЕНО ГАЛОЧКАМИ, ТО И УШЛО', async () => {
+    const fetchMock = stubApi({
+      '/v1/admin/tags': () => json([TAG_VIP, TAG_BLOGGER]),
+      [`/v1/admin/guests/${GUEST_ID}/tags`]: () => json({ tags: [TAG_VIP, TAG_BLOGGER] }),
+      [`/v1/admin/guests/${GUEST_ID}`]: () => json(GUEST_CARD),
+      '/v1/admin/guests': () => json(GUEST_ROWS),
+    })
+    render(<App />)
+
+    await openGuests()
+    fireEvent.click(await screen.findByRole('button', { name: 'Анна Ковалёва' }))
+    const card = await screen.findByRole('dialog', { name: 'Анна Ковалёва' })
+
+    fireEvent.click(within(card).getByRole('button', { name: t('tagsForm.edit') }))
+    fireEvent.click(await within(card).findByRole('checkbox', { name: 'Блогер' }))
+    expect(within(card).getByRole('checkbox', { name: 'VIP' })).toBeChecked()
+    fireEvent.click(within(card).getByRole('button', { name: t('tagsForm.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/tags') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        tagIds: [TAG_VIP.id, TAG_BLOGGER.id],
+      })
     })
   })
 
