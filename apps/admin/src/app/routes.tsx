@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { GuestsPage } from '../pages/guests/Page'
 import { LoginPage } from '../pages/login/Page'
+import { OfferNewPage } from '../pages/offer-new/Page'
 import { OffersPage } from '../pages/offers/Page'
 import { OperationsPage } from '../pages/operations/Page'
 import { OverviewPage } from '../pages/overview/Page'
@@ -85,6 +86,7 @@ export function AppRoutes(): ReactElement {
         <Route path="operations" element={<OperationsPage />} />
         <Route path="guests" element={<GuestsPage />} />
         <Route path="offers" element={<OffersPage />} />
+        <Route path="offers/new" element={<OfferNewPage />} />
         <Route path="partners" element={<PartnersPage />} />
         <Route path="partners/:id" element={<PartnerPage />} />
         <Route path="sale-kinds" element={<SaleKindsPage />} />
