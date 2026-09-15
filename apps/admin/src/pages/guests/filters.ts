@@ -1,3 +1,4 @@
+import { RfmSegment } from '@positive/contracts'
 import type { AdminGuestsQuery } from '@positive/contracts'
 
 /**
@@ -13,7 +14,7 @@ import type { AdminGuestsQuery } from '@positive/contracts'
 
 export type GuestFilters = Pick<
   AdminGuestsQuery,
-  'mode' | 'tier' | 'source' | 'sleeping' | 'buyers' | 'tag'
+  'mode' | 'tier' | 'source' | 'sleeping' | 'buyers' | 'tag' | 'segment'
 >
 
 export type GuestSourceValue = NonNullable<GuestFilters['source']>
@@ -31,7 +32,7 @@ export const SOURCES: readonly GuestSourceValue[] = [
 /** Сколько дней без визита предлагает экран. Из адреса принимается любое от недели до года. */
 export const SLEEPING_OPTIONS: readonly number[] = [30, 60, 90]
 
-const KEYS = ['mode', 'tier', 'source', 'sleeping', 'buyers', 'tag'] as const
+const KEYS = ['mode', 'tier', 'source', 'sleeping', 'buyers', 'tag', 'segment'] as const
 
 const TIER_ID = /^[a-z0-9-]{1,40}$/
 
@@ -43,6 +44,8 @@ export const filtersFromParams = (params: URLSearchParams): GuestFilters => {
   const source = SOURCES.find((value) => value === params.get('source'))
   const tier = params.get('tier')
   const tag = params.get('tag')
+  // Сегмент приходит из отчёта «RFM» ссылкой — и только из известных.
+  const segment = RfmSegment.options.find((value) => value === params.get('segment'))
   const sleeping = Number(params.get('sleeping'))
 
   return {
@@ -52,6 +55,7 @@ export const filtersFromParams = (params: URLSearchParams): GuestFilters => {
     ...(Number.isInteger(sleeping) && sleeping >= 7 && sleeping <= 365 ? { sleeping } : {}),
     ...(params.get('buyers') === 'none' ? { buyers: 'none' as const } : {}),
     ...(tag === null || !TAG_ID.test(tag) ? {} : { tag }),
+    ...(segment === undefined ? {} : { segment }),
   }
 }
 

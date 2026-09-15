@@ -44,6 +44,14 @@ describe('Фильтры гостей в адресе', () => {
     ])
   })
 
+  it('СЕГМЕНТ ИЗ ОТЧЁТА «RFM» ЧИТАЕТСЯ ИЗ АДРЕСА, НЕИЗВЕСТНЫЙ — ОТБРАСЫВАЕТСЯ', () => {
+    expect(filtersFromParams(new URLSearchParams('segment=AT_RISK'))).toEqual({
+      segment: 'AT_RISK',
+    })
+    expect(filtersFromParams(new URLSearchParams('segment=VIP'))).toEqual({})
+    expect(hasFilters({ segment: 'CHAMPIONS' })).toBe(true)
+  })
+
   it('запрос к серверу — в постоянном порядке, как бы ни кликали', () => {
     expect(filterParams({ buyers: 'none', mode: 'TOURIST' })).toEqual([
       ['mode', 'TOURIST'],

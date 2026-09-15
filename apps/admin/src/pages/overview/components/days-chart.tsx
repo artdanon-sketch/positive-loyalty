@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { DashboardDay } from '@positive/contracts'
 
+import { formatDay, tickStep } from '../../../shared/format/day'
 import { useT } from '../../../shared/i18n'
 
 /**
@@ -117,19 +118,4 @@ export function DaysChart({
       )}
     </section>
   )
-}
-
-/**
- * Через сколько столбцов подписывать дату.
- *
- * Семь дней подписываются все, тридцать — каждый третий, девяносто — каждый
- * десятый. Числа подобраны так, чтобы подписи не наезжали друг на друга
- * на узком экране: бэк-офис открывают и с телефона.
- */
-const tickStep = (length: number): number => (length <= 10 ? 1 : length <= 31 ? 3 : 10)
-
-/** `2026-08-27` → `27.08`. Год в подписи столбца не нужен: период короче года. */
-function formatDay(iso: string): string {
-  const [, month, day] = iso.split('-')
-  return `${day ?? ''}.${month ?? ''}`
 }
