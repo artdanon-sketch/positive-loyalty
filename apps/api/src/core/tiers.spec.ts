@@ -1,7 +1,7 @@
 import type { Tier } from '@positive/contracts'
 import { describe, expect, it } from 'vitest'
 
-import { checkRates, needsReferrals, resolveTier } from './tiers'
+import { checkRates, needsReferrals, resolveTier, tierProgress } from './tiers'
 import type { TierFacts } from './tiers'
 
 const tier = (id: string, conditions: Tier['conditions'], patch: Partial<Tier> = {}): Tier => ({
@@ -96,5 +96,41 @@ describe('Статус гостя: ставки и рекомендации', ()
     expect(needsReferrals([tier('secret', [{ type: 'REFERRALS', gt: 0 }], { hidden: true })])).toBe(
       false,
     )
+  })
+})
+
+describe('Статус гостя: сколько до следующего', () => {
+  it('СЛЕДУЮЩИЙ — ПЕРВЫЙ ОТКРЫТЫЙ ВЫШЕ; ОСТАЛОСЬ — ПО КАЖДОМУ ИЗ ЕГО УСЛОВИЙ; ПОРОГ СТРОГИЙ', () => {
+    expect(tierProgress(LADDER, BASE, facts({ visitsTotal: 2 }))).toEqual({
+      next: SILVER,
+      spentLeft: null,
+      visitsLeft: 3,
+    })
+    expect(tierProgress(LADDER, SILVER, facts({ visitsTotal: 5, spentTotal: 400_000 }))).toEqual({
+      next: GOLD,
+      spentLeft: 600_001,
+      visitsLeft: null,
+    })
+  })
+
+  it('ВЫШЕ НЕКУДА, РУЧНОЙ ИЛИ СКРЫТЫЙ СТАТУС — ПРОГРЕССА НЕТ', () => {
+    // Выше «Золота» только скрытый VIP — он сам не даётся.
+    expect(tierProgress(LADDER, GOLD, facts({ spentTotal: 2_000_000 }))).toBeNull()
+    expect(tierProgress(LADDER, BASE, facts({ tierId: 'base', tierManual: true }))).toBeNull()
+    expect(tierProgress(LADDER, VIP, facts({ tierId: 'vip' }))).toBeNull()
+  })
+
+  it('у следующего только условие по рекомендациям — на карте его не обещаем', () => {
+    const ladder = [BASE, tier('ambassador', [{ type: 'REFERRALS', gt: 5 }])]
+
+    expect(tierProgress(ladder, BASE, facts())).toBeNull()
+  })
+
+  it('без статуса — до первого открытого статуса с условиями', () => {
+    expect(tierProgress([SILVER, GOLD], null, facts({ visitsTotal: 1 }))).toEqual({
+      next: SILVER,
+      spentLeft: null,
+      visitsLeft: 4,
+    })
   })
 })

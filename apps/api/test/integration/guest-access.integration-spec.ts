@@ -383,3 +383,59 @@ describe('Ротация гостевого refresh', () => {
     await request(server()).post('/v1/auth/otp/refresh').send({ refreshToken: second }).expect(401)
   })
 })
+
+describe('Статус гостя в кошельке', () => {
+  it('СТАТУС И СКОЛЬКО ОСТАЛОСЬ ДО СЛЕДУЮЩЕГО — ТЕМ ЖЕ РАСЧЁТОМ, ЧТО У КАССЫ', async () => {
+    const venue = await createMembershipFixture(prisma)
+
+    await prisma.tenant.update({
+      where: { id: venue.tenantId },
+      data: {
+        settings: {
+          tiers: [
+            { id: 'base', name: 'Гость', earnRate: 5, redeemRate: 20 },
+            {
+              id: 'gold',
+              name: 'Золото',
+              earnRate: 10,
+              redeemRate: 50,
+              conditions: [
+                { type: 'SPENT_TOTAL', gt: 100_000 },
+                { type: 'VISITS_TOTAL', gt: 4 },
+              ],
+            },
+          ],
+        },
+      },
+    })
+
+    await ledger.earn(
+      {
+        membershipId: venue.membershipId,
+        amount: 3_000,
+        basisAmount: 60_000,
+        idempotencyKey: idempotencyKey('guest-wallet-tier'),
+        ...POS_ORIGIN,
+      },
+      venue.scope,
+    )
+
+    const auth = await loginGuest(venue.guestPhone)
+    const wallet = await request(server())
+      .get('/v1/guest/wallet')
+      .set('Authorization', `Bearer ${auth.accessToken}`)
+      .expect(200)
+
+    const body = wallet.body as {
+      memberships: Array<{ tenantId: string; tier: unknown; nextTier: unknown }>
+    }
+
+    // Оборот 600 ฿ из «больше 1 000 ฿» и один визит из «больше четырёх».
+    expect(
+      body.memberships.find((membership) => membership.tenantId === venue.tenantId),
+    ).toMatchObject({
+      tier: { name: 'Гость' },
+      nextTier: { name: 'Золото', spentLeft: 40_001, visitsLeft: 4 },
+    })
+  })
+})

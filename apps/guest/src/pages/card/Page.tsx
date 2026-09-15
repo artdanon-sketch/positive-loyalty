@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 
+import { formatBaht } from '../../shared/format/baht'
 import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
 import { ThemeToggle } from '../../shared/theme/theme-toggle'
@@ -7,12 +8,9 @@ import { CardEmpty } from './components/card-empty'
 import { CardError } from './components/card-error'
 import { CardLoading } from './components/card-loading'
 import { QrCode } from './components/qr-code'
+import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
 import { useQrToken, useWallet } from './hooks'
-
-/** 12 000 сатангов → «120,00 ฿». Хранение целое, форматирование на выводе. */
-const formatBaht = (minor: number): string =>
-  `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(minor / 100)} ฿`
 
 /**
  * Карта гостя. docs/02, раздел 2.1 · прототип «гостевое приложение».
@@ -102,6 +100,7 @@ export function Page(): ReactElement {
                           ? `${t('card.venues.visits')} ${membership.visitsTotal}`
                           : t('card.venues.firstVisit')}
                       </span>
+                      <VenueTier membership={membership} />
                     </div>
                     <div className="venue__side">
                       <b className="venue__points">{formatBaht(membership.points)}</b>

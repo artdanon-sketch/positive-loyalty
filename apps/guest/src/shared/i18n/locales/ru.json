@@ -54,5 +54,9 @@
   "card.vouchers.title": "Ваши подарки",
   "card.vouchers.noTitle": "Подарок",
   "card.vouchers.daysLeft": "Сгорит через дней:",
-  "card.vouchers.lastDay": "Сегодня последний день"
+  "card.vouchers.lastDay": "Сегодня последний день",
+  "card.tier.next": "До «{name}»: {ways}",
+  "card.tier.spentLeft": "ещё {amount} покупок",
+  "card.tier.visitsLeft": "ещё визитов: {n}",
+  "card.tier.or": "или"
 }

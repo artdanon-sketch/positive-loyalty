@@ -54,5 +54,9 @@
   "card.vouchers.title": "Your gifts",
   "card.vouchers.noTitle": "Gift",
   "card.vouchers.daysLeft": "Days left:",
-  "card.vouchers.lastDay": "Last day today"
+  "card.vouchers.lastDay": "Last day today",
+  "card.tier.next": "To “{name}”: {ways}",
+  "card.tier.spentLeft": "{amount} more in purchases",
+  "card.tier.visitsLeft": "{n} more visits",
+  "card.tier.or": "or"
 }
