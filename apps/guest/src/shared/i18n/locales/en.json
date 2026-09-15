@@ -82,5 +82,19 @@
   "invite.claim.failed": "Could not accept the invitation. Open the link again.",
   "invite.claim.dismiss": "Got it",
   "invite.claim.joinedChannel": "You are now a guest of “{venue}”. Show your code at the till — points start with your first purchase.",
-  "invite.claim.linkNotFound": "This link is not valid: the venue may have switched it off."
+  "invite.claim.linkNotFound": "This link is not valid: the venue may have switched it off.",
+  "birthday.title": "Birthday",
+  "birthday.hint": "Venues give birthday gifts. You can enter the date only once.",
+  "birthday.date": "Date of birth",
+  "birthday.next": "Next",
+  "birthday.check": "Check the date: {date}. It cannot be changed later.",
+  "birthday.confirm": "Yes, that’s right",
+  "birthday.saving": "Saving…",
+  "birthday.edit": "Change",
+  "birthday.saved": "Saved. The gift arrives by itself in the days around your birthday — wherever the venue gives one.",
+  "birthday.already": "Your birthday is already set. If the date is wrong, contact support.",
+  "birthday.failed": "Could not save. Check your connection and try again.",
+  "birthday.problem.empty": "Choose a date",
+  "birthday.problem.format": "This date does not exist — check the day and month",
+  "birthday.problem.range": "The date cannot be in the future or before 1900"
 }

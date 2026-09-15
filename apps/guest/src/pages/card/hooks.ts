@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import type {
   AcceptReferralResult,
+  GuestMe,
   GuestQrToken,
   GuestReferral,
   GuestWallet,
@@ -10,10 +11,19 @@ import type {
 
 import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
-import { acceptReferral, fetchQrToken, fetchReferral, fetchWallet, joinVenue } from './card-api'
+import {
+  acceptReferral,
+  fetchMe,
+  fetchQrToken,
+  fetchReferral,
+  fetchWallet,
+  joinVenue,
+  saveBirthday,
+} from './card-api'
 
 export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
 export const QR_QUERY_KEY = ['guest', 'qr'] as const
+export const ME_QUERY_KEY = ['guest', 'me'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -84,6 +94,34 @@ export function useClaimInvite(): UseMutationResult<
         ? joinVenue(authPost, invite.tenantId, invite.code)
         : acceptReferral(authPost, invite.tenantId, invite.code),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
+    },
+  })
+}
+
+/** Профиль гостя — ради вопроса о дне рождения. */
+export function useMe(): UseQueryResult<GuestMe, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: ME_QUERY_KEY,
+    queryFn: () => fetchMe(authGet),
+    enabled: session !== null,
+  })
+}
+
+/**
+ * Сохранить день рождения. Кошелёк перечитывается: если праздник уже в окне,
+ * сервер выдаст подарок при следующем открытии кошелька — то есть прямо сейчас.
+ */
+export function useSaveBirthday(): UseMutationResult<GuestMe, Error, string> {
+  const { authPut } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (date) => saveBirthday(authPut, date),
+    onSuccess: (me) => {
+      queryClient.setQueryData(ME_QUERY_KEY, me)
       void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
     },
   })

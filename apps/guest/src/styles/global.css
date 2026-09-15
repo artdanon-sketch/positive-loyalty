@@ -722,3 +722,84 @@ output {
   gap: 10px;
   text-align: center;
 }
+
+/* День рождения — спокойной карточкой, как код для кассы: это вопрос, а не подарок. */
+.birthday {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+}
+
+.birthday .card__sectionTitle {
+  margin: 0;
+}
+
+.birthday__form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.birthday__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-2);
+}
+
+.birthday__hint--error {
+  color: var(--bad);
+}
+
+.birthday__label {
+  font-size: 11px;
+  color: var(--tx-3);
+}
+
+.birthday__input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surf-2);
+  color: var(--tx);
+  font: inherit;
+}
+
+.birthday__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.birthday__primary {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.birthday__primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.birthday__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}

@@ -40,7 +40,7 @@ const toApiError = (payload: unknown, status: number, path: string): ApiError =>
 }
 
 export interface RequestOptions {
-  readonly method?: 'GET' | 'POST'
+  readonly method?: 'GET' | 'POST' | 'PUT'
   readonly body?: unknown
   readonly token?: string | undefined
   readonly signal?: AbortSignal | undefined
