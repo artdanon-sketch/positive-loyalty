@@ -965,3 +965,16 @@ output {
   background: var(--surf-2);
   font-size: 13.5px;
 }
+
+/* Новости заведений — в той же карточке, что ответы на отзывы. */
+.news__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.news__body {
+  margin: 0;
+  font-size: 13.5px;
+  white-space: pre-line;
+}

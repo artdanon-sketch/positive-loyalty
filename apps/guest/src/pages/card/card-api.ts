@@ -1,6 +1,7 @@
 import {
   AcceptReferralResult,
   GuestMe,
+  GuestNews,
   GuestQrToken,
   GuestReferral,
   GuestReview,
@@ -84,4 +85,9 @@ export function fetchReviews(authGet: AuthGet): Promise<GuestReviews> {
 /** Оценить визит. */
 export function createReview(authPost: AuthPost, input: CreateReviewInput): Promise<GuestReview> {
   return authPost('/guest/reviews', input, GuestReview)
+}
+
+/** Новости заведений гостя — одна лента на все (docs/02, раздел 2.9). */
+export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
+  return authGet('/guest/news', GuestNews)
 }

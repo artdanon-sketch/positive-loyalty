@@ -12,6 +12,7 @@ import { InviteClaim } from './components/invite-claim'
 import { QrCode } from './components/qr-code'
 import { ReviewPrompt } from './components/review-prompt'
 import { ReviewReplies } from './components/review-replies'
+import { VenueNews } from './components/venue-news'
 import { VenueInvite } from './components/venue-invite'
 import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
@@ -98,6 +99,7 @@ export function Page(): ReactElement {
               гость у стойки сначала показывает код, отзыв пишет потом. */}
           {wallet.data.memberships.length > 0 ? <ReviewPrompt /> : null}
           <ReviewReplies />
+          <VenueNews />
 
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />

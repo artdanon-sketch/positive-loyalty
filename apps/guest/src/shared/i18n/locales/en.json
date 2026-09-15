@@ -117,5 +117,7 @@
   "review.error.exists": "This visit is already rated.",
   "review.error.late": "A visit can be rated within a week.",
   "review.error.notFound": "This receipt can no longer be rated: it may have been voided.",
-  "review.error.failed": "Could not send. Check your connection and try again."
+  "review.error.failed": "Could not send. Check your connection and try again.",
+  "news.title": "News from venues",
+  "news.more": "Show all"
 }
