@@ -1,15 +1,20 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  Header,
+  HttpCode,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   Sse,
 } from '@nestjs/common'
 import { Observable } from 'rxjs'
 import {
   ApiBadRequestResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -20,6 +25,7 @@ import {
   AdminGuestsQuery,
   AdminListQuery,
   DashboardQuery,
+  GuestExportInput,
 } from '@positive/contracts'
 import type {
   AdminDashboard,
@@ -162,7 +168,33 @@ export class AdminController {
       })
     }
 
-    return this.adminService.listGuests(parsed.data.limit, parsed.data.offset, parsed.data.q)
+    return this.adminService.listGuests(parsed.data)
+  }
+
+  @Post('guests/export')
+  @Roles('OWNER')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="guests.csv"')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'Выгрузить гостей в CSV' })
+  @ApiOkResponse({ description: 'CSV по фильтрам списка: телефоны маской, суммы в батах' })
+  @ApiBadRequestResponse({ description: 'Нет причины или неизвестный фильтр' })
+  @ApiForbiddenResponse({ description: 'Выгрузка базы — право владельца' })
+  async exportGuests(@Body() body: unknown): Promise<string> {
+    const parsed = GuestExportInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.adminService.exportGuests(parsed.data)
   }
 
   @Get('guests/:guestId')

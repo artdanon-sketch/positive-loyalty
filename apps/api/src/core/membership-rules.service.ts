@@ -112,6 +112,70 @@ export class MembershipRulesService {
   }
 
   /**
+   * Пересчитать статусы всех гостей заведения — после правки лестницы.
+   *
+   * Без этого список с фильтром «Золото» до следующего чека жил бы вчерашними
+   * порогами, а карточка — сегодняшними. Ручные статусы не трогаются; правило
+   * «автоматически только вверх» действует и здесь. Рекомендации — одним
+   * запросом на заведение, а не запросом на каждого гостя.
+   *
+   * Возвращает, у скольких гостей статус изменился.
+   */
+  async refreshTenantTiers(tenantId: string, config: ProgramConfig): Promise<number> {
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const memberships = await tx.membership.findMany({
+        where: { tenantId, tierManual: false },
+        select: { id: true, tierId: true, spentTotal: true, visitsTotal: true },
+      })
+
+      const referrals = new Map<string, number>()
+
+      if (needsReferrals(config.tiers)) {
+        const counted = await tx.membership.groupBy({
+          by: ['referredById'],
+          where: { tenantId, referredById: { not: null } },
+          _count: { _all: true },
+        })
+
+        for (const row of counted) {
+          if (row.referredById !== null) {
+            referrals.set(row.referredById, row._count._all)
+          }
+        }
+      }
+
+      const moves = new Map<string | null, string[]>()
+
+      for (const membership of memberships) {
+        const tierId =
+          resolveTier(config.tiers, {
+            tierId: membership.tierId,
+            tierManual: false,
+            spentTotal: membership.spentTotal,
+            visitsTotal: membership.visitsTotal,
+            referrals: referrals.get(membership.id) ?? 0,
+          })?.id ?? null
+
+        if (tierId !== membership.tierId) {
+          moves.set(tierId, [...(moves.get(tierId) ?? []), membership.id])
+        }
+      }
+
+      let changed = 0
+
+      for (const [tierId, ids] of moves) {
+        const updated = await tx.membership.updateMany({
+          where: { tenantId, id: { in: ids }, tierManual: false },
+          data: { tierId },
+        })
+        changed += updated.count
+      }
+
+      return changed
+    })
+  }
+
+  /**
    * Приветственные баллы. Возвращает баланс после подарка или null, если подарка нет.
    *
    * ОДИН ПОДАРОК НА УЧАСТИЕ. Ключ журнала — `welcome:{участие}`: повтор сканирования,

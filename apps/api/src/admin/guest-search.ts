@@ -1,3 +1,5 @@
+import type { AdminGuestFilters } from '@positive/contracts'
+
 import type { Prisma } from '../generated/prisma/client'
 
 /**
@@ -54,4 +56,47 @@ export const guestSearchWhere = (
   }
 
   return { OR: anyOf }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Фильтры списка — через «и», поверх поиска. docs/11, У4.
+ *
+ * «СПЯЩИЕ» — ТЕ, КТО БЫЛ, но не заходил дольше указанного. Гость без единого
+ * визита не спит — он ещё не пришёл; для него отдельный фильтр «не покупали».
+ *
+ * Статус — сохранённый в участии. Он пересчитывается после каждого чека и сразу
+ * после правки лестницы, поэтому совпадает с тем, что показывает карточка.
+ */
+export const guestFilterWhere = (
+  tenantId: string,
+  filters: AdminGuestFilters,
+  now: Date,
+): Prisma.MembershipWhereInput => {
+  const and: Prisma.MembershipWhereInput[] = [guestSearchWhere(tenantId, filters.q)]
+
+  if (filters.mode !== undefined) {
+    and.push({ guest: { mode: filters.mode } })
+  }
+
+  if (filters.tier !== undefined) {
+    and.push({ tierId: filters.tier })
+  }
+
+  if (filters.source !== undefined) {
+    and.push({ source: filters.source })
+  }
+
+  if (filters.sleeping !== undefined) {
+    and.push({
+      lastVisitAt: { not: null, lt: new Date(now.getTime() - filters.sleeping * DAY_MS) },
+    })
+  }
+
+  if (filters.buyers === 'none') {
+    and.push({ visitsTotal: 0 })
+  }
+
+  return { AND: and }
 }

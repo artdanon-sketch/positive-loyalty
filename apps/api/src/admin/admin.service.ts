@@ -8,19 +8,35 @@ import type {
   AdminLedgerList,
   AdminMembership,
   AdminTimelineItem,
+  AdminGuestsQuery,
+  GuestExportInput,
 } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { maskPhone } from '../common/pii/mask-phone'
+import { AuditService } from '../core/audit.service'
+import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../core/prisma.service'
 import { needsReferrals, resolveTier } from '../core/tiers'
-import { guestSearchWhere } from './guest-search'
+import { guestsCsv } from './guest-export'
+import { guestFilterWhere } from './guest-search'
 
 /**
  * Сколько последних операций и сколько последних подарков идёт в карточку.
  * Спор у стойки — про последние визиты; полгода назад — это «Операции».
  */
 const TIMELINE_LIMIT = 50
+
+/**
+ * Потолок выгрузки. База малого заведения — тысячи гостей; десятки тысяч строк
+ * в одном файле — это уже не рассылка по сегменту, а слив базы целиком.
+ */
+const EXPORT_LIMIT = 10_000
+
+/** Витринные поля гостя, которые нужны списку и выгрузке. */
+const GUEST_ROW_INCLUDE = {
+  guest: { select: { displayName: true, phoneE164: true, mode: true } },
+} as const
 
 /**
  * Чтение данных бэк-офиса.
@@ -54,7 +70,10 @@ const TIMELINE_LIMIT = 50
  */
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async listLedger(limit: number, offset: number): Promise<AdminLedgerList> {
     const { tenantId } = TenantContext.getOrThrow()
@@ -106,43 +125,131 @@ export class AdminService {
    * Телефон маскируется ПО РОЛИ ИЗ ТОКЕНА: полный номер видит только владелец
    * (docs/05, раздел 3). Маскирование делает сервер — у клиента полного
    * значения просто нет, и «размаскировать» на фронте нечего.
+   *
+   * Фильтры складываются через «и» (docs/11, У4); поиск — один из них.
    */
-  async listGuests(limit: number, offset: number, q?: string): Promise<AdminGuestsList> {
+  async listGuests(query: AdminGuestsQuery): Promise<AdminGuestsList> {
     const { tenantId, role } = TenantContext.getOrThrow()
     const showFullPhone = role === 'OWNER'
-    // tenantId стоит рядом с условием поиска, а не внутри него: поиск может
-    // только сузить список своего заведения, но не расширить его.
-    const where = { tenantId, ...guestSearchWhere(tenantId, q) }
+    const { limit, offset, ...filters } = query
+    // tenantId стоит рядом с фильтрами, а не внутри них: фильтр может только
+    // сузить список своего заведения, но не расширить его.
+    const where = { tenantId, ...guestFilterWhere(tenantId, filters, new Date()) }
 
     return this.prisma.forTenant(tenantId, async (tx) => {
-      const [rows, total] = await Promise.all([
+      const [rows, total, tierNames] = await Promise.all([
         tx.membership.findMany({
           where,
-          include: { guest: { select: { displayName: true, phoneE164: true, mode: true } } },
-          // Спящие гости в конце: экран отвечает на вопрос «кто был недавно»,
-          // а «кто давно не был» — это отдельный сегмент рассылок (Срез 4).
+          include: GUEST_ROW_INCLUDE,
+          // Спящие гости в конце: экран отвечает на вопрос «кто был недавно».
           orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
           take: limit,
           skip: offset,
         }),
         tx.membership.count({ where }),
+        this.tierNames(tx, tenantId),
       ])
 
-      const items: AdminGuestRow[] = rows.map((row) => ({
-        membershipId: row.id,
-        guestId: row.guestId,
-        displayName: row.guest.displayName,
-        phone: showFullPhone ? row.guest.phoneE164 : maskPhone(row.guest.phoneE164),
-        mode: row.guest.mode,
-        pointsBalance: row.pointsBalance,
-        visitsTotal: row.visitsTotal,
-        spentTotal: row.spentTotal,
-        lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
-        isControlGroup: row.isControlGroup,
-      }))
+      const items: AdminGuestRow[] = rows.map((row) => {
+        const tierName = row.tierId === null ? undefined : tierNames.get(row.tierId)
+
+        return {
+          membershipId: row.id,
+          guestId: row.guestId,
+          displayName: row.guest.displayName,
+          phone: showFullPhone ? row.guest.phoneE164 : maskPhone(row.guest.phoneE164),
+          mode: row.guest.mode,
+          pointsBalance: row.pointsBalance,
+          visitsTotal: row.visitsTotal,
+          spentTotal: row.spentTotal,
+          lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
+          isControlGroup: row.isControlGroup,
+          source: row.source,
+          firstVisitAt: row.firstVisitAt?.toISOString() ?? null,
+          tier:
+            row.tierId === null || tierName === undefined
+              ? null
+              : { id: row.tierId, name: tierName },
+        }
+      })
 
       return { items, total }
     })
+  }
+
+  /**
+   * Выгрузка гостей в CSV. docs/02, раздел 5.2 · docs/11, У4.
+   *
+   * ТЕЛЕФОНЫ — МАСКОЙ ДАЖЕ ВЛАДЕЛЬЦУ: файл пересылают, и полный номер в нём —
+   * это база, утекающая одним вложением. Причина пишется в аудит вместе
+   * с фильтрами и числом строк: через месяц видно, кто, зачем и сколько выгрузил.
+   *
+   * Аудит — до ответа, и его сбой выгрузку не пропускает: база без следа
+   * не уходит (writeOrThrow).
+   */
+  async exportGuests(input: GuestExportInput): Promise<string> {
+    const { tenantId, actorId, requestId } = TenantContext.getOrThrow()
+    const where = { tenantId, ...guestFilterWhere(tenantId, input.filters, new Date()) }
+
+    const { rows, tierNames, timezone } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { timezone: true },
+      })
+
+      return {
+        rows: await tx.membership.findMany({
+          where,
+          include: GUEST_ROW_INCLUDE,
+          orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+          take: EXPORT_LIMIT,
+        }),
+        tierNames: await this.tierNames(tx, tenantId),
+        timezone: tenant?.timezone ?? 'Asia/Bangkok',
+      }
+    })
+
+    await this.audit.writeOrThrow({
+      action: 'DATABASE_EXPORTED',
+      actorType: 'OWNER',
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      newValue: { filters: input.filters, rows: rows.length, locale: input.locale },
+      reason: input.reason,
+      requestId,
+    })
+
+    return guestsCsv(
+      rows.map((row) => ({
+        name: row.guest.displayName,
+        phone: maskPhone(row.guest.phoneE164),
+        mode: row.guest.mode,
+        tier: row.tierId === null ? null : (tierNames.get(row.tierId) ?? null),
+        source: row.source,
+        points: row.pointsBalance,
+        visits: row.visitsTotal,
+        spent: row.spentTotal,
+        since: row.firstVisitAt,
+        lastVisit: row.lastVisitAt,
+      })),
+      { locale: input.locale, timezone },
+    )
+  }
+
+  /** Названия статусов по id. Неразборчивые настройки список не роняют — статусов просто нет. */
+  private async tierNames(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+  ): Promise<Map<string, string>> {
+    const tenant = await tx.tenant.findFirst({
+      where: { id: tenantId },
+      select: { settings: true },
+    })
+    const program = ProgramConfig.safeParse(tenant?.settings ?? {})
+
+    return new Map(program.success ? program.data.tiers.map((tier) => [tier.id, tier.name]) : [])
   }
 
   /**
