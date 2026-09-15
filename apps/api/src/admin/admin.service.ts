@@ -361,7 +361,13 @@ export class AdminService {
         referrals,
       })
 
-      return { membership, shown, entries, grants, reversals, staff, tier }
+      const tags = await tx.tag.findMany({
+        where: { tenantId, guestTags: { some: { membershipId: membership.id } } },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, color: true },
+      })
+
+      return { membership, shown, entries, grants, reversals, staff, tier, tags }
     })
 
     if (data === null) {
@@ -370,7 +376,7 @@ export class AdminService {
       })
     }
 
-    const { membership, shown, entries, grants, reversals, staff, tier } = data
+    const { membership, shown, entries, grants, reversals, staff, tier, tags } = data
     const reversedIds = new Set(reversals.map((row) => row.reversalOfId))
     const staffNames = new Map(staff.map((person) => [person.id, person.displayName]))
 
@@ -427,6 +433,7 @@ export class AdminService {
       visitsTotal: membership.visitsTotal,
       spentTotal: membership.spentTotal,
       note: membership.note,
+      tags,
       averageCheck:
         membership.visitsTotal > 0
           ? Math.floor(membership.spentTotal / membership.visitsTotal)

@@ -146,6 +146,7 @@ model Tenant {
   posQueueItems          PosQueueItem[]
   offers                 Offer[]
   offerGrants            OfferGrant[]
+  tags                   Tag[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -221,6 +222,7 @@ model Membership {
   tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   ledgerEntries LedgerEntry[]
   previews      TransactionPreview[]
+  guestTags     GuestTag[]
 
   @@unique([guestId, tenantId])
   // Под политику RLS на Guest: она делает EXISTS по участиям на каждую строку.
@@ -1450,4 +1452,48 @@ model PosQueueItem {
   @@unique([tenantId, receiptId])
   @@index([tenantId, clearedAt, queuedAt])
   @@index([tenantId, terminalId])
+}
+
+// ─── Теги гостей ─────────────────────────────────────────────────────────────
+
+/// Цвет тега — из токенов дизайн-системы: тег читается в обеих темах.
+enum TagColor {
+  slate
+  mint
+  sky
+  amber
+  rose
+  violet
+}
+
+/// Тег гостя — пометка заведения для себя: «VIP», «аллергия», «блогер».
+/// Гостю не показывается, соседнему заведению не виден. docs/11, У5.
+model Tag {
+  id        String   @id @default(uuid())
+  tenantId  String
+  /// Уникально без учёта регистра — проверяет сервис; здесь — точное совпадение.
+  name      String
+  color     TagColor @default(slate)
+  createdAt DateTime @default(now())
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guestTags GuestTag[]
+
+  @@unique([tenantId, name])
+}
+
+/// Тег на госте. Удалили тег — он сходит со всех гостей (каскад).
+model GuestTag {
+  /// Заведение — отдельной колонкой, как у OfferGrant: политика RLS сравнивает
+  /// колонку напрямую, без подзапроса к участию.
+  tenantId     String
+  membershipId String
+  tagId        String
+  createdAt    DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tag        Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([membershipId, tagId])
+  @@index([tenantId, tagId])
 }

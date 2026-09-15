@@ -39,4 +39,12 @@ describe('Фильтры списка гостей', () => {
     expect(where.AND).toHaveLength(2)
     expect(Array.isArray(where.AND) && where.AND[0]).toHaveProperty('OR')
   })
+
+  it('ТЕГ — ГОСТИ, НА КОТОРЫХ ОН СТОИТ', () => {
+    const tag = '22222222-2222-4222-8222-222222222222'
+
+    expect(guestFilterWhere(TENANT, { tag }, NOW)).toEqual({
+      AND: [{}, { guestTags: { some: { tagId: tag } } }],
+    })
+  })
 })

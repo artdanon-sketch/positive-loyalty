@@ -94,6 +94,10 @@ export const guestFilterWhere = (
     })
   }
 
+  if (filters.tag !== undefined) {
+    and.push({ guestTags: { some: { tagId: filters.tag } } })
+  }
+
   if (filters.buyers === 'none') {
     and.push({ visitsTotal: 0 })
   }
