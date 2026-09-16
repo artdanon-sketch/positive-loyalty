@@ -3255,3 +3255,54 @@ body {
   resize: vertical;
   min-height: 3.5em;
 }
+
+/* ── «Сегодня» и «Настройте за 5 минут» (docs/11, У11) ─────────────────────── */
+
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.today__title {
+  margin: 0;
+  font-size: var(--fs-secondary-lg);
+  font-weight: 600;
+  color: var(--tx-2);
+}
+
+.setup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-3);
+}
+
+.setup__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: 100%;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surf-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.setup__card:hover {
+  border-color: var(--s1);
+}
+
+.setup__card:focus-visible {
+  outline: 2px solid var(--s1);
+  outline-offset: 2px;
+}
+
+.setup__cardHint {
+  color: var(--tx-2);
+  font-size: 13px;
+}
