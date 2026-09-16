@@ -125,6 +125,9 @@ const stubApi = (overrides: Record<string, (init?: RequestInit) => Response> = {
       if (path.startsWith('/v1/auth/otp/verify')) return Promise.resolve(json(AUTH_RESPONSE))
       if (path.startsWith('/v1/guest/wallet')) return Promise.resolve(json(WALLET_RESPONSE))
       if (path.startsWith('/v1/guest/me')) return Promise.resolve(json(ME_RESPONSE))
+      if (path.startsWith('/v1/guest/news')) {
+        return Promise.resolve(json({ items: [] }))
+      }
       if (path.startsWith('/v1/guest/reviews')) {
         return Promise.resolve(json({ pending: [], items: [] }))
       }
@@ -628,5 +631,50 @@ describe('Оценка визита', () => {
     const section = await rate()
 
     expect(await section.findByRole('alert')).toHaveTextContent(t('review.error.exists'))
+  })
+})
+
+describe('Новости заведений', () => {
+  const news = (n: number) => ({
+    id: `4b4b4b4b-4b4b-44b4-84b4-4b4b4b4b4b0${String(n)}`,
+    tenantId: KATA_ID,
+    venue: 'Kata Beach Kitchen',
+    title: `Новость ${String(n)}`,
+    body: `Текст новости ${String(n)}`,
+    publishedAt: `2026-09-1${String(n)}T08:00:00.000Z`,
+  })
+
+  it('ТРИ СВЕЖИЕ НОВОСТИ НА КАРТЕ, ОСТАЛЬНЫЕ — ПО «ПОКАЗАТЬ ВСЕ»', async () => {
+    stubApi({ '/v1/guest/news': () => json({ items: [5, 4, 3, 2, 1].map(news) }) })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('news.title') }))
+    expect(section.getByText('Новость 5')).toBeInTheDocument()
+    expect(section.getByText('Kata Beach Kitchen · 15.09')).toBeInTheDocument()
+    expect(section.getByText('Новость 3')).toBeInTheDocument()
+    expect(section.queryByText('Новость 2')).not.toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: t('news.more') }))
+
+    expect(section.getByText('Новость 1')).toBeInTheDocument()
+    expect(section.queryByRole('button', { name: t('news.more') })).not.toBeInTheDocument()
+  })
+
+  it('НОВОСТЕЙ НЕТ — БЛОКА НА КАРТЕ НЕТ', async () => {
+    stubApi()
+    render(<App />)
+
+    await signIn()
+    await screen.findByRole('region', { name: t('card.venues.title') })
+    await waitFor(() => {
+      expect(fetchCalls().some(([input]) => pathOf(input).endsWith('/guest/news'))).toBe(true)
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(screen.queryByRole('region', { name: t('news.title') })).not.toBeInTheDocument()
   })
 })

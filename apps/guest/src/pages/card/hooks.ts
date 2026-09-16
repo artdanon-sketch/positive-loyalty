@@ -3,6 +3,7 @@ import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import type {
   AcceptReferralResult,
   GuestMe,
+  GuestNews,
   GuestQrToken,
   CreateReviewInput,
   GuestReferral,
@@ -18,6 +19,7 @@ import {
   acceptReferral,
   createReview,
   fetchMe,
+  fetchNews,
   fetchQrToken,
   fetchReferral,
   fetchReviews,
@@ -30,6 +32,7 @@ export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
 export const QR_QUERY_KEY = ['guest', 'qr'] as const
 export const ME_QUERY_KEY = ['guest', 'me'] as const
 export const REVIEWS_QUERY_KEY = ['guest', 'reviews'] as const
+export const NEWS_QUERY_KEY = ['guest', 'news'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -154,5 +157,16 @@ export function useCreateReview(): UseMutationResult<GuestReview, Error, CreateR
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: REVIEWS_QUERY_KEY })
     },
+  })
+}
+
+/** Новости заведений. Свежесть в пределах минут не важна — лента не перечитывается сама. */
+export function useGuestNews(): UseQueryResult<GuestNews, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: NEWS_QUERY_KEY,
+    queryFn: () => fetchNews(authGet),
+    enabled: session !== null,
   })
 }
