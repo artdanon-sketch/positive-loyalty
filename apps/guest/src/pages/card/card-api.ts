@@ -3,9 +3,12 @@ import {
   GuestMe,
   GuestQrToken,
   GuestReferral,
+  GuestReview,
+  GuestReviews,
   GuestWallet,
   JoinVenueResult,
 } from '@positive/contracts'
+import type { CreateReviewInput } from '@positive/contracts'
 import type { ZodType } from 'zod'
 
 /**
@@ -71,4 +74,14 @@ export function fetchMe(authGet: AuthGet): Promise<GuestMe> {
 /** Указать день рождения — один раз. */
 export function saveBirthday(authPut: AuthPut, date: string): Promise<GuestMe> {
   return authPut('/guest/me/birthday', { date }, GuestMe)
+}
+
+/** Визиты, которые можно оценить, и свои отзывы с ответами (docs/02, раздел 2.8). */
+export function fetchReviews(authGet: AuthGet): Promise<GuestReviews> {
+  return authGet('/guest/reviews', GuestReviews)
+}
+
+/** Оценить визит. */
+export function createReview(authPost: AuthPost, input: CreateReviewInput): Promise<GuestReview> {
+  return authPost('/guest/reviews', input, GuestReview)
 }

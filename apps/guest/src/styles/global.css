@@ -803,3 +803,165 @@ output {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* Оценка визита и ответы заведений — той же спокойной карточкой, что день рождения. */
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: var(--surf);
+  border: 1px solid var(--line);
+}
+
+.review .card__sectionTitle {
+  margin: 0;
+}
+
+.review__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review__stars {
+  display: flex;
+  gap: 6px;
+}
+
+.review__star {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surf-2);
+  color: var(--tx-3);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.review__star--on {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
+.review__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.review__tag {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--tx-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.review__tag--on {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+
+.review__label {
+  font-size: 11px;
+  color: var(--tx-3);
+}
+
+.review__input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surf-2);
+  color: var(--tx);
+  font: inherit;
+  resize: vertical;
+}
+
+.review__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-2);
+}
+
+.review__hint--error {
+  color: var(--bad);
+}
+
+.review__primary {
+  align-self: flex-start;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review__primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.review__link {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review__answer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.review__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review__venue {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--tx-2);
+}
+
+.review__comment {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-3);
+}
+
+.review__reply {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--mint);
+  background: var(--surf-2);
+  font-size: 13.5px;
+}
