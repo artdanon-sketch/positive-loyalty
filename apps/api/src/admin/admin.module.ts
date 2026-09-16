@@ -33,6 +33,8 @@ import { OffersController } from './offers.controller'
 import { OffersService } from './offers.service'
 import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
+import { MessagesController } from './messages.controller'
+import { MessagesService } from './messages.service'
 import { ReviewsController } from './reviews.controller'
 import { ReviewsService } from './reviews.service'
 import { SecurityController } from './security.controller'
@@ -63,6 +65,7 @@ import { StaffService } from './staff.service'
     ReportsController,
     CertificatesController,
     ReviewsController,
+    MessagesController,
     TodayController,
     SecurityController,
     NewsController,
@@ -86,6 +89,7 @@ import { StaffService } from './staff.service'
     ReportsService,
     CertificatesService,
     ReviewsService,
+    MessagesService,
     TodayService,
     SecurityService,
     NewsService,

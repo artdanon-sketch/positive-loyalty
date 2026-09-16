@@ -151,6 +151,7 @@ model Tenant {
   reviews                Review[]
   news                   News[]
   newsViews              NewsView[]
+  guestMessages          GuestMessage[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -197,6 +198,7 @@ model Guest {
   offerGrants   OfferGrant[]
   reviews       Review[]
   newsViews     NewsView[]
+  messages      GuestMessage[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -1594,6 +1596,33 @@ model News {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, isPublished, publishedAt])
+}
+
+enum GuestMessageKind {
+  COMPLAINT
+  SUGGESTION
+}
+
+/// Жалоба или предложение гостя — обращение не по визиту. Отзыв привязан к чеку
+/// и оценивает визит; это — текст без оценки, на который заведение отвечает.
+model GuestMessage {
+  id        String           @id @default(uuid())
+  tenantId  String
+  guestId   String
+  kind      GuestMessageKind
+  text      String
+  /// Ответ заведения. null — ещё не ответили.
+  reply     String?
+  repliedAt DateTime?
+  /// Кто ответил из сотрудников заведения.
+  repliedBy String?
+  createdAt DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([guestId, createdAt])
 }
 
 /// Отметка «гость увидел новость». Одна на пару «новость + гость»: владелец смотрит,

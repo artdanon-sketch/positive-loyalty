@@ -30,6 +30,7 @@ const ACTIONS: Readonly<Record<string, TranslationKey>> = {
   CERTIFICATE_CREATED: 'security.action.CERTIFICATE_CREATED',
   CERTIFICATE_UPDATED: 'security.action.CERTIFICATE_UPDATED',
   REVIEW_REPLIED: 'security.action.REVIEW_REPLIED',
+  GUEST_MESSAGE_REPLIED: 'security.action.GUEST_MESSAGE_REPLIED',
 }
 
 export const actionLabel = (action: string, t: (key: TranslationKey) => string): string => {
