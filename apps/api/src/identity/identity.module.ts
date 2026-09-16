@@ -48,5 +48,8 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     TelegramLoginService,
     TelegramUpdatesService,
   ],
+  // Бот нужен рассылкам (AdminModule): канал доставки один и тот же, и заводить
+  // второго клиента Telegram значило бы держать два разных представления о боте.
+  exports: [TelegramBotService],
 })
 export class IdentityModule {}

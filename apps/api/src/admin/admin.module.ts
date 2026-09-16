@@ -33,6 +33,13 @@ import { OffersController } from './offers.controller'
 import { OffersService } from './offers.service'
 import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
+import { IdentityModule } from '../identity/identity.module'
+
+import { BroadcastSendService } from './broadcast-send.service'
+import { BroadcastSweeper } from './broadcast.sweeper'
+import { BroadcastsController } from './broadcasts.controller'
+import { BroadcastsService } from './broadcasts.service'
+import { GuestAudienceService } from './guest-audience.service'
 import { MessagesController } from './messages.controller'
 import { MessagesService } from './messages.service'
 import { ReviewsController } from './reviews.controller'
@@ -47,7 +54,7 @@ import { StaffService } from './staff.service'
 
 /** API бэк-офиса заведения. Всё внутри закрыто глобальным TenantGuard. */
 @Module({
-  imports: [CoreModule],
+  imports: [CoreModule, IdentityModule],
   controllers: [
     AdminController,
     ProgramSettingsController,
@@ -66,6 +73,7 @@ import { StaffService } from './staff.service'
     CertificatesController,
     ReviewsController,
     MessagesController,
+    BroadcastsController,
     TodayController,
     SecurityController,
     NewsController,
@@ -90,6 +98,10 @@ import { StaffService } from './staff.service'
     CertificatesService,
     ReviewsService,
     MessagesService,
+    BroadcastsService,
+    BroadcastSendService,
+    BroadcastSweeper,
+    GuestAudienceService,
     TodayService,
     SecurityService,
     NewsService,

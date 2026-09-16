@@ -152,6 +152,8 @@ model Tenant {
   news                   News[]
   newsViews              NewsView[]
   guestMessages          GuestMessage[]
+  broadcasts             Broadcast[]
+  broadcastRecipients    BroadcastRecipient[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -199,6 +201,7 @@ model Guest {
   reviews       Review[]
   newsViews     NewsView[]
   messages      GuestMessage[]
+  broadcasts    BroadcastRecipient[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -1596,6 +1599,76 @@ model News {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, isPublished, publishedAt])
+}
+
+/// Состояние рассылки. Черновиков нет: рассылка создаётся уже с аудиторией
+/// и текстом — «сохранить на потом» решает отложенная отправка, а не черновик.
+enum BroadcastStatus {
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+/// Судьба одного получателя. Пропуски разделены: «устал» и «некуда слать» —
+/// разные проблемы, и владельцу важно, какая именно.
+enum BroadcastDelivery {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED_FATIGUE
+  SKIPPED_NO_CHANNEL
+}
+
+/// Рассылка заведения. Аудитория фиксируется списком получателей в момент
+/// создания: «нашли 759» не должно разъехаться с тем, кому реально ушло.
+model Broadcast {
+  id         String          @id @default(uuid())
+  tenantId   String
+  /// Внутреннее имя — владельцу в списке. Гость его не видит.
+  title      String
+  text       String
+  /// Фильтры аудитории как их выбрали: чтобы показать в архиве, кому слали.
+  audience   Json
+  /// Когда отправить. Прошедшее время означает «сейчас».
+  sendAt     DateTime
+  status     BroadcastStatus @default(SCHEDULED)
+  /// Кто создал — сотрудник заведения.
+  createdBy  String?
+  createdAt  DateTime        @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  tenant     Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  recipients BroadcastRecipient[]
+
+  @@index([tenantId, createdAt])
+  @@index([status, sendAt])
+}
+
+/// Получатель рассылки. Хранится всегда, даже пропущенный: по этой таблице
+/// считается усталость («не больше четырёх сообщений в месяц») и архив.
+model BroadcastRecipient {
+  id          String            @id @default(uuid())
+  tenantId    String
+  broadcastId String
+  guestId     String
+  delivery    BroadcastDelivery @default(PENDING)
+  /// Куда ушло: пока только TELEGRAM. null — не ушло никуда.
+  channel     String?
+  /// Почему не ушло — текстом, для архива. Гостю не показывается.
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime          @default(now())
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest     Guest     @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// Один гость — одна строка в рассылке: повтор прохода не задваивает отправку.
+  @@unique([broadcastId, guestId])
+  @@index([tenantId, guestId, sentAt])
+  @@index([broadcastId, delivery])
 }
 
 enum GuestMessageKind {
