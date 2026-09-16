@@ -624,6 +624,53 @@ describe('Безопасность', () => {
     })
   })
 
+  it('ФИЛЬТРЫ ИСТОРИИ: ДЕНЬ И СОТРУДНИК УХОДЯТ В ЗАПРОС, «ПОКАЗАТЬ ВСЕ» СНИМАЕТ ИХ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/security/history': () => json(HISTORY),
+      '/v1/admin/security/suspicious': () => json(SUSPICIOUS),
+      '/v1/admin/staff': () => json(TEAM),
+      ...settingsApi,
+    })
+    const asked = (part: string): boolean =>
+      fetchMock.mock.calls.some(([input]) =>
+        requestOf(input as RequestInfo | URL).includes(`/admin/security/history${part}`),
+      )
+
+    render(<App />)
+
+    await openReview()
+    fireEvent.click(await screen.findByRole('tab', { name: t('security.tab.history') }))
+    await screen.findByRole('table', { name: t('security.tab.history') })
+
+    // Сначала уходим со свежих — фильтр обязан вернуть листание в начало.
+    fireEvent.click(screen.getByRole('button', { name: t('security.history.earlier') }))
+    fireEvent.change(screen.getByLabelText(t('security.filter.day')), {
+      target: { value: '2026-09-16' },
+    })
+    await waitFor(() => {
+      expect(asked('?day=2026-09-16')).toBe(true)
+    })
+
+    fireEvent.change(await screen.findByLabelText(t('security.filter.staff')), {
+      target: { value: '22222222-2222-4222-8222-222222222222' },
+    })
+    await waitFor(() => {
+      expect(asked('?day=2026-09-16&actorId=22222222-2222-4222-8222-222222222222')).toBe(true)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: t('security.filter.reset') }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: t('security.filter.reset') })).toBeNull()
+    })
+    expect(screen.getByLabelText(t('security.filter.day'))).toHaveValue('')
+    expect(screen.getByLabelText(t('security.filter.staff'))).toHaveValue('')
+    expect(await screen.findByRole('table', { name: t('security.tab.history') })).toHaveTextContent(
+      t('security.action.STAFF_PIN_RESET'),
+    )
+  })
+
   it('ПОРОГ ПОДОЗРИТЕЛЬНЫХ ЧЕКОВ СОХРАНЯЕТСЯ; ЕДИНИЦА — НЕЛЬЗЯ', async () => {
     const fetchMock = stubApi({ '/v1/auth/staff/pin': () => json(OWNER_TOKENS), ...settingsApi })
     render(<App />)

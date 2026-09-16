@@ -22,6 +22,19 @@ describe('Безопасность', () => {
     expect(SecurityHistoryQuery.safeParse({ before: 'вчера' }).success).toBe(false)
   })
 
+  it('ИСТОРИЮ МОЖНО СУЗИТЬ ДО ОДНОГО ДНЯ И ОДНОГО СОТРУДНИКА', () => {
+    const staffId = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
+
+    expect(SecurityHistoryQuery.parse({ day: '2026-09-16', actorId: staffId })).toEqual({
+      day: '2026-09-16',
+      actorId: staffId,
+      limit: 50,
+    })
+    expect(SecurityHistoryQuery.safeParse({ day: '16.09.2026' }).success).toBe(false)
+    expect(SecurityHistoryQuery.safeParse({ day: '2026-02-30' }).success).toBe(false)
+    expect(SecurityHistoryQuery.safeParse({ actorId: 'kassir' }).success).toBe(false)
+  })
+
   it('подозрительное — за неделю по умолчанию', () => {
     expect(SuspiciousQuery.parse({})).toEqual({ period: '7d' })
   })

@@ -17,6 +17,16 @@ import { DashboardPeriod } from './admin.js'
 const Count = z.number().int().nonnegative()
 const LocalDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 
+/**
+ * Настоящий день календаря: «2026-02-30» проходит проверку маской, но в базе станет
+ * вторым марта. Сравнение с обратным преобразованием ловит такие подмены.
+ */
+const CalendarDay = LocalDate.refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`)
+
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value)
+}, 'Такого дня нет в календаре')
+
 export const SECURITY_HISTORY_PAGE = 50
 
 // ─── История действий ────────────────────────────────────────────────────────
@@ -25,6 +35,10 @@ export const SecurityHistoryQuery = z
   .object({
     /** Листание назад: события строго раньше этого момента. */
     before: z.iso.datetime().optional(),
+    /** Одни сутки заведения, YYYY-MM-DD. Без него — вся история подряд. */
+    day: CalendarDay.optional(),
+    /** Только действия этого сотрудника. Чужой идентификатор просто ничего не найдёт. */
+    actorId: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(SECURITY_HISTORY_PAGE),
   })
   .strict()

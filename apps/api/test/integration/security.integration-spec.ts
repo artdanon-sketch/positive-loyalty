@@ -60,6 +60,7 @@ interface SuspiciousBody {
 interface HistoryBody {
   items: Array<{
     action: string
+    occurredAt: string
     actorType: string
     actor: { id: string; displayName: string } | null
   }>
@@ -295,6 +296,39 @@ describe('Безопасность: история действий', () => {
       .set('Authorization', bearer(ownerToken))
     expect(bad.status).toBe(400)
   })
+
+  it('ИСТОРИЯ СУЖАЕТСЯ ДО СУТОК ЗАВЕДЕНИЯ И ДО ОДНОГО СОТРУДНИКА', async () => {
+    const history = async (params: string): Promise<HistoryBody> =>
+      (
+        await request(server())
+          .get(`/v1/admin/security/history${params}`)
+          .set('Authorization', bearer(ownerToken))
+      ).body as HistoryBody
+
+    // Сутки заведения, а не UTC: в Бангкоке день сменяется на семь часов раньше.
+    const venueDay = (at: Date): string =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(at)
+    const today = venueDay(new Date())
+
+    const own = await history(`?day=${today}`)
+    expect(own.items.map((item) => item.action)).toContain('PROGRAM_CONFIG_CHANGED')
+    expect(own.items.every((item) => venueDay(new Date(item.occurredAt)) === today)).toBe(true)
+
+    const longAgo = await history(`?day=${venueDay(new Date(Date.now() - 30 * DAY_MS))}`)
+    expect(longAgo.items).toEqual([])
+
+    const mine = await history(`?actorId=${ownerId}`)
+    expect(mine.items.length).toBeGreaterThan(0)
+    expect(mine.items.every((item) => item.actor?.id === ownerId)).toBe(true)
+
+    const stranger = await history(`?actorId=${randomUUID()}`)
+    expect(stranger.items).toEqual([])
+
+    const nonsense = await request(server())
+      .get('/v1/admin/security/history?day=2026-02-30')
+      .set('Authorization', bearer(ownerToken))
+    expect(nonsense.status).toBe(400)
+  })
 })
 
 describe('Безопасность: функция истории под ролью приложения', () => {
@@ -309,7 +343,7 @@ describe('Безопасность: функция истории под рол�
   })
 
   it('РОЛЬ ПРИЛОЖЕНИЯ ЧИТАЕТ ИСТОРИЮ ТОЛЬКО СВОЕГО ЗАВЕДЕНИЯ И НИЧЕГО — БЕЗ ОБЪЯВЛЕННОГО', async () => {
-    const call = "SELECT * FROM tenant_audit_history(now() + interval '1 minute', 100)"
+    const call = "SELECT * FROM tenant_audit_history(now() + interval '1 minute', 100, NULL, NULL)"
 
     const own = await appRole.prisma.forTenant(frequent.tenantId, async (tx) =>
       tx.$queryRawUnsafe<Array<{ action: string }>>(call),
