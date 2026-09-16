@@ -202,11 +202,19 @@ describe('Обращения: гость пишет, заведение отве
   })
 
   it('МЕНЕДЖЕР ВИДИТ ОБРАЩЕНИЯ С МАСКИРОВАННЫМ ТЕЛЕФОНОМ, КАССИР — НЕ ВИДИТ ВОВСЕ', async () => {
+    const full = (
+      await prisma.guest.findUniqueOrThrow({
+        where: { id: venue.guestId },
+        select: { phoneE164: true },
+      })
+    ).phoneE164
+
     const asManager = await list(managerToken, '?kind=COMPLAINT')
-    expect(asManager.items[0]?.guest?.phone).toMatch(/\*/)
+    expect(asManager.items[0]?.guest?.phone).not.toBe(full)
+    expect(asManager.items[0]?.guest?.phone).toContain('•')
 
     const asOwner = await list(ownerToken, '?kind=COMPLAINT')
-    expect(asOwner.items[0]?.guest?.phone).not.toMatch(/\*/)
+    expect(asOwner.items[0]?.guest?.phone).toBe(full)
 
     const forbidden = await request(server())
       .get('/v1/admin/messages')
