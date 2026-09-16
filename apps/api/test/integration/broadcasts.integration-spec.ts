@@ -158,20 +158,21 @@ beforeAll(async () => {
   await linkTelegram(tired.guestId, `20${stamp}`)
   await linkTelegram(neighbour.guestId, `30${stamp}`)
 
-  // Усталость: четыре доставленных сообщения за последние тридцать дней.
-  const past = await prisma.broadcast.create({
-    data: {
-      tenantId: reachable.tenantId,
-      title: 'Прошлые',
-      text: 'Прошлое сообщение',
-      audience: {},
-      sendAt: new Date(Date.now() - 20 * DAY_MS),
-      status: 'SENT',
-    },
-    select: { id: true },
-  })
-
+  // Усталость: четыре доставленных сообщения за последние тридцать дней. Четыре
+  // сообщения — это четыре рассылки: в одной гость встречается ровно один раз.
   for (const day of [2, 5, 9, 14]) {
+    const past = await prisma.broadcast.create({
+      data: {
+        tenantId: reachable.tenantId,
+        title: `Прошлая ${String(day)}`,
+        text: 'Прошлое сообщение',
+        audience: {},
+        sendAt: new Date(Date.now() - day * DAY_MS),
+        status: 'SENT',
+      },
+      select: { id: true },
+    })
+
     await prisma.broadcastRecipient.create({
       data: {
         tenantId: reachable.tenantId,
