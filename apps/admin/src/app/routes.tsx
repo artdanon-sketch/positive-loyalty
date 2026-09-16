@@ -13,6 +13,7 @@ import { PosPage } from '../pages/pos/Page'
 import { ReportsPage } from '../pages/reports/Page'
 import { ReviewsPage } from '../pages/reviews/Page'
 import { SaleKindsPage } from '../pages/sale-kinds/Page'
+import { SecurityPage } from '../pages/security/Page'
 import { SettingsPage } from '../pages/settings/Page'
 import { TeamPage } from '../pages/team/Page'
 import { isCashierApp } from '../shared/config/product'
@@ -96,6 +97,7 @@ export function AppRoutes(): ReactElement {
         <Route path="sale-kinds" element={<SaleKindsPage />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/security" element={<SecurityPage />} />
         {/* Неизвестный адрес возвращает на домашний экран роли, а не в пустоту. */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
