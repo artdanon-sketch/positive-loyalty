@@ -91,6 +91,8 @@ export type AuditAction =
   | 'NEWS_CREATED'
   /** Новость поправлена, опубликована или снята с публикации. */
   | 'NEWS_UPDATED'
+  /** Ответ на жалобу или предложение гостя. */
+  | 'GUEST_MESSAGE_REPLIED'
 
 export interface AuditEntry {
   readonly action: AuditAction
