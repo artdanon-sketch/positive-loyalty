@@ -35,6 +35,8 @@ import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
 import { ReviewsController } from './reviews.controller'
 import { ReviewsService } from './reviews.service'
+import { SecurityController } from './security.controller'
+import { SecurityService } from './security.service'
 import { TodayController } from './today.controller'
 import { TodayService } from './today.service'
 import { StaffService } from './staff.service'
@@ -60,6 +62,7 @@ import { StaffService } from './staff.service'
     CertificatesController,
     ReviewsController,
     TodayController,
+    SecurityController,
   ],
   providers: [
     AdminService,
@@ -81,6 +84,7 @@ import { StaffService } from './staff.service'
     CertificatesService,
     ReviewsService,
     TodayService,
+    SecurityService,
   ],
 })
 export class AdminModule {}

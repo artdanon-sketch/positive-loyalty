@@ -220,6 +220,7 @@ export const TENANTS: readonly TenantSeed[] = [
           'Спасибо! Ждём вас снова.',
         ],
       },
+      suspicious: { maxChecksPerDay: 5 },
       tiers: [
         tier('base', 'Гость', 5, 30, []),
         tier('regular', 'Постоянный', 7, 40, [{ type: 'VISITS_TOTAL', gt: 5 }]),
@@ -264,6 +265,7 @@ export const TENANTS: readonly TenantSeed[] = [
         daysAfter: 3,
       },
       reviews: { autoReplies: [null, null, null, null, null] },
+      suspicious: { maxChecksPerDay: 5 },
       tiers: [
         tier('base', 'Гость', 8, 25, []),
         tier('care', 'Забота', 12, 35, [{ type: 'VISITS_TOTAL', gt: 3 }]),
@@ -307,6 +309,7 @@ export const TENANTS: readonly TenantSeed[] = [
         daysAfter: 3,
       },
       reviews: { autoReplies: [null, null, null, null, null] },
+      suspicious: { maxChecksPerDay: 5 },
       tiers: [tier('base', 'Гость', 4, 20, [])],
       cashierRules: {
         requireReceiptNumber: false,

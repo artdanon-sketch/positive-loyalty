@@ -12,6 +12,7 @@ import {
   ProgramSettings,
   ReferralSettings,
   ReviewSettings,
+  SuspiciousSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -226,5 +227,42 @@ export class ProgramSettingsController {
     }
 
     return this.settings.updateReviews(parsed.data)
+  }
+
+  @Get('suspicious')
+  @ApiOperation({
+    summary: 'Порог подозрительных чеков',
+    description: 'Больше стольких чеков у гостя за день — повод посмотреть. docs/02, раздел 5.6.5.',
+  })
+  @ApiOkResponse({ description: 'Текущий порог' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async getSuspicious(): Promise<SuspiciousSettings> {
+    return this.settings.getSuspicious()
+  }
+
+  @Put('suspicious')
+  @ApiOperation({
+    summary: 'Изменить порог подозрительных чеков',
+    description: 'Заменяет порог; остальное не трогает.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({ description: 'Порог не целое от 2 до 50' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  @ApiInternalServerErrorResponse({ description: 'TENANT_MISCONFIGURED — настройки не читаются' })
+  async updateSuspicious(@Body() body: unknown): Promise<SuspiciousSettings> {
+    const parsed = SuspiciousSettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный порог',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateSuspicious(parsed.data)
   }
 }

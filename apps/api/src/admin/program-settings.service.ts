@@ -12,6 +12,7 @@ import type {
   ProgramSettings,
   ReferralSettings,
   ReviewSettings,
+  SuspiciousSettings,
   TierSettings,
 } from '@positive/contracts'
 
@@ -84,6 +85,10 @@ const pickReferral = (config: ProgramConfig): ReferralSettings => ({
 
 const pickReviews = (config: ProgramConfig): ReviewSettings => ({
   autoReplies: config.reviews.autoReplies,
+})
+
+const pickSuspicious = (config: ProgramConfig): SuspiciousSettings => ({
+  maxChecksPerDay: config.suspicious.maxChecksPerDay,
 })
 
 @Injectable()
@@ -437,6 +442,66 @@ export class ProgramSettingsService {
       })
 
       return { before: pickReviews(current), after: pickReviews(checked) }
+    })
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Порог подозрительных чеков. docs/02, раздел 5.6.5. */
+  async getSuspicious(): Promise<SuspiciousSettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickSuspicious(this.parse(tenantId, tenant.settings))
+  }
+
+  /** Порог — тем же подмешиванием: остальные настройки заведения не трогаются. */
+  async updateSuspicious(input: SuspiciousSettings): Promise<SuspiciousSettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+      const merged: Record<string, unknown> = { ...raw, suspicious: input }
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickSuspicious(current), after: pickSuspicious(checked) }
     })
 
     await this.audit.write({
