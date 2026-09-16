@@ -37,9 +37,14 @@ export class SecurityController {
   constructor(private readonly security: SecurityService) {}
 
   @Get('history')
-  @ApiOperation({ summary: 'История действий своего заведения — свежие сверху' })
+  @ApiOperation({
+    summary: 'История действий своего заведения — свежие сверху',
+    description: 'Сужается до одних суток заведения (day) и до одного сотрудника (actorId).',
+  })
   @ApiOkResponse({ description: 'Кто, что и когда; nextBefore — для следующей страницы' })
-  @ApiBadRequestResponse({ description: 'before не момент ISO или страница больше ста' })
+  @ApiBadRequestResponse({
+    description: 'before не момент ISO, day не день календаря или страница больше ста',
+  })
   @ApiForbiddenResponse({ description: 'Только владелец' })
   async history(@Query() query: Record<string, unknown>): Promise<SecurityHistory> {
     const parsed = SecurityHistoryQuery.safeParse(query)

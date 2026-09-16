@@ -18,9 +18,12 @@ import { PERIOD_DAYS, toNumber } from './dashboard.service'
  * Безопасность заведения: история действий и подозрительные операции.
  * docs/02, раздел 5.13 · docs/05, разделы 6.1 и 9 · docs/11, У12.
  *
- * ИСТОРИЯ — ЧЕРЕЗ ФУНКЦИЮ БАЗЫ `tenant_audit_history` (миграция 20260916060000):
- * роль приложения аудит не читает, а функция отдаёт только события объявленного
- * заведения и без значений «было / стало».
+ * ИСТОРИЯ — ЧЕРЕЗ ФУНКЦИЮ БАЗЫ `tenant_audit_history` (миграции 20260916060000
+ * и 20260916100000): роль приложения аудит не читает, а функция отдаёт только события
+ * объявленного заведения и без значений «было / стало».
+ *
+ * ФИЛЬТРЫ ДНЯ И СОТРУДНИКА ТОЖЕ В ФУНКЦИИ, А НЕ НАД ЕЁ ВЫДАЧЕЙ: страница отрезается
+ * внутри, и отсев снаружи оставил бы владельцу полупустые страницы.
  *
  * ПОДОЗРИТЕЛЬНОЕ СЧИТАЕТСЯ НА ЗАПРОСЕ, А НЕ ПИШЕТСЯ В РИСК-ЛОГ: риск-модуля ещё нет,
  * а экран отвечает на вопрос «что стоит посмотреть» по журналу, который уже есть.
@@ -81,7 +84,12 @@ export class SecurityService {
 
     return this.prisma.forTenant(tenantId, async (tx) => {
       const rows = await tx.$queryRaw<HistoryRow[]>`
-        SELECT * FROM tenant_audit_history(${before}::timestamptz, ${query.limit}::int)
+        SELECT * FROM tenant_audit_history(
+          ${before}::timestamptz,
+          ${query.limit}::int,
+          ${query.actorId ?? null}::text,
+          ${query.day ?? null}::date
+        )
       `
 
       const staffIds = [
