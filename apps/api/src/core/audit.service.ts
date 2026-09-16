@@ -93,6 +93,8 @@ export type AuditAction =
   | 'NEWS_UPDATED'
   /** Ответ на жалобу или предложение гостя. */
   | 'GUEST_MESSAGE_REPLIED'
+  /** Владелец создал рассылку: сообщение уходит всей выбранной базе. */
+  | 'BROADCAST_CREATED'
 
 export interface AuditEntry {
   readonly action: AuditAction

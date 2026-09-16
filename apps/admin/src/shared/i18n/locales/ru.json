@@ -1033,6 +1033,7 @@
   "security.action.GUEST_TIER_CHANGED": "Статус гостя назначен вручную",
   "security.action.CERTIFICATE_CREATED": "Заведён сертификат",
   "security.action.CERTIFICATE_UPDATED": "Изменён сертификат",
+  "security.action.BROADCAST_CREATED": "Создана рассылка",
   "security.action.GUEST_MESSAGE_REPLIED": "Ответ на обращение",
   "security.action.REVIEW_REPLIED": "Ответ на отзыв",
   "securitySettings.title": "Безопасность",
