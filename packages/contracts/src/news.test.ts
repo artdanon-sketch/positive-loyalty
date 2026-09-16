@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { CreateNewsInput, UpdateNewsInput } from './news.js'
+import { CreateNewsInput, GUEST_NEWS_MAX, GuestNewsSeenInput, UpdateNewsInput } from './news.js'
 
 describe('Новости', () => {
   it('ЧЕРНОВИК ПО УМОЛЧАНИЮ, ПРОБЕЛЫ ПО КРАЯМ СРЕЗАЮТСЯ', () => {
@@ -24,5 +24,17 @@ describe('Новости', () => {
     expect(UpdateNewsInput.safeParse({ isPublished: false }).success).toBe(true)
     expect(UpdateNewsInput.safeParse({}).success).toBe(false)
     expect(UpdateNewsInput.safeParse({ tenantId: 'чужой' }).success).toBe(false)
+  })
+
+  it('ОТМЕТКА «УВИДЕЛ» — ПАЧКА ИЗ ИДЕНТИФИКАТОРОВ, НЕ ПУСТАЯ И НЕ ДЛИННЕЕ ЛЕНТЫ', () => {
+    const id = '4b4b4b4b-4b4b-44b4-84b4-4b4b4b4b4b01'
+
+    expect(GuestNewsSeenInput.parse({ ids: [id] })).toEqual({ ids: [id] })
+    expect(GuestNewsSeenInput.safeParse({ ids: [] }).success).toBe(false)
+    expect(GuestNewsSeenInput.safeParse({ ids: ['всё'] }).success).toBe(false)
+    expect(
+      GuestNewsSeenInput.safeParse({ ids: Array.from({ length: GUEST_NEWS_MAX + 1 }, () => id) })
+        .success,
+    ).toBe(false)
   })
 })

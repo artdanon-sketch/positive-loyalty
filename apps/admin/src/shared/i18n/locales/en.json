@@ -1058,6 +1058,9 @@
   "news.problem.body": "Text — 1 to 2000 characters",
   "news.status.published": "Published",
   "news.status.draft": "Draft",
+  "news.views.one": "view",
+  "news.views.few": "views",
+  "news.views.many": "views",
   "news.publishedAt": "published {date}",
   "news.publish": "Publish",
   "news.unpublish": "Unpublish"

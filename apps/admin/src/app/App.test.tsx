@@ -707,6 +707,7 @@ describe('Новости', () => {
     body: 'С понедельника — суп дня.',
     isPublished: false,
     publishedAt: null,
+    views: 0,
     createdAt: '2026-09-16T07:55:10.000Z',
   }
 
@@ -762,6 +763,26 @@ describe('Новости', () => {
       expect(patch).toBeDefined()
       expect(JSON.parse((patch?.[1] as RequestInit).body as string)).toEqual({ isPublished: true })
     })
+  })
+
+  it('У ОПУБЛИКОВАННОЙ НОВОСТИ ВИДНО, СКОЛЬКО ГОСТЕЙ ЕЁ УВИДЕЛО', async () => {
+    stubApi({
+      '/v1/admin/news': () =>
+        json([
+          { ...NEWS, isPublished: true, publishedAt: '2026-09-16T08:00:00.000Z', views: 22 },
+          { ...NEWS, id: '9c9c9c9c-9c9c-49c9-89c9-9c9c9c9c9c9c', title: 'Черновик' },
+        ]),
+    })
+    render(<App />)
+
+    const list = await openNews()
+    const published = await within(list).findByRole('article', { name: 'Новое меню' })
+
+    // Двадцать два — форма «просмотра», а не «просмотров» (docs/04, раздел 7).
+    expect(within(published).getByText(/22 просмотра/)).toBeInTheDocument()
+
+    const draft = within(list).getByRole('article', { name: 'Черновик' })
+    expect(within(draft).queryByText(/просмотр/)).toBeNull()
   })
 
   it('МЕНЕДЖЕР ВИДИТ НОВОСТИ БЕЗ ФОРМЫ И БЕЗ КНОПОК ПУБЛИКАЦИИ', async () => {

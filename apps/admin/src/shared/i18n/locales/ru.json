@@ -1058,6 +1058,9 @@
   "news.problem.body": "Текст — от 1 до 2000 знаков",
   "news.status.published": "Опубликована",
   "news.status.draft": "Черновик",
+  "news.views.one": "просмотр",
+  "news.views.few": "просмотра",
+  "news.views.many": "просмотров",
   "news.publishedAt": "опубликована {date}",
   "news.publish": "Опубликовать",
   "news.unpublish": "Снять с публикации"

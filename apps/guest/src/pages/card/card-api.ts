@@ -2,6 +2,7 @@ import {
   AcceptReferralResult,
   GuestMe,
   GuestNews,
+  GuestNewsSeen,
   GuestQrToken,
   GuestReferral,
   GuestReview,
@@ -9,7 +10,7 @@ import {
   GuestWallet,
   JoinVenueResult,
 } from '@positive/contracts'
-import type { CreateReviewInput } from '@positive/contracts'
+import type { CreateReviewInput, GuestNewsSeenInput } from '@positive/contracts'
 import type { ZodType } from 'zod'
 
 /**
@@ -90,4 +91,12 @@ export function createReview(authPost: AuthPost, input: CreateReviewInput): Prom
 /** Новости заведений гостя — одна лента на все (docs/02, раздел 2.9). */
 export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
   return authGet('/guest/news', GuestNews)
+}
+
+/** Отметить показанные новости увиденными — пачкой, одним запросом. */
+export function markNewsSeen(
+  authPost: AuthPost,
+  input: GuestNewsSeenInput,
+): Promise<GuestNewsSeen> {
+  return authPost('/guest/news/seen', input, GuestNewsSeen)
 }

@@ -37,6 +37,8 @@ export const AdminNews = z
     isPublished: z.boolean(),
     /** Когда впервые опубликована. null — ни разу. */
     publishedAt: z.iso.datetime().nullable(),
+    /** Сколько гостей увидело новость. Гость считается один раз, сколько бы ни открывал. */
+    views: z.number().int().nonnegative(),
     createdAt: z.iso.datetime(),
   })
   .strict()
@@ -83,6 +85,27 @@ export const GuestNewsItem = z
   .strict()
 
 export type GuestNewsItem = z.infer<typeof GuestNewsItem>
+
+/**
+ * Отметка «увидел». Пачкой: карта показывает три новости разом, и три запроса подряд
+ * с телефона у стойки — три шанса не дождаться ответа.
+ */
+export const GuestNewsSeenInput = z
+  .object({
+    ids: z.array(z.uuid()).min(1).max(GUEST_NEWS_MAX),
+  })
+  .strict()
+
+export type GuestNewsSeenInput = z.infer<typeof GuestNewsSeenInput>
+
+export const GuestNewsSeen = z
+  .object({
+    /** Сколько отметок легло впервые. Повторные не считаются. */
+    counted: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type GuestNewsSeen = z.infer<typeof GuestNewsSeen>
 
 export const GuestNews = z
   .object({

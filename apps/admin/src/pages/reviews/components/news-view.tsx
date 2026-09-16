@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { useAuth } from '../../../shared/auth/auth-context'
 import { fill } from '../../../shared/format/fill'
 import { formatDate } from '../../../shared/format/format'
-import { useT } from '../../../shared/i18n'
+import { useT, useTPlural } from '../../../shared/i18n'
 import { useNews, useUpdateNews } from '../news-hooks'
 import { NewsForm } from './news-form'
 
@@ -13,9 +13,13 @@ import { NewsForm } from './news-form'
  * Список с черновиками и опубликованными. Выпустить и снять с публикации — одной кнопкой
  * у владельца; менеджер видит то же без кнопок, запрет всё равно стоит на сервере.
  * Удаления нет: снятая новость остаётся черновиком.
+ *
+ * ПРОСМОТРЫ — У ОПУБЛИКОВАННОЙ, рядом с датой: у черновика их быть не может, а ноль
+ * рядом с ним читался бы как «никто не смотрит».
  */
 export function NewsView(): ReactElement {
   const t = useT()
+  const tp = useTPlural()
   const isOwner = useAuth().session?.subject.role === 'OWNER'
   const news = useNews()
   const update = useUpdateNews()
@@ -62,6 +66,8 @@ export function NewsView(): ReactElement {
                 {item.publishedAt === null ? null : (
                   <p className="review-card__meta">
                     {fill(t('news.publishedAt'), { date: formatDate(item.publishedAt) })}
+                    {' · '}
+                    {`${String(item.views)} ${tp('news.views', item.views)}`}
                   </p>
                 )}
                 <p className="review-card__comment">{item.body}</p>
