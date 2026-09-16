@@ -662,6 +662,37 @@ describe('Новости заведений', () => {
     expect(section.queryByRole('button', { name: t('news.more') })).not.toBeInTheDocument()
   })
 
+  it('ПОКАЗАННОЕ ОТМЕЧАЕТСЯ УВИДЕННЫМ — ОСТАЛЬНОЕ ТОЛЬКО ПОСЛЕ «ПОКАЗАТЬ ВСЕ»', async () => {
+    stubApi({
+      '/v1/guest/news': () => json({ items: [5, 4, 3, 2, 1].map(news) }),
+      '/v1/guest/news/seen': () => json({ counted: 3 }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('news.title') }))
+    const seen = (): string[][] =>
+      fetchCalls()
+        .filter(([input]) => pathOf(input).endsWith('/guest/news/seen'))
+        .map(
+          ([, init]) => (JSON.parse((init as RequestInit).body as string) as { ids: string[] }).ids,
+        )
+
+    await waitFor(() => {
+      expect(seen()).toEqual([[news(5).id, news(4).id, news(3).id]])
+    })
+
+    fireEvent.click(section.getByRole('button', { name: t('news.more') }))
+
+    await waitFor(() => {
+      expect(seen()).toEqual([
+        [news(5).id, news(4).id, news(3).id],
+        [news(2).id, news(1).id],
+      ])
+    })
+  })
+
   it('НОВОСТЕЙ НЕТ — БЛОКА НА КАРТЕ НЕТ', async () => {
     stubApi()
     render(<App />)

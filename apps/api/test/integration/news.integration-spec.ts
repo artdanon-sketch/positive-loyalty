@@ -162,6 +162,43 @@ describe('Новости: публикация', () => {
   })
 })
 
+describe('Новости: просмотры', () => {
+  const seen = (guestId: string, ids: readonly string[]) =>
+    request(server())
+      .post('/v1/guest/news/seen')
+      .set('Authorization', bearer(signGuestToken({ guestId }, SECRET)))
+      .send({ ids })
+
+  const views = async (): Promise<number> => {
+    const list = (
+      await request(server()).get('/v1/admin/news').set('Authorization', bearer(ownerToken))
+    ).body as Array<NewsBody & { views: number }>
+
+    return list.find((item) => item.id === newsId)?.views ?? -1
+  }
+
+  it('ГОСТЬ СЧИТАЕТСЯ ОДИН РАЗ, СКОЛЬКО БЫ НИ ОТКРЫВАЛ; ЧУЖОЙ НЕ СЧИТАЕТСЯ ВОВСЕ', async () => {
+    const first = await seen(venue.guestId, [newsId])
+    expect(first.status).toBe(201)
+    expect(first.body).toEqual({ counted: 1 })
+    expect(await views()).toBe(1)
+
+    // Открыл карту ещё раз — просмотр тот же человек, число не растёт.
+    expect((await seen(venue.guestId, [newsId])).body).toEqual({ counted: 0 })
+    expect(await views()).toBe(1)
+
+    // Гость без участия в заведении новость не видит — и отметить её не может.
+    expect((await seen(strangerId, [newsId])).body).toEqual({ counted: 0 })
+    expect((await seen(neighbour.guestId, [newsId])).body).toEqual({ counted: 0 })
+    expect(await views()).toBe(1)
+  })
+
+  it('ПУСТОЙ СПИСОК И НЕ ИДЕНТИФИКАТОРЫ — 400', async () => {
+    expect((await seen(venue.guestId, [])).status).toBe(400)
+    expect((await seen(venue.guestId, ['всё'])).status).toBe(400)
+  })
+})
+
 describe('Новости: права', () => {
   it('МЕНЕДЖЕР ВИДИТ СПИСОК, НО НЕ ПИШЕТ; ЧУЖУЮ НОВОСТЬ НЕ ИЗМЕНИТЬ; ПУСТАЯ ПРАВКА — 400', async () => {
     const list = await request(server())
@@ -222,6 +259,38 @@ describe('Новости: политики RLS под ролью приложе�
     expect(
       await appRole.prisma.forGuest(venue.guestId, async (tx) =>
         tx.news.findMany({ where: { id: draft.id }, select: { id: true } }),
+      ),
+    ).toEqual([])
+  })
+
+  it('ПРОСМОТР ГОСТЬ СТАВИТ ТОЛЬКО ЗА СЕБЯ И ТОЛЬКО НА ВИДИМУЮ НОВОСТЬ', async () => {
+    const draft = await prisma.news.create({
+      data: { tenantId: venue.tenantId, title: 'Ещё черновик', body: 'Не для гостей' },
+      select: { id: true },
+    })
+
+    // За другого гостя — политика не пускает.
+    await expect(
+      appRole.prisma.forGuest(venue.guestId, async (tx) =>
+        tx.newsView.create({
+          data: { tenantId: venue.tenantId, newsId, guestId: neighbour.guestId },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security/i)
+
+    // На черновик — тоже: вложенный SELECT по News идёт под гостевой политикой.
+    await expect(
+      appRole.prisma.forGuest(venue.guestId, async (tx) =>
+        tx.newsView.create({
+          data: { tenantId: venue.tenantId, newsId: draft.id, guestId: venue.guestId },
+        }),
+      ),
+    ).rejects.toThrow(/row-level security/i)
+
+    // Соседнее заведение чужих просмотров не считает.
+    expect(
+      await appRole.prisma.forTenant(neighbour.tenantId, async (tx) =>
+        tx.newsView.findMany({ where: { newsId }, select: { id: true } }),
       ),
     ).toEqual([])
   })

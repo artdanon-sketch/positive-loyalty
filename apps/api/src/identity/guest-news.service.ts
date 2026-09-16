@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { GUEST_NEWS_MAX } from '@positive/contracts'
-import type { GuestNews } from '@positive/contracts'
+import type { GuestNews, GuestNewsSeen, GuestNewsSeenInput } from '@positive/contracts'
 
 import { PrismaService } from '../core/prisma.service'
 import { currentGuestId } from './current-guest'
@@ -15,6 +15,10 @@ import { currentGuestId } from './current-guest'
  * ГРАНИЦУ ДЕРЖИТ БАЗА. Гостевой контур RLS (`guest_news`, миграция 20260916080000)
  * отдаёт только опубликованные новости заведений, где у гостя есть участие. Условия
  * ниже — чтобы запрос был понятен, а не чтобы удержать границу.
+ *
+ * ПРОСМОТР ОТМЕЧАЕТСЯ ОДИН РАЗ НА ГОСТЯ (UNIQUE в миграции 20260916140000): открытая
+ * пять раз карта — это один дошедший человек, а не пять просмотров. Повтор молча
+ * пропускается, а не падает ошибкой: гость ничего неправильного не сделал.
  */
 @Injectable()
 export class GuestNewsService {
@@ -59,5 +63,37 @@ export class GuestNewsService {
             ],
       ),
     }
+  }
+
+  /**
+   * Отметить новости увиденными. Заведение берётся из самой новости, а не из запроса:
+   * гость его не выбирает, а подсунуть чужое через тело запроса было бы можно.
+   */
+  async markSeen(input: GuestNewsSeenInput): Promise<GuestNewsSeen> {
+    const guestId = currentGuestId()
+
+    return this.prisma.forGuest(guestId, async (tx) => {
+      // Границу держит RLS, условия — те же, что у ленты: без них запрос под владельцем
+      // базы (интеграционные тесты, миграции) отметил бы и чужую новость.
+      const visible = await tx.news.findMany({
+        where: {
+          id: { in: input.ids },
+          isPublished: true,
+          tenant: { memberships: { some: { guestId } } },
+        },
+        select: { id: true, tenantId: true },
+      })
+
+      if (visible.length === 0) {
+        return { counted: 0 }
+      }
+
+      const created = await tx.newsView.createMany({
+        data: visible.map((row) => ({ tenantId: row.tenantId, newsId: row.id, guestId })),
+        skipDuplicates: true,
+      })
+
+      return { counted: created.count }
+    })
   }
 }

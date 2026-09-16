@@ -150,6 +150,7 @@ model Tenant {
   acquisitionChannels    AcquisitionChannel[]
   reviews                Review[]
   news                   News[]
+  newsViews              NewsView[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -195,6 +196,7 @@ model Guest {
   ledgerEntries LedgerEntry[]
   offerGrants   OfferGrant[]
   reviews       Review[]
+  newsViews     NewsView[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -1587,8 +1589,26 @@ model News {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  views  NewsView[]
 
   @@index([tenantId, createdAt])
   @@index([tenantId, isPublished, publishedAt])
+}
+
+/// Отметка «гость увидел новость». Одна на пару «новость + гость»: владелец смотрит,
+/// до скольких гостей новость дошла, а не сколько раз открыли карту.
+model NewsView {
+  id       String   @id @default(uuid())
+  tenantId String
+  newsId   String
+  guestId  String
+  seenAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  news   News   @relation(fields: [newsId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([newsId, guestId])
+  @@index([tenantId, seenAt])
 }

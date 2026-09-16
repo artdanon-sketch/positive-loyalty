@@ -4,6 +4,8 @@ import type {
   AcceptReferralResult,
   GuestMe,
   GuestNews,
+  GuestNewsSeen,
+  GuestNewsSeenInput,
   GuestQrToken,
   CreateReviewInput,
   GuestReferral,
@@ -25,6 +27,7 @@ import {
   fetchReviews,
   fetchWallet,
   joinVenue,
+  markNewsSeen,
   saveBirthday,
 } from './card-api'
 
@@ -157,6 +160,18 @@ export function useCreateReview(): UseMutationResult<GuestReview, Error, CreateR
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: REVIEWS_QUERY_KEY })
     },
+  })
+}
+
+/**
+ * Отметка «увидел». Ответ не нужен никому на экране: гость просмотров не видит,
+ * и неудача отметки не должна ломать ленту — поэтому без invalidate и без ошибок наружу.
+ */
+export function useMarkNewsSeen(): UseMutationResult<GuestNewsSeen, Error, GuestNewsSeenInput> {
+  const { authPost } = useSession()
+
+  return useMutation({
+    mutationFn: (input) => markNewsSeen(authPost, input),
   })
 }
 

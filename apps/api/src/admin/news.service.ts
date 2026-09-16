@@ -15,6 +15,9 @@ import { PrismaService } from '../core/prisma.service'
  * можно, но наверх ленты гостя это новость не поднимет.
  *
  * В аудит — создание и каждая правка: гостям уходит текст от имени заведения.
+ *
+ * ПРОСМОТРЫ — ГОСТИ, А НЕ ПОКАЗЫ (миграция 20260916140000): у отметки UNIQUE на пару
+ * «новость + гость», и владелец видит, до скольких человек новость дошла.
  */
 
 const NEWS_SELECT = {
@@ -24,6 +27,7 @@ const NEWS_SELECT = {
   isPublished: true,
   publishedAt: true,
   createdAt: true,
+  _count: { select: { views: true } },
 } as const
 
 /** Сколько новостей в списке бэк-офиса. */
@@ -36,6 +40,7 @@ interface NewsRow {
   isPublished: boolean
   publishedAt: Date | null
   createdAt: Date
+  _count: { views: number }
 }
 
 const toAdminNews = (row: NewsRow): AdminNews => ({
@@ -44,6 +49,7 @@ const toAdminNews = (row: NewsRow): AdminNews => ({
   body: row.body,
   isPublished: row.isPublished,
   publishedAt: row.publishedAt?.toISOString() ?? null,
+  views: row._count.views,
   createdAt: row.createdAt.toISOString(),
 })
 
