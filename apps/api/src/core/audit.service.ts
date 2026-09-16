@@ -87,6 +87,10 @@ export type AuditAction =
   | 'CERTIFICATE_UPDATED'
   /** Ответ на отзыв гостя — владельца или менеджера. docs/11, У10. */
   | 'REVIEW_REPLIED'
+  /** Владелец написал новость для гостей. docs/11, У13. */
+  | 'NEWS_CREATED'
+  /** Новость поправлена, опубликована или снята с публикации. */
+  | 'NEWS_UPDATED'
 
 export interface AuditEntry {
   readonly action: AuditAction

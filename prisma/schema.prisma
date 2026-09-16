@@ -149,6 +149,7 @@ model Tenant {
   tags                   Tag[]
   acquisitionChannels    AcquisitionChannel[]
   reviews                Review[]
+  news                   News[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -1569,4 +1570,25 @@ model Review {
 
   @@index([tenantId, createdAt])
   @@index([guestId, createdAt])
+}
+
+/// Новость заведения для гостей. docs/02, разделы 2.9 и 5.14 · docs/11, У13.
+///
+/// Не удаляется, а снимается с публикации. Гостю видны только опубликованные — политика
+/// guest_news в миграции 20260916080000.
+model News {
+  id          String    @id @default(uuid())
+  tenantId    String
+  title       String
+  body        String
+  isPublished Boolean   @default(false)
+  /// Когда впервые опубликована — по ней лента гостя. null — ни разу.
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, isPublished, publishedAt])
 }
