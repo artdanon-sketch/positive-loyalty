@@ -62,11 +62,15 @@ if (typeof appUrl !== 'string' || appUrl.trim() === '') {
  * в него, ни прав менять схему. Роль, которая днём обслуживает гостей, не должна
  * уметь удалить таблицу.
  *
- * Поэтому строка для миграций отдельная: DATABASE_URL_MIGRATE. Её задаёт владелец
- * проекта в настройках сервиса; пока её нет — миграции применяются руками
- * (`pnpm db:deploy`), и выкатка честно об этом говорит, а не молчит.
+ * Поэтому строка для миграций отдельная: DATABASE_URL_OWNER — то же имя, что уже
+ * читает prisma.config.ts на рабочей машине. Второго имени не заводим: одна
+ * переменная на оба места, иначе однажды заполнят не ту.
+ *
+ * Подменять ничего не нужно: prisma.config.ts сам предпочитает DATABASE_URL_OWNER,
+ * а на DATABASE_URL откатывается там, где роль одна (CI, локальная разработка).
+ * Здесь мы только проверяем, что владелец задан, и останавливаемся, если нет.
  */
-const migrateUrl = process.env['DATABASE_URL_MIGRATE']
+const ownerUrl = process.env['DATABASE_URL_OWNER']
 
 /**
  * Строки для миграций нет — значит применять их отсюда нечем. Но это ещё не повод
@@ -77,7 +81,7 @@ const migrateUrl = process.env['DATABASE_URL_MIGRATE']
  * не сходится — останавливаемся и говорим, что делать. Это не то же самое, что
  * молчаливая заглушка: молчим, только когда работы нет.
  */
-if (typeof migrateUrl !== 'string' || migrateUrl.trim() === '') {
+if (typeof ownerUrl !== 'string' || ownerUrl.trim() === '') {
   const pending = spawnSync(
     'npx',
     ['--yes', 'prisma@7.9.1', 'migrate', 'status', '--schema', 'prisma/schema.prisma'],
@@ -94,12 +98,12 @@ if (typeof migrateUrl !== 'string' || migrateUrl.trim() === '') {
 
   process.stderr.write(
     '[predeploy] База отстала от кода, а применить миграции нечем: ' +
-      'DATABASE_URL_MIGRATE не задан.' +
+      'DATABASE_URL_OWNER не задан.' +
       String.fromCharCode(10) +
       '[predeploy] DATABASE_URL принадлежит роли приложения: у неё нет прав ни на ' +
       'журнал миграций, ни на изменение схемы, и это намеренно.' +
       String.fromCharCode(10) +
-      '[predeploy] Что делать: либо добавить сервису переменную DATABASE_URL_MIGRATE ' +
+      '[predeploy] Что делать: либо добавить сервису переменную DATABASE_URL_OWNER ' +
       'со строкой владельца базы, либо применить миграции с рабочей машины командой ' +
       'pnpm db:deploy и повторить выкатку.' +
       String.fromCharCode(10) +
@@ -129,7 +133,7 @@ if (!existsSync(schema)) {
   process.exit(1)
 }
 
-process.stdout.write(`[predeploy] Применяю миграции отдельной ролью: (${schema})\n`)
+process.stdout.write(`[predeploy] Применяю миграции ролью владельца: (${schema})\n`)
 
 /**
  * Через npx с ЗАКРЕПЛЁННОЙ версией, а не через локальный бинарник.
@@ -143,14 +147,7 @@ process.stdout.write(`[predeploy] Применяю миграции отдель
 const result = spawnSync(
   'npx',
   ['--yes', 'prisma@7.9.1', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'],
-  {
-    cwd: root,
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-    // Prisma читает DATABASE_URL — подменяем его строкой миграций только здесь,
-    // в дочернем процессе: приложение продолжит ходить своей ролью.
-    env: { ...process.env, DATABASE_URL: migrateUrl },
-  },
+  { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' },
 )
 
 if (result.error !== undefined) {
