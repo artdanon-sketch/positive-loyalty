@@ -43,14 +43,71 @@ import process from 'node:process'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const schema = join(root, 'prisma', 'schema.prisma')
 
-const url = process.env['DATABASE_URL']
+const appUrl = process.env['DATABASE_URL']
 
-if (typeof url !== 'string' || url.trim() === '') {
+if (typeof appUrl !== 'string' || appUrl.trim() === '') {
   process.stdout.write(
     '[predeploy] DATABASE_URL не задан — это не сервис приложения (панель платформы ' +
       'ходит по DATABASE_URL_PLATFORM). Миграции пропущены.\n',
   )
   process.exit(0)
+}
+
+/**
+ * МИГРАЦИИ ХОДЯТ СВОЕЙ РОЛЬЮ, А НЕ РОЛЬЮ ПРИЛОЖЕНИЯ.
+ *
+ * Проверено выкаткой 17.09.2026: под DATABASE_URL (роль positive_app) prisma падает
+ * с «permission denied for table _prisma_migrations». И падает правильно: у роли
+ * приложения есть SELECT на журнал миграций — ровно чтобы сверяться, — но ни записи
+ * в него, ни прав менять схему. Роль, которая днём обслуживает гостей, не должна
+ * уметь удалить таблицу.
+ *
+ * Поэтому строка для миграций отдельная: DATABASE_URL_MIGRATE. Её задаёт владелец
+ * проекта в настройках сервиса; пока её нет — миграции применяются руками
+ * (`pnpm db:deploy`), и выкатка честно об этом говорит, а не молчит.
+ */
+const migrateUrl = process.env['DATABASE_URL_MIGRATE']
+
+/**
+ * Строки для миграций нет — значит применять их отсюда нечем. Но это ещё не повод
+ * останавливать выкатку: если база и код сходятся, применять просто нечего.
+ *
+ * Спрашиваем саму базу ролью приложения: SELECT на журнал миграций ей выдан
+ * (миграция 20260911100000) ровно для такой сверки. Сходится — идём дальше молча,
+ * не сходится — останавливаемся и говорим, что делать. Это не то же самое, что
+ * молчаливая заглушка: молчим, только когда работы нет.
+ */
+if (typeof migrateUrl !== 'string' || migrateUrl.trim() === '') {
+  const pending = spawnSync(
+    'npx',
+    ['--yes', 'prisma@7.9.1', 'migrate', 'status', '--schema', 'prisma/schema.prisma'],
+    { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' },
+  )
+
+  if (pending.status === 0) {
+    process.stdout.write(
+      '[predeploy] Непринятых миграций нет — применять нечего, выкатка продолжается.' +
+        String.fromCharCode(10),
+    )
+    process.exit(0)
+  }
+
+  process.stderr.write(
+    '[predeploy] База отстала от кода, а применить миграции нечем: ' +
+      'DATABASE_URL_MIGRATE не задан.' +
+      String.fromCharCode(10) +
+      '[predeploy] DATABASE_URL принадлежит роли приложения: у неё нет прав ни на ' +
+      'журнал миграций, ни на изменение схемы, и это намеренно.' +
+      String.fromCharCode(10) +
+      '[predeploy] Что делать: либо добавить сервису переменную DATABASE_URL_MIGRATE ' +
+      'со строкой владельца базы, либо применить миграции с рабочей машины командой ' +
+      'pnpm db:deploy и повторить выкатку.' +
+      String.fromCharCode(10) +
+      '[predeploy] Выкатка остановлена: код против отставшей базы всё равно ' +
+      'не поднимется.' +
+      String.fromCharCode(10),
+  )
+  process.exit(1)
 }
 
 /**
@@ -72,7 +129,7 @@ if (!existsSync(schema)) {
   process.exit(1)
 }
 
-process.stdout.write(`[predeploy] Применяю миграции: prisma migrate deploy (${schema})\n`)
+process.stdout.write(`[predeploy] Применяю миграции отдельной ролью: (${schema})\n`)
 
 /**
  * Через npx с ЗАКРЕПЛЁННОЙ версией, а не через локальный бинарник.
@@ -86,7 +143,14 @@ process.stdout.write(`[predeploy] Применяю миграции: prisma migr
 const result = spawnSync(
   'npx',
   ['--yes', 'prisma@7.9.1', 'migrate', 'deploy', '--schema', 'prisma/schema.prisma'],
-  { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' },
+  {
+    cwd: root,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    // Prisma читает DATABASE_URL — подменяем его строкой миграций только здесь,
+    // в дочернем процессе: приложение продолжит ходить своей ролью.
+    env: { ...process.env, DATABASE_URL: migrateUrl },
+  },
 )
 
 if (result.error !== undefined) {
