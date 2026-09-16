@@ -74,7 +74,39 @@ interface StaffNewGuestsRow {
   newGuests: unknown
 }
 
-const EMPTY_STAFF: StaffReportCounts = { operations: 0, turnover: 0, newGuests: 0 }
+interface StaffReviewsRow {
+  staffId: string | null
+  reviews: unknown
+  ratingSum: unknown
+}
+
+/**
+ * Счётчики копятся суммой оценок, а не средней: неизвестный сотрудник уходит в строку
+ * «система», и две средние там сложить нельзя — сложить суммы и число отзывов можно.
+ */
+interface StaffTally {
+  operations: number
+  turnover: number
+  newGuests: number
+  reviews: number
+  ratingSum: number
+}
+
+const EMPTY_TALLY: StaffTally = {
+  operations: 0,
+  turnover: 0,
+  newGuests: 0,
+  reviews: 0,
+  ratingSum: 0,
+}
+
+const finishTally = (tally: StaffTally): StaffReportCounts => ({
+  operations: tally.operations,
+  turnover: tally.turnover,
+  newGuests: tally.newGuests,
+  reviews: tally.reviews,
+  rating: tally.reviews === 0 ? null : Math.round((tally.ratingSum / tally.reviews) * 10) / 10,
+})
 
 @Injectable()
 export class ReportsService {
@@ -319,11 +351,13 @@ export class ReportsService {
     const { tenantId } = TenantContext.getOrThrow()
     const days = PERIOD_DAYS[period]
 
-    const { counts, firsts, people } = await this.prisma.forTenant(tenantId, async (tx) => {
-      const zone = await this.zone(tx, tenantId)
+    const { counts, firsts, reviews, people } = await this.prisma.forTenant(
+      tenantId,
+      async (tx) => {
+        const zone = await this.zone(tx, tenantId)
 
-      const [counts, firsts] = await Promise.all([
-        tx.$queryRaw<StaffCountsRow[]>`
+        const [counts, firsts, reviews] = await Promise.all([
+          tx.$queryRaw<StaffCountsRow[]>`
           WITH bounds AS (
             SELECT
               date_trunc('day', now() AT TIME ZONE ${zone})
@@ -347,9 +381,9 @@ export class ReportsService {
             )
           GROUP BY 1
         `,
-        // Новый гость сотрудника — тот, чей ПЕРВЫЙ неотменённый чек в заведении провёл
-        // этот сотрудник, и этот чек пришёлся на период.
-        tx.$queryRaw<StaffNewGuestsRow[]>`
+          // Новый гость сотрудника — тот, чей ПЕРВЫЙ неотменённый чек в заведении провёл
+          // этот сотрудник, и этот чек пришёлся на период.
+          tx.$queryRaw<StaffNewGuestsRow[]>`
           WITH bounds AS (
             SELECT
               date_trunc('day', now() AT TIME ZONE ${zone})
@@ -379,33 +413,62 @@ export class ReportsService {
           WHERE f.local_at >= b.cur_start AND f.local_at < b.cur_end
           GROUP BY 1
         `,
-      ])
+          // Оценка сотрудника — по отзывам на ЕГО чеки за период, а не по дате отзыва:
+          // строка отчёта говорит об одних и тех же чеках, и гость нередко оценивает назавтра.
+          tx.$queryRaw<StaffReviewsRow[]>`
+          WITH bounds AS (
+            SELECT
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                - make_interval(days => ${days}::int - 1) AS cur_start,
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                + interval '1 day'                        AS cur_end
+          )
+          SELECT
+            v."staffId"           AS "staffId",
+            count(*)              AS "reviews",
+            sum(v.rating)         AS "ratingSum"
+          FROM "Review" v
+          JOIN "LedgerEntry" l ON l.id = v."ledgerEntryId" AND l."tenantId" = v."tenantId",
+            bounds b
+          WHERE v."tenantId" = ${tenantId}::text
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+            AND NOT EXISTS (
+              SELECT 1 FROM "LedgerEntry" r
+              WHERE r."tenantId" = ${tenantId}::text AND r."reversalOfId" = l.id
+            )
+          GROUP BY 1
+        `,
+        ])
 
-      const ids = [
-        ...new Set(
-          [...counts, ...firsts].flatMap((row) => (row.staffId === null ? [] : [row.staffId])),
-        ),
-      ]
+        const ids = [
+          ...new Set(
+            [...counts, ...firsts, ...reviews].flatMap((row) =>
+              row.staffId === null ? [] : [row.staffId],
+            ),
+          ),
+        ]
 
-      const people =
-        ids.length === 0
-          ? []
-          : await tx.staff.findMany({
-              where: { tenantId, id: { in: ids } },
-              select: { id: true, displayName: true, role: true, isActive: true },
-            })
+        const people =
+          ids.length === 0
+            ? []
+            : await tx.staff.findMany({
+                where: { tenantId, id: { in: ids } },
+                select: { id: true, displayName: true, role: true, isActive: true },
+              })
 
-      return { counts, firsts, people }
-    })
+        return { counts, firsts, reviews, people }
+      },
+    )
 
-    const byStaff = new Map<string | null, StaffReportCounts>()
+    const byStaff = new Map<string | null, StaffTally>()
     const known = new Map(people.map((person) => [person.id, person]))
     // Сотрудник, которого нет в заведении (удалён или чужой), — в строку «система»:
     // его чеки не должны пропасть из итога.
     const keyOf = (staffId: string | null): string | null =>
       staffId !== null && known.has(staffId) ? staffId : null
-    const bucket = (key: string | null): StaffReportCounts => {
-      const current = byStaff.get(key) ?? { ...EMPTY_STAFF }
+    const bucket = (key: string | null): StaffTally => {
+      const current = byStaff.get(key) ?? { ...EMPTY_TALLY }
       byStaff.set(key, current)
       return current
     }
@@ -420,12 +483,18 @@ export class ReportsService {
       bucket(keyOf(row.staffId)).newGuests += toNumber(row.newGuests)
     }
 
+    for (const row of reviews) {
+      const current = bucket(keyOf(row.staffId))
+      current.reviews += toNumber(row.reviews)
+      current.ratingSum += toNumber(row.ratingSum)
+    }
+
     const staff: StaffReportRow[] = people
       .flatMap((person): StaffReportRow[] => {
-        const numbers = byStaff.get(person.id)
+        const tally = byStaff.get(person.id)
 
         if (
-          numbers === undefined ||
+          tally === undefined ||
           (person.role !== 'CASHIER' && person.role !== 'MANAGER' && person.role !== 'OWNER')
         ) {
           return []
@@ -437,13 +506,13 @@ export class ReportsService {
             displayName: person.displayName,
             role: person.role,
             isActive: person.isActive,
-            ...numbers,
+            ...finishTally(tally),
           },
         ]
       })
       .sort((a, b) => b.turnover - a.turnover || b.operations - a.operations)
 
-    return { period, staff, system: byStaff.get(null) ?? { ...EMPTY_STAFF } }
+    return { period, staff, system: finishTally(byStaff.get(null) ?? EMPTY_TALLY) }
   }
 
   /** Покупатели заведения — те, у кого был хоть один визит. */
