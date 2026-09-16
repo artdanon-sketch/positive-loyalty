@@ -135,22 +135,22 @@ export const StaffReportCounts = z
     turnover: Minor,
     /** Гостей, чей первый чек в заведении провёл этот сотрудник. */
     newGuests: Count,
+    /** Отзывов на эти чеки. */
+    reviews: Count,
+    /** Средняя оценка по ним, до десятых. null — отзывов не было. */
+    rating: z.number().min(1).max(5).nullable(),
   })
   .strict()
 
 export type StaffReportCounts = z.infer<typeof StaffReportCounts>
 
-export const StaffReportRow = z
-  .object({
-    staffId: z.uuid(),
-    displayName: z.string(),
-    role: z.enum(['CASHIER', 'MANAGER', 'OWNER']),
-    isActive: z.boolean(),
-    operations: Count,
-    turnover: Minor,
-    newGuests: Count,
-  })
-  .strict()
+/** Те же счётчики, что у строки «система», плюс сам сотрудник. */
+export const StaffReportRow = StaffReportCounts.extend({
+  staffId: z.uuid(),
+  displayName: z.string(),
+  role: z.enum(['CASHIER', 'MANAGER', 'OWNER']),
+  isActive: z.boolean(),
+}).strict()
 
 export type StaffReportRow = z.infer<typeof StaffReportRow>
 

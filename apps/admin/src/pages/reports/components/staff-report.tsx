@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import type { DashboardPeriod, StaffReportRow } from '@positive/contracts'
+import type { DashboardPeriod, StaffReportCounts, StaffReportRow } from '@positive/contracts'
 
+import { fill } from '../../../shared/format/fill'
 import { formatBaht } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
@@ -20,6 +21,15 @@ const ROLE_LABELS: Readonly<Record<StaffReportRow['role'], TranslationKey>> = {
   MANAGER: 'role.manager',
   OWNER: 'role.owner',
 }
+
+/**
+ * Оценка — со числом отзывов: «5,0» по одному отзыву и «4,8» по сорока выглядят
+ * одинаково, а значат разное. Отзывов нет — прочерк, а не ноль: ноль звёзд не бывает.
+ */
+const ratingCell = (row: StaffReportCounts, translate: (key: TranslationKey) => string): string =>
+  row.rating === null
+    ? '—'
+    : fill(translate('reports.staff.rating'), { rating: row.rating.toFixed(1), n: row.reviews })
 
 export function StaffReportView({ period }: { period: DashboardPeriod }): ReactElement {
   const t = useT()
@@ -48,6 +58,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                     <th className="data-table__num">{t('reports.staff.col.operations')}</th>
                     <th className="data-table__num">{t('reports.staff.col.turnover')}</th>
                     <th className="data-table__num">{t('reports.staff.col.newGuests')}</th>
+                    <th className="data-table__num">{t('reports.staff.col.rating')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -61,6 +72,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                       <td className="data-table__num">{row.operations}</td>
                       <td className="data-table__num">{formatBaht(row.turnover)}</td>
                       <td className="data-table__num">{row.newGuests}</td>
+                      <td className="data-table__num">{ratingCell(row, t)}</td>
                     </tr>
                   ))}
                   {data.system.operations === 0 ? null : (
@@ -70,6 +82,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                       <td className="data-table__num">{data.system.operations}</td>
                       <td className="data-table__num">{formatBaht(data.system.turnover)}</td>
                       <td className="data-table__num">{data.system.newGuests}</td>
+                      <td className="data-table__num">{ratingCell(data.system, t)}</td>
                     </tr>
                   )}
                 </tbody>

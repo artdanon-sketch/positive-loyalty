@@ -836,6 +836,8 @@
   "reports.staff.col.role": "Роль",
   "reports.staff.col.operations": "Чеков",
   "reports.staff.col.turnover": "Выручка",
+  "reports.staff.col.rating": "Оценка",
+  "reports.staff.rating": "{rating} · {n}",
   "reports.staff.col.newGuests": "Новых гостей",
   "reports.staff.system": "Через кассу POSitive",
   "rfm.CHAMPIONS": "Чемпионы",

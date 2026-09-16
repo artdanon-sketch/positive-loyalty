@@ -836,6 +836,8 @@
   "reports.staff.col.role": "Role",
   "reports.staff.col.operations": "Checks",
   "reports.staff.col.turnover": "Revenue",
+  "reports.staff.col.rating": "Rating",
+  "reports.staff.rating": "{rating} · {n}",
   "reports.staff.col.newGuests": "New guests",
   "reports.staff.system": "Via the POSitive till",
   "rfm.CHAMPIONS": "Champions",

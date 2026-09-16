@@ -2018,9 +2018,11 @@ describe('Отчёты: вкладки', () => {
               operations: 212,
               turnover: 9_650_000,
               newGuests: 31,
+              reviews: 24,
+              rating: 4.8,
             },
           ],
-          system: { operations: 190, turnover: 8_800_000, newGuests: 13 },
+          system: { operations: 190, turnover: 8_800_000, newGuests: 13, reviews: 0, rating: null },
         }),
     })
     render(<App />)
@@ -2033,8 +2035,12 @@ describe('Отчёты: вкладки', () => {
     expect(within(cashier).getByText('212')).toBeInTheDocument()
     expect(within(cashier).getByText('31')).toBeInTheDocument()
 
+    expect(within(cashier).getByText('4.8 · 24')).toBeInTheDocument()
+
     const system = within(table).getByRole('row', { name: new RegExp(t('reports.staff.system')) })
     expect(within(system).getByText('190')).toBeInTheDocument()
+    // Чеки из кассы некому оценивать поимённо — в этой строке прочерк, а не ноль.
+    expect(within(system).getByText('—')).toBeInTheDocument()
   })
 })
 

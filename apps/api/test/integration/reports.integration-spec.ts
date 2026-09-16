@@ -101,8 +101,8 @@ beforeAll(async () => {
 
   const byCashier = { source: 'STAFF_MANUAL', actorType: 'STAFF', actorId: cashierId } as const
 
-  await earn(tourist, 10_000, byCashier)
-  await earn(tourist, 20_000, byCashier)
+  const rated = await earn(tourist, 10_000, byCashier)
+  const alsoRated = await earn(tourist, 20_000, byCashier)
   await earn(tourist, 30_000, byCashier)
 
   await ledger.redeem(
@@ -129,6 +129,22 @@ beforeAll(async () => {
     },
     resident.scope,
   )
+
+  // Две оценки на чеки кассира — «пятёрка» и «четвёрка», средняя 4.5. Третья висит
+  // на отменённом чеке из кассы: отменённый чек не в счёт, значит и оценка его не в счёт.
+  await prisma.review.createMany({
+    data: [
+      { tenantId, guestId: tourist.guestId, ledgerEntryId: rated, staffId: cashierId, rating: 5 },
+      {
+        tenantId,
+        guestId: tourist.guestId,
+        ledgerEntryId: alsoRated,
+        staffId: cashierId,
+        rating: 4,
+      },
+      { tenantId, guestId: resident.guestId, ledgerEntryId: voided, staffId: null, rating: 1 },
+    ],
+  })
 
   const neighbour = await createMembershipFixture(prisma)
   await earn(neighbour, 1_000_000, POS_ORIGIN)
@@ -229,7 +245,7 @@ describe('Отчёт «RFM»', () => {
 })
 
 describe('Отчёт «Сотрудники»', () => {
-  it('КАССИР — ТРИ ЧЕКА, ИХ ВЫРУЧКА И ОДИН НОВЫЙ ГОСТЬ; ЧЕКИ ИЗ КАССЫ POSITIVE — ОТДЕЛЬНО', async () => {
+  it('КАССИР — ТРИ ЧЕКА, ИХ ВЫРУЧКА, НОВЫЙ ГОСТЬ И СРЕДНЯЯ ОЦЕНКА; КАССА POSITIVE — ОТДЕЛЬНО', async () => {
     const response = await get('/v1/admin/reports/staff')
 
     expect(response.status).toBe(200)
@@ -247,9 +263,18 @@ describe('Отчёт «Сотрудники»', () => {
         operations: 3,
         turnover: 60_000,
         newGuests: 1,
+        reviews: 2,
+        rating: 4.5,
       },
     ])
-    expect(body.system).toEqual({ operations: 1, turnover: 40_000, newGuests: 1 })
+    // Оценка с отменённого чека не попала ни в одну строку.
+    expect(body.system).toEqual({
+      operations: 1,
+      turnover: 40_000,
+      newGuests: 1,
+      reviews: 0,
+      rating: null,
+    })
   })
 })
 
