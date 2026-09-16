@@ -128,6 +128,9 @@ const stubApi = (overrides: Record<string, (init?: RequestInit) => Response> = {
       if (path.startsWith('/v1/guest/news')) {
         return Promise.resolve(json({ items: [] }))
       }
+      if (path.startsWith('/v1/guest/messages')) {
+        return Promise.resolve(json({ items: [] }))
+      }
       if (path.startsWith('/v1/guest/reviews')) {
         return Promise.resolve(json({ pending: [], items: [] }))
       }
@@ -707,5 +710,74 @@ describe('Новости заведений', () => {
     })
 
     expect(screen.queryByRole('region', { name: t('news.title') })).not.toBeInTheDocument()
+  })
+})
+
+describe('Написать заведению', () => {
+  const sent = {
+    id: '5c5c5c5c-5c5c-45c5-85c5-5c5c5c5c5c01',
+    tenantId: KATA_ID,
+    venue: 'Kata Beach Kitchen',
+    kind: 'COMPLAINT',
+    text: 'Кондиционер не работает',
+    reply: null,
+    repliedAt: null,
+    createdAt: '2026-09-16T09:40:00.000Z',
+  }
+
+  it('ЖАЛОБА УХОДИТ ЗАВЕДЕНИЮ, ВЫБРАННОМУ ГОСТЕМ', async () => {
+    stubApi({
+      '/v1/guest/messages': (init) =>
+        init?.method === 'POST' ? json(sent, 201) : json({ items: [] }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('message.title') }))
+    fireEvent.click(section.getByRole('button', { name: t('message.open') }))
+
+    fireEvent.change(section.getByLabelText(t('message.venue')), { target: { value: KATA_ID } })
+    fireEvent.change(section.getByLabelText(t('message.text')), {
+      target: { value: 'Кондиционер не работает' },
+    })
+    fireEvent.click(section.getByRole('button', { name: t('message.send') }))
+
+    await waitFor(() => {
+      const post = fetchCalls().find(
+        ([input, init]) => pathOf(input).endsWith('/guest/messages') && init?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({
+        tenantId: KATA_ID,
+        kind: 'COMPLAINT',
+        text: 'Кондиционер не работает',
+      })
+    })
+  })
+
+  it('ТРИ БЕЗ ОТВЕТА — ГОСТЬ ВИДИТ, ПОЧЕМУ НЕ ОТПРАВИЛОСЬ; ОТВЕТ ЗАВЕДЕНИЯ ВИДЕН НА КАРТЕ', async () => {
+    stubApi({
+      '/v1/guest/messages': (init) =>
+        init?.method === 'POST'
+          ? json({ error: { code: 'MESSAGE_LIMIT_REACHED', message: 'Подождите' } }, 409)
+          : json({
+              items: [
+                { ...sent, reply: 'Починили, извините', repliedAt: '2026-09-16T10:20:00.000Z' },
+              ],
+            }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('message.title') }))
+    expect(await section.findByText('Починили, извините')).toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: t('message.open') }))
+    fireEvent.change(section.getByLabelText(t('message.text')), { target: { value: 'Ещё раз' } })
+    fireEvent.click(section.getByRole('button', { name: t('message.send') }))
+
+    expect(await section.findByRole('alert')).toHaveTextContent(t('message.error.limit'))
   })
 })
