@@ -12,6 +12,7 @@ import { InviteClaim } from './components/invite-claim'
 import { QrCode } from './components/qr-code'
 import { ReviewPrompt } from './components/review-prompt'
 import { ReviewReplies } from './components/review-replies'
+import { VenueMessage } from './components/venue-message'
 import { VenueNews } from './components/venue-news'
 import { VenueInvite } from './components/venue-invite'
 import { VenueTier } from './components/venue-tier'
@@ -100,6 +101,7 @@ export function Page(): ReactElement {
           {wallet.data.memberships.length > 0 ? <ReviewPrompt /> : null}
           <ReviewReplies />
           <VenueNews />
+          <VenueMessage memberships={wallet.data.memberships} />
 
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />

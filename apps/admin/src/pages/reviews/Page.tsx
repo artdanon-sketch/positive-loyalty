@@ -7,6 +7,7 @@ import { useT } from '../../shared/i18n'
 import type { TranslationKey } from '../../shared/i18n'
 import { PERIODS } from '../overview/hooks'
 import { ReviewCard } from './components/review-card'
+import { MessagesView } from './components/messages-view'
 import { NewsView } from './components/news-view'
 import { ReviewSummaryView } from './components/review-summary'
 import { filtersFromParams, REVIEWS_PAGE, writeFilters } from './filters'
@@ -37,18 +38,22 @@ const ANSWERED_OPTIONS: ReadonlyArray<{ value: ReviewAnswered | null; label: Tra
   { value: 'yes', label: 'reviews.filter.answered' },
 ]
 
-type CommunicationTab = 'reviews' | 'news'
+type CommunicationTab = 'reviews' | 'messages' | 'news'
 
 const COMMUNICATION_TABS: ReadonlyArray<{ value: CommunicationTab; label: TranslationKey }> = [
   { value: 'reviews', label: 'communication.tab.reviews' },
+  { value: 'messages', label: 'communication.tab.messages' },
   { value: 'news', label: 'communication.tab.news' },
 ]
+
+/** Вкладка из адреса: ссылку на жалобы можно переслать так же, как на новости. */
+const tabFromParams = (value: string | null): CommunicationTab =>
+  value === 'news' || value === 'messages' ? value : 'reviews'
 
 export function ReviewsPage(): ReactElement {
   const t = useT()
   const [params, setParams] = useSearchParams()
-  // Вкладка в адресе (`?tab=news`): ссылку на новости можно переслать (docs/11, У13).
-  const tab: CommunicationTab = params.get('tab') === 'news' ? 'news' : 'reviews'
+  const tab = tabFromParams(params.get('tab'))
   const filters = filtersFromParams(params)
   const [period, setPeriod] = useState<DashboardPeriod>('30d')
 
@@ -81,7 +86,7 @@ export function ReviewsPage(): ReactElement {
           <p className="page__subtitle">{t('communication.subtitle')}</p>
         </div>
 
-        {tab === 'news' ? null : (
+        {tab === 'reviews' ? (
           <div className="period" role="group" aria-label={t('overview.period.label')}>
             {PERIODS.map((option) => (
               <button
@@ -97,7 +102,7 @@ export function ReviewsPage(): ReactElement {
               </button>
             ))}
           </div>
-        )}
+        ) : null}
       </header>
 
       <div className="tabs" role="tablist" aria-label={t('communication.tabs.label')}>
@@ -109,7 +114,9 @@ export function ReviewsPage(): ReactElement {
             role="tab"
             aria-selected={option.value === tab}
             onClick={() => {
-              setParams(option.value === 'reviews' ? {} : { tab: 'news' }, { replace: true })
+              setParams(option.value === 'reviews' ? {} : { tab: option.value }, {
+                replace: true,
+              })
             }}
           >
             {t(option.label)}
@@ -119,6 +126,8 @@ export function ReviewsPage(): ReactElement {
 
       {tab === 'news' ? (
         <NewsView />
+      ) : tab === 'messages' ? (
+        <MessagesView />
       ) : reviews.isPending ? (
         <div className="state" role="status">
           <p className="state__title">{t('common.loading')}</p>

@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 import type {
   AcceptReferralResult,
+  CreateGuestMessageInput,
   GuestMe,
+  GuestMessageView,
+  GuestMessages,
   GuestNews,
   GuestNewsSeen,
   GuestNewsSeenInput,
@@ -19,8 +22,10 @@ import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
 import {
   acceptReferral,
+  createMessage,
   createReview,
   fetchMe,
+  fetchMessages,
   fetchNews,
   fetchQrToken,
   fetchReferral,
@@ -36,6 +41,7 @@ export const QR_QUERY_KEY = ['guest', 'qr'] as const
 export const ME_QUERY_KEY = ['guest', 'me'] as const
 export const REVIEWS_QUERY_KEY = ['guest', 'reviews'] as const
 export const NEWS_QUERY_KEY = ['guest', 'news'] as const
+export const MESSAGES_QUERY_KEY = ['guest', 'messages'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -159,6 +165,34 @@ export function useCreateReview(): UseMutationResult<GuestReview, Error, CreateR
     mutationFn: (input) => createReview(authPost, input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: REVIEWS_QUERY_KEY })
+    },
+  })
+}
+
+/** Свои обращения с ответами заведений. */
+export function useGuestMessages(): UseQueryResult<GuestMessages, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: MESSAGES_QUERY_KEY,
+    queryFn: () => fetchMessages(authGet),
+    enabled: session !== null,
+  })
+}
+
+/** Написать заведению. Список перечитывается: обращение должно появиться сразу. */
+export function useCreateGuestMessage(): UseMutationResult<
+  GuestMessageView,
+  Error,
+  CreateGuestMessageInput
+> {
+  const { authPost } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input) => createMessage(authPost, input),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: MESSAGES_QUERY_KEY })
     },
   })
 }

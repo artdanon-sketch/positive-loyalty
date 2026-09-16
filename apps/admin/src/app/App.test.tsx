@@ -700,6 +700,98 @@ describe('Безопасность', () => {
   })
 })
 
+describe('Жалобы и предложения', () => {
+  const MESSAGE = {
+    id: '7c7c7c7c-7c7c-47c7-87c7-7c7c7c7c7c7c',
+    kind: 'COMPLAINT',
+    text: 'Кондиционер не работает второй день',
+    reply: null,
+    repliedAt: null,
+    createdAt: '2026-09-16T09:40:00.000Z',
+    guest: {
+      guestId: '96969696-9696-4969-8969-969696969696',
+      membershipId: '95959595-9595-4959-8959-959595959595',
+      displayName: 'Гость Аня',
+      phone: '+66812340000',
+    },
+  }
+
+  const openMessages = async (): Promise<HTMLElement> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reviews') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('communication.tab.messages') }))
+    return screen.findByRole('region', { name: t('messages.title') })
+  }
+
+  it('ЖАЛОБА ВИДНА С ЧИСЛОМ ЖДУЩИХ ОТВЕТА, ОТВЕТ УХОДИТ ОДНИМ ШАГОМ', async () => {
+    const fetchMock = stubApi({
+      '/v1/admin/messages': (init) =>
+        init?.method === 'POST'
+          ? json({ ...MESSAGE, reply: 'Починили', repliedAt: '2026-09-16T10:20:00.000Z' })
+          : json({ total: 1, unanswered: 1, items: [MESSAGE] }),
+    })
+    render(<App />)
+
+    const list = await openMessages()
+    expect(
+      await within(list).findByText(t('messages.unanswered').replace('{n}', '1')),
+    ).toBeInTheDocument()
+
+    const card = await within(list).findByRole('article', { name: /Гость Аня/ })
+    expect(within(card).getByText(t('messages.kind.COMPLAINT'))).toBeInTheDocument()
+
+    fireEvent.change(within(card).getByLabelText(t('messages.replyLabel')), {
+      target: { value: ' Починили ' },
+    })
+    fireEvent.click(within(card).getByRole('button', { name: t('messages.send') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).includes('/admin/messages/') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeDefined()
+      expect(JSON.parse((post?.[1] as RequestInit).body as string)).toEqual({ text: 'Починили' })
+    })
+  })
+
+  it('ФИЛЬТР СУЖАЕТ ЗАПРОС И ВОЗВРАЩАЕТ НА ПЕРВУЮ СТРАНИЦУ', async () => {
+    const fetchMock = stubApi({
+      '/v1/admin/messages': () => json({ total: 25, unanswered: 0, items: [MESSAGE] }),
+    })
+    const asked = (tail: string): boolean =>
+      fetchMock.mock.calls.some(([input]) =>
+        requestOf(input as RequestInfo | URL).endsWith(`/admin/messages${tail}`),
+      )
+
+    render(<App />)
+
+    const list = await openMessages()
+    await within(list).findByRole('article', { name: /Гость Аня/ })
+
+    // Ушли на вторую страницу — фильтр обязан вернуть на первую.
+    fireEvent.click(within(list).getByRole('button', { name: t('messages.next') }))
+    await waitFor(() => {
+      expect(asked('?offset=20')).toBe(true)
+    })
+
+    fireEvent.click(within(list).getByRole('button', { name: t('messages.filter.unanswered') }))
+    await waitFor(() => {
+      expect(asked('?answered=no')).toBe(true)
+    })
+  })
+
+  it('ОБРАЩЕНИЙ НЕТ — СПИСОК ГОВОРИТ ОБ ЭТОМ ПРЯМО', async () => {
+    stubApi({ '/v1/admin/messages': () => json({ total: 0, unanswered: 0, items: [] }) })
+    render(<App />)
+
+    const list = await openMessages()
+    expect(await within(list).findByText(t('messages.empty'))).toBeInTheDocument()
+    expect(within(list).getByText(t('messages.allAnswered'))).toBeInTheDocument()
+  })
+})
+
 describe('Новости', () => {
   const NEWS = {
     id: '9b9b9b9b-9b9b-49b9-89b9-9b9b9b9b9b9b',
