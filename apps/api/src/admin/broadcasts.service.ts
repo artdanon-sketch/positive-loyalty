@@ -68,6 +68,23 @@ export class BroadcastsService {
 
   async create(input: CreateBroadcastInput): Promise<AdminBroadcast> {
     const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    return this.createFor(tenantId, actorId, (role ?? 'OWNER') as AuditActorType, input)
+  }
+
+  /**
+   * То же создание, но с явным заведением — для того, у кого нет запроса
+   * владельца за спиной: автоматических сценариев (automation-run.service.ts).
+   *
+   * Один путь создания на всех: снимок аудитории, ограничение усталости и учёт
+   * доставки должны работать одинаково, кто бы ни нажал «отправить».
+   */
+  async createFor(
+    tenantId: string,
+    actorId: string | null,
+    actorType: AuditActorType,
+    input: CreateBroadcastInput,
+  ): Promise<AdminBroadcast> {
     // Прошедшее время означает «сейчас»: владелец нажал «отправить», а не «ждать».
     const sendAt = input.sendAt === undefined ? new Date() : new Date(input.sendAt)
 
@@ -107,7 +124,7 @@ export class BroadcastsService {
 
     await this.audit.write({
       action: 'BROADCAST_CREATED',
-      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorType,
       actorId,
       tenantId,
       entityType: 'Broadcast',

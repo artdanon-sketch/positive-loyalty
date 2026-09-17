@@ -155,6 +155,7 @@ model Tenant {
   broadcasts             Broadcast[]
   broadcastRecipients    BroadcastRecipient[]
   staffRewards           StaffReward[]
+  automations            AutomationRule[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -1649,6 +1650,48 @@ model StaffReward {
 
   @@index([tenantId, staffId, createdAt])
   @@index([tenantId, state, membershipId])
+}
+
+/// Готовый сценарий автоматической рассылки. docs/02, раздел 5.4.1.
+enum AutomationKind {
+  /// Гость давно не заходил: после последней покупки прошло N дней.
+  SLEEPING
+  /// Вступил и ничего не купил: прошло N дней со вступления.
+  JOINED_NO_PURCHASE
+  /// Набрал сумму покупок: потратил у заведения больше N.
+  SPENT_TOTAL
+}
+
+/// Сценарий: условие плюс сообщение. Отправку выполняет машина рассылок —
+/// со всеми её правилами усталости и учётом доставки.
+///
+/// СЦЕНАРИЙ НЕ ШЛЁТ САМ, А СОЗДАЁТ РАССЫЛКУ. Иначе у нас появилось бы два
+/// способа отправлять гостям сообщения, и «не больше четырёх в месяц» считался
+/// бы только по одному из них.
+model AutomationRule {
+  id       String         @id @default(uuid())
+  tenantId String
+  kind     AutomationKind
+  enabled  Boolean        @default(false)
+
+  /// Порог: дни для SLEEPING и JOINED_NO_PURCHASE, сумма в минорных единицах
+  /// для SPENT_TOTAL. Смысл задаёт kind.
+  threshold Int
+  /// Что уходит гостю.
+  text      String
+
+  /// Когда сценарий отработал в последний раз: чаще раза в сутки не повторяем.
+  lastRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// Один сценарий каждого вида на заведение: два «давно не заходил» с разными
+  /// порогами — это два письма одному гостю в один день.
+  @@unique([tenantId, kind])
+  @@index([enabled, lastRunAt])
 }
 
 enum BroadcastStatus {

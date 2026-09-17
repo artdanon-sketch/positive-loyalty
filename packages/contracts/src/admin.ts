@@ -148,6 +148,10 @@ export const AdminGuestsQuery = z
     sleeping: z.coerce.number().int().min(7).max(365).optional(),
     /** `none` — ни разу не покупали. */
     buyers: z.enum(['none']).optional(),
+    /** Потратил у заведения не меньше этой суммы, в минорных единицах. */
+    spentFrom: z.coerce.number().int().nonnegative().optional(),
+    /** Вступил не позже чем столько дней назад. От суток: «вчера» — не история. */
+    joinedBefore: z.coerce.number().int().min(1).max(3650).optional(),
     /** Тег заведения (id из справочника). */
     tag: z.uuid().optional(),
     /** RFM-сегмент на сегодня — из отчёта «RFM» (docs/11, У8). */
