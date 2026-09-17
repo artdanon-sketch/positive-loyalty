@@ -1178,3 +1178,76 @@ output {
   border-radius: 10px;
   object-fit: cover;
 }
+
+/* Витрина наград: цель, ради которой копят. Недостижимое пока — приглушено,
+   но видно: именно оно и держит гостя. */
+.rewards {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surf);
+}
+
+.rewards__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--tx-2);
+}
+
+.rewards__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rewards__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rewards__item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rewards__item--far {
+  opacity: 0.6;
+}
+
+.rewards__image {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.rewards__main {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rewards__name {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.rewards__venue {
+  font-size: 12.5px;
+  color: var(--tx-3);
+}
+
+.rewards__price {
+  font-size: 14px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

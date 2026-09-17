@@ -20,6 +20,7 @@ export type NavIconName =
   | 'team'
   | 'pos'
   | 'saleKinds'
+  | 'catalog'
   | 'settings'
   | 'menu'
 
@@ -38,6 +39,8 @@ const PATHS: Readonly<Record<NavIconName, string>> = {
   team: 'M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1ZM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 17c.6-1.7 2.1-2.7 4-2.7s3.4 1 4 2.7',
   pos: 'M4 4h6v6H4ZM14 4h6v6h-6ZM4 14h6v6H4ZM14 14h2.5v2.5H14ZM17.5 17.5H20V20h-2.5ZM14 19h1.5M19 14h1',
   saleKinds: 'M4 4h6v6H4ZM14 4h6v6h-6ZM4 14h6v6H4ZM14 14h6v6h-6Z',
+  // Ценник: витрина — это то, что можно взять, и сколько это стоит.
+  catalog: 'M20 12l-8 8-8-8V4h8ZM8.5 8.5h.01',
   settings: 'M4 7h9M17 7h3M4 17h4M12 17h8M15 5v4M10 15v4',
   menu: 'M4 7h16M4 12h16M4 17h16',
 }

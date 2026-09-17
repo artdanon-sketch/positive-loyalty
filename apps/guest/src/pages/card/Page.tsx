@@ -15,6 +15,7 @@ import { ReviewReplies } from './components/review-replies'
 import { HistoryList } from './components/history-list'
 import { InstallCard } from './components/install-card'
 import { ProfileCard } from './components/profile-card'
+import { RewardsList } from './components/rewards-list'
 import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
 import { VenueNews } from './components/venue-news'
@@ -106,6 +107,7 @@ export function Page(): ReactElement {
           <ReviewReplies />
           <VenueNews />
           <VenueMessage memberships={wallet.data.memberships} />
+          <RewardsList />
           <HistoryList />
           <ProfileCard />
           <InstallCard />

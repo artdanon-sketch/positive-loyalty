@@ -62,6 +62,7 @@ const NAV_GROUPS: ReadonlyArray<readonly NavItem[]> = [
   ],
   [
     { to: '/sale-kinds', label: 'nav.saleKinds', icon: 'saleKinds' },
+    { to: '/catalog', label: 'nav.catalog', icon: 'catalog', ownerOnly: true },
     { to: '/settings', label: 'nav.settings', icon: 'settings', ownerOnly: true },
   ],
 ]
