@@ -140,5 +140,17 @@
   "notify.enable": "Включить уведомления",
   "notify.on": "Уведомления включены на этом устройстве.",
   "notify.off": "Выключить",
-  "notify.blocked": "Уведомления запрещены в браузере. Включить их обратно можно только в его настройках — в разрешениях сайта."
+  "notify.blocked": "Уведомления запрещены в браузере. Включить их обратно можно только в его настройках — в разрешениях сайта.",
+  "history.title": "История",
+  "history.show": "Показать историю баллов",
+  "history.empty": "Операций пока не было.",
+  "history.newer": "Свежее",
+  "history.older": "Раньше",
+  "history.kind.earn": "Покупка",
+  "history.kind.redeem": "Оплата баллами",
+  "history.kind.expire": "Баллы сгорели",
+  "history.kind.adjust": "Правка вручную",
+  "history.kind.reversal": "Чек отменён",
+  "history.kind.grant": "Подарок",
+  "history.loading": "Загружаем…"
 }

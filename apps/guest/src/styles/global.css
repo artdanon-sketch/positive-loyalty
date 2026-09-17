@@ -1018,3 +1018,102 @@ output {
 .install__hint--error {
   color: var(--bad);
 }
+
+/* История операций: строки читаются с одного взгляда, знак важнее цвета. */
+.history {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surf);
+}
+
+.history__toggle {
+  justify-self: start;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surf-2);
+  color: var(--tx);
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.history__toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.history__hint {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--tx-2);
+}
+
+.history__hint--error {
+  color: var(--bad);
+}
+
+.history__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.history__item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.history__main,
+.history__side {
+  display: grid;
+  gap: 2px;
+}
+
+.history__side {
+  text-align: right;
+}
+
+.history__kind {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.history__venue,
+.history__at {
+  font-size: 12.5px;
+  color: var(--tx-3);
+}
+
+.history__points {
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.history__points--up {
+  color: var(--good);
+}
+
+.history__points--down {
+  color: var(--tx);
+}
+
+.history__pager {
+  display: flex;
+  gap: 8px;
+}

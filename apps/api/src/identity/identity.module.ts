@@ -12,6 +12,8 @@ import { GuestReviewsController } from './guest-reviews.controller'
 import { GuestReviewsService } from './guest-reviews.service'
 import { GuestMessagesController } from './guest-messages.controller'
 import { GuestMessagesService } from './guest-messages.service'
+import { GuestHistoryController } from './guest-history.controller'
+import { GuestHistoryService } from './guest-history.service'
 import { GuestNewsController } from './guest-news.controller'
 import { GuestPushController } from './guest-push.controller'
 import { GuestPushService } from './guest-push.service'
@@ -35,6 +37,7 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestReferralController,
     GuestJoinController,
     GuestReviewsController,
+    GuestHistoryController,
     GuestNewsController,
     GuestPushController,
     GuestMessagesController,
@@ -45,6 +48,7 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestReferralService,
     GuestJoinService,
     GuestReviewsService,
+    GuestHistoryService,
     GuestNewsService,
     GuestPushService,
     PushService,

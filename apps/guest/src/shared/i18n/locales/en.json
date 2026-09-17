@@ -140,5 +140,17 @@
   "notify.enable": "Turn on notifications",
   "notify.on": "Notifications are on for this device.",
   "notify.off": "Turn off",
-  "notify.blocked": "Notifications are blocked in your browser. They can only be restored in its settings, under site permissions."
+  "notify.blocked": "Notifications are blocked in your browser. They can only be restored in its settings, under site permissions.",
+  "history.title": "History",
+  "history.show": "Show points history",
+  "history.empty": "No operations yet.",
+  "history.newer": "Newer",
+  "history.older": "Older",
+  "history.kind.earn": "Purchase",
+  "history.kind.redeem": "Paid with points",
+  "history.kind.expire": "Points expired",
+  "history.kind.adjust": "Manual change",
+  "history.kind.reversal": "Receipt voided",
+  "history.kind.grant": "Gift",
+  "history.loading": "Loading…"
 }

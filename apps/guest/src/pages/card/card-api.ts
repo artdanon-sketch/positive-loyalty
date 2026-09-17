@@ -3,6 +3,7 @@ import {
   GuestMe,
   GuestMessageView,
   GuestMessages,
+  GuestHistory,
   GuestNews,
   GuestNewsSeen,
   GuestQrToken,
@@ -97,6 +98,17 @@ export function createReview(authPost: AuthPost, input: CreateReviewInput): Prom
 /** Новости заведений гостя — одна лента на все (docs/02, раздел 2.9). */
 export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
   return authGet('/guest/news', GuestNews)
+}
+
+/**
+ * История начислений и списаний (docs/02, раздел 2.11).
+ *
+ * Страницами: карта показывает первые двадцать, дальше — «показать ещё».
+ * Тянуть всю историю разом значит заставить телефон у стойки ждать ради строк,
+ * до которых гость обычно не доходит.
+ */
+export function fetchHistory(authGet: AuthGet, offset: number): Promise<GuestHistory> {
+  return authGet(`/guest/history?offset=${String(offset)}`, GuestHistory)
 }
 
 /** Свои жалобы и предложения с ответами заведений (docs/02, раздел 2.10). */
