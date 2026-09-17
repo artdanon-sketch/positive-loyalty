@@ -67,6 +67,11 @@ export class StaffRewardsService {
         actorId: { not: null },
         createdAt: { gte: since },
         reward: { is: null },
+        // ТОЛЬКО ЗАВЕДЕНИЯ С ВКЛЮЧЁННОЙ ДОПЛАТОЙ. Без этого условия чеки всех
+        // остальных оставались бы в выборке навсегда — решения по ним нет,
+        // строки не пишется, — и забивали бы пачку, не давая разобрать тех,
+        // кому платить действительно надо.
+        tenant: { is: { settings: { path: ['staffReward', 'enabled'], equals: true } } },
       },
       orderBy: { createdAt: 'asc' },
       take: BATCH_SIZE,
@@ -114,8 +119,9 @@ export class StaffRewardsService {
         const facts = await this.facts(tx, receipt, staffId, tenant?.timezone ?? 'UTC', now)
         const decision = decideStaffReward(config.staffReward, facts)
 
-        // Выключенная доплата — не отказ по чеку, а отсутствие правила: строки
-        // не пишем, иначе включение доплаты завтра не тронуло бы вчерашние чеки.
+        // Доплату успели выключить между выборкой и решением — строки не пишем:
+        // отказ «выключено» не про этот чек, а про настройку, и завтра, когда
+        // её включат обратно, вчерашний чек должен разобраться заново.
         if (!decision.paid && decision.reason === 'Доплата выключена в настройках') {
           return false
         }
