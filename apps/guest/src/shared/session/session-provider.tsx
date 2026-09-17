@@ -155,6 +155,21 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
     [applyTokens],
   )
 
+  /**
+   * Вход из мини-приложения Telegram: один запрос вместо обмена ссылками.
+   * Личность подтвердил сам Telegram, приложению остаётся передать подпись.
+   */
+  const signInWithTelegramMiniApp = useCallback(
+    async (initData: string): Promise<void> => {
+      const tokens = await apiRequest('/auth/social/telegram/mini-app', GuestAuthResult, {
+        method: 'POST',
+        body: { initData },
+      })
+      applyTokens(tokens)
+    },
+    [applyTokens],
+  )
+
   const startTelegramLogin = useCallback(
     async (): Promise<TelegramLoginStartResult> =>
       apiRequest('/auth/social/telegram/start', TelegramLoginStartResult, { method: 'POST' }),
@@ -237,6 +252,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
       requestCode,
       verifyCode,
       signInWithGoogle,
+      signInWithTelegramMiniApp,
       startTelegramLogin,
       pollTelegramLogin,
       signOut: dropSession,
@@ -253,6 +269,7 @@ export function SessionProvider({ children }: { children: ReactNode }): ReactEle
       requestCode,
       session,
       signInWithGoogle,
+      signInWithTelegramMiniApp,
       startTelegramLogin,
       status,
       verifyCode,

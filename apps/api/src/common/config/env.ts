@@ -117,6 +117,23 @@ const EnvSchema = z
       .string()
       .regex(/^\d{5,}:[A-Za-z0-9_-]{30,}$/, 'не похоже на ключ бота: ожидается «<число>:<строка>»')
       .optional(),
+
+    /**
+     * Адрес приложения гостя — тот, что открывается у гостя в браузере
+     * и внутри Telegram.
+     *
+     * Нужен серверу ровно для двух вещей: поставить боту кнопку «Моя карта»
+     * и приложить такую же кнопку к сообщению рассылки. Без него бот работает
+     * по-прежнему, просто без кнопок.
+     *
+     * ТОЛЬКО HTTPS: Telegram открывает мини-приложение исключительно по нему
+     * и молча откажется от http-адреса.
+     */
+    GUEST_APP_URL: z
+      .string()
+      .url()
+      .refine((value) => value.startsWith('https://'), 'Telegram открывает только https')
+      .optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -128,6 +145,7 @@ const EnvSchema = z
     databaseSslCa: raw.DATABASE_SSL_CA?.trim() === '' ? undefined : raw.DATABASE_SSL_CA,
     googleClientId: raw.GOOGLE_CLIENT_ID?.trim() ?? '',
     telegramBotToken: raw.TELEGRAM_BOT_TOKEN?.trim() ?? '',
+    guestAppUrl: raw.GUEST_APP_URL?.trim() ?? '',
   }))
 
 /**

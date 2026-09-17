@@ -781,3 +781,57 @@ describe('Написать заведению', () => {
     expect(await section.findByRole('alert')).toHaveTextContent(t('message.error.limit'))
   })
 })
+
+describe('Карта внутри Telegram', () => {
+  const INIT_DATA = 'auth_date=1789600000&user=%7B%22id%22%3A42%7D&hash=' + 'a'.repeat(64)
+
+  /** Клиент Telegram сам вставляет этот объект в окно мини-приложения. */
+  const openInsideTelegram = (): (() => void) => {
+    const ready = vi.fn()
+    const expand = vi.fn()
+    ;(globalThis as unknown as Record<string, unknown>)['Telegram'] = {
+      WebApp: { initData: INIT_DATA, colorScheme: 'dark', ready, expand },
+    }
+
+    return () => {
+      delete (globalThis as unknown as Record<string, unknown>)['Telegram']
+    }
+  }
+
+  it('ВХОД БЕЗ ЕДИНОГО НАЖАТИЯ: ПОДПИСЬ ИЗ ОКНА УХОДИТ НА СЕРВЕР, КАРТА ОТКРЫВАЕТСЯ', async () => {
+    const close = openInsideTelegram()
+
+    try {
+      stubApi({ '/v1/auth/social/telegram/mini-app': () => json(AUTH_RESPONSE) })
+      render(<App />)
+
+      expect(
+        await screen.findByRole('region', { name: t('card.venues.title') }),
+      ).toBeInTheDocument()
+
+      const call = fetchCalls().find(([input]) => pathOf(input).endsWith('/telegram/mini-app'))
+      expect(call).toBeDefined()
+      expect(JSON.parse((call?.[1] as RequestInit).body as string)).toEqual({
+        initData: INIT_DATA,
+      })
+    } finally {
+      close()
+    }
+  })
+
+  it('TELEGRAM НЕ ПРИНЯЛ ПОДПИСЬ — ГОСТЬ ВИДИТ ОБЫЧНЫЙ ВХОД, А НЕ ПУСТОТУ', async () => {
+    const close = openInsideTelegram()
+
+    try {
+      stubApi({
+        '/v1/auth/social/telegram/mini-app': () =>
+          json({ error: { code: 'TELEGRAM_INIT_DATA_REJECTED', message: 'нет' } }, 401),
+      })
+      render(<App />)
+
+      expect(await screen.findByLabelText(t('signin.phone'))).toBeInTheDocument()
+    } finally {
+      close()
+    }
+  })
+})

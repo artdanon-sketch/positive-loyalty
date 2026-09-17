@@ -61,6 +61,32 @@ export class TelegramUpdatesService implements OnApplicationBootstrap, OnModuleD
 
     this.running = true
     this.loop = this.run()
+    void this.showCardButton()
+  }
+
+  /**
+   * Кнопка «Моя карта» рядом со скрепкой — у всех, кто открыл бота.
+   *
+   * Ставится на старте, а не при каждом сообщении: настройка живёт у бота
+   * целиком, а не у отдельного чата. Не вышло — не беда: бот продолжает
+   * работать, гость открывает карту ссылкой, как раньше.
+   */
+  private async showCardButton(): Promise<void> {
+    const url = getEnv().guestAppUrl
+
+    if (url === '') {
+      this.logger.log('Кнопка «Моя карта» не выставлена: GUEST_APP_URL не задан')
+      return
+    }
+
+    try {
+      await this.bot.api.setMenuButton('Моя карта', url)
+      this.logger.log('Кнопка «Моя карта» выставлена боту')
+    } catch (error) {
+      this.logger.warn(
+        `Кнопку «Моя карта» выставить не удалось: ${error instanceof Error ? error.message : 'неизвестно'}`,
+      )
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

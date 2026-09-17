@@ -235,4 +235,40 @@ export class TelegramApi {
   async sendMessage(chatId: string, text: string): Promise<void> {
     await this.call('sendMessage', { chat_id: chatId, text }, 10_000)
   }
+
+  /**
+   * Кнопка рядом со скрепкой, открывающая карту гостя внутри Telegram.
+   *
+   * Ставится один раз на бота и живёт у всех, кто его открыл, — это и есть
+   * «ярлык приложения», только устанавливать ничего не нужно.
+   */
+  async setMenuButton(text: string, url: string): Promise<void> {
+    await this.call(
+      'setChatMenuButton',
+      { menu_button: { type: 'web_app', text, web_app: { url } } },
+      10_000,
+    )
+  }
+
+  /**
+   * Сообщение с кнопкой, открывающей карту.
+   *
+   * Рассылка без такой кнопки заставляет гостя искать бота в списке чатов —
+   * а он читает сообщение ровно в этот момент и ровно в этом окне.
+   */
+  async sendMessageWithCard(
+    chatId: string,
+    text: string,
+    button: { readonly text: string; readonly url: string },
+  ): Promise<void> {
+    await this.call(
+      'sendMessage',
+      {
+        chat_id: chatId,
+        text,
+        reply_markup: { inline_keyboard: [[{ text: button.text, web_app: { url: button.url } }]] },
+      },
+      10_000,
+    )
+  }
 }

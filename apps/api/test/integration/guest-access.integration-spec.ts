@@ -137,6 +137,26 @@ describe('Вход по коду', () => {
   })
 })
 
+describe('Вход из мини-приложения Telegram', () => {
+  const path = '/v1/auth/social/telegram/mini-app'
+
+  it('ПОДДЕЛАННАЯ ПОДПИСЬ НЕ ПУСКАЕТ В ЧУЖУЮ КАРТУ', async () => {
+    const forged = 'auth_date=1789600000&user=%7B%22id%22%3A42%7D&hash=' + 'a'.repeat(64)
+
+    const response = await request(server()).post(path).send({ initData: forged })
+
+    expect(response.status).toBe(401)
+    expect((response.body as { error: { code: string } }).error.code).toBe(
+      'TELEGRAM_INIT_DATA_REJECTED',
+    )
+  })
+
+  it('МУСОР ВМЕСТО ПОДПИСАННЫХ ДАННЫХ — 400, А НЕ 500', async () => {
+    expect((await request(server()).post(path).send({ initData: 'нет' })).status).toBe(400)
+    expect((await request(server()).post(path).send({})).status).toBe(400)
+  })
+})
+
 describe('Гостевое API', () => {
   it('профиль отдаёт маскированный телефон', async () => {
     const phone = freshPhone()

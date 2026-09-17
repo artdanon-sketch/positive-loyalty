@@ -5,6 +5,7 @@ import { Page as CardPage } from '../pages/card/Page'
 import { Page as SignInPage } from '../pages/signin/Page'
 import { useSession } from '../shared/session/session-context'
 import { useT } from '../shared/i18n/i18n-context'
+import { useTelegramAutoLogin } from '../shared/telegram/use-telegram-auto-login'
 
 /**
  * Пока восстанавливается сессия — заставка, а не мигание экраном входа
@@ -13,8 +14,10 @@ import { useT } from '../shared/i18n/i18n-context'
 function RequireGuest({ children }: { children: ReactNode }): ReactElement {
   const session = useSession()
   const t = useT()
+  // Внутри Telegram вход происходит сам: подпись уже в окне, спрашивать нечего.
+  const telegram = useTelegramAutoLogin()
 
-  if (session.status === 'restoring') {
+  if (session.status === 'restoring' || telegram === 'trying') {
     return (
       <div className="splash" role="status">
         <span className="card__mark" aria-hidden="true" />
