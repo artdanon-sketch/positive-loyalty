@@ -54,13 +54,22 @@ describe('Настройки программы', () => {
   })
 
   it('НАСТРОЙКУ, КОТОРУЮ КАССА НЕ СОБЛЮДАЕТ, ЧЕРЕЗ ЭТОТ ВХОД НЕ СОХРАНИТЬ', () => {
-    // Срок жизни баллов описан в конфиге, но механики под ним нет. Приветственные
-    // баллы меняются своим входом — вместе со статусами (tier.ts), а не здесь.
-    expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: 365 }).success).toBe(false)
+    // Приветственные баллы меняются своим входом — вместе со статусами
+    // (tier.ts), а не здесь.
     expect(
       ProgramSettings.safeParse({ ...valid, welcomeBonus: { enabled: true, amount: 5000 } })
         .success,
     ).toBe(false)
+  })
+
+  it('СРОК ЖИЗНИ БАЛЛОВ СОХРАНЯЕТСЯ: МЕХАНИКА ПОД НИМ ПОЯВИЛАСЬ', () => {
+    expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: 365 }).success).toBe(true)
+    expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: null }).success).toBe(true)
+  })
+
+  it('МЕНЬШЕ МЕСЯЦА ПОСТАВИТЬ НЕЛЬЗЯ: ЭТО СПОСОБ ПОССОРИТЬСЯ С ГОСТЕМ', () => {
+    expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: 7 }).success).toBe(false)
+    expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: 30 }).success).toBe(true)
   })
 
   it('поля обязательны — «не прислал» не превращается в «сбросить»', () => {

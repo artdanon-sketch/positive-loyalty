@@ -271,6 +271,24 @@ export type GrantInput = z.infer<typeof GrantInput>
  * Причины во входе нет: у журнала нет такой колонки. Она обязательна в аудите
  * BALANCE_ADJUSTED, который пишет вызывающий.
  */
+/**
+ * Сгорание баллов. docs/02, раздел 5.6.8.
+ *
+ * ОТДЕЛЬНЫЙ ТИП, А НЕ «ПРАВКА С МИНУСОМ»: гость должен видеть в истории
+ * «баллы сгорели», а не «правка вручную», и владелец — отличать сгоревшее
+ * от того, что он списал сам.
+ */
+export const ExpireInput = z
+  .object({
+    membershipId: z.uuid(),
+    /** Сколько сгорает. Положительное: знак ставит журнал. */
+    amount: z.number().int().positive(),
+    idempotencyKey: z.string().min(8).max(200),
+  })
+  .strict()
+
+export type ExpireInput = z.infer<typeof ExpireInput>
+
 export const AdjustInput = z
   .object({
     membershipId: z.uuid(),

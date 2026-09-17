@@ -17,6 +17,7 @@ const flag = (value: boolean | undefined): boolean => value ?? false
 export const sameProgramSettings = (left: ProgramSettings, right: ProgramSettings): boolean =>
   left.baseEarnRate === right.baseEarnRate &&
   left.baseRedeemRate === right.baseRedeemRate &&
+  (left.pointsExpireDays ?? null) === (right.pointsExpireDays ?? null) &&
   left.cashierRules.requireReceiptNumber === right.cashierRules.requireReceiptNumber &&
   left.cashierRules.maxManualAmount === right.cashierRules.maxManualAmount &&
   left.cashierRules.allowManualEntry === right.cashierRules.allowManualEntry &&

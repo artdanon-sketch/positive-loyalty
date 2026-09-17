@@ -8,6 +8,8 @@ import { StaffRewardsSweeper } from './staff-rewards.sweeper'
 import { LedgerService } from './ledger.service'
 import { MembershipRulesService } from './membership-rules.service'
 import { OfferGrantService } from './offer-grant.service'
+import { PointsExpiryService } from './points-expiry.service'
+import { PointsExpirySweeper } from './points-expiry.sweeper'
 import { PrismaService } from './prisma.service'
 
 /**
@@ -41,6 +43,8 @@ import { PrismaService } from './prisma.service'
     LedgerEventsService,
     StaffRewardsService,
     StaffRewardsSweeper,
+    PointsExpiryService,
+    PointsExpirySweeper,
     AuditService,
     OfferGrantService,
     MembershipRulesService,
@@ -51,6 +55,7 @@ import { PrismaService } from './prisma.service'
     LedgerService,
     LedgerEventsService,
     StaffRewardsService,
+    PointsExpiryService,
     AuditService,
     OfferGrantService,
     MembershipRulesService,

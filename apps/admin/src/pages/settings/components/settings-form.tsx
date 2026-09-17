@@ -29,6 +29,11 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   const [redeem, setRedeem] = useState(String(initial.baseRedeemRate))
   const [requireReceipt, setRequireReceipt] = useState(initial.cashierRules.requireReceiptNumber)
   const [manualEntry, setManualEntry] = useState(initial.cashierRules.allowManualEntry)
+  const [expire, setExpire] = useState(
+    initial.pointsExpireDays === null || initial.pointsExpireDays === undefined
+      ? ''
+      : String(initial.pointsExpireDays),
+  )
   const [showTags, setShowTags] = useState(initial.cashierRules.showGuestTags ?? false)
   const [allowTagging, setAllowTagging] = useState(initial.cashierRules.allowTagging ?? false)
   const [cap, setCap] = useState(
@@ -45,12 +50,18 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   const redeemOk =
     redeem.trim() !== '' && Number.isFinite(redeemRate) && redeemRate >= 0 && redeemRate <= 100
   const capOk = capBaht === null || (Number.isFinite(capBaht) && capBaht > 0)
+  const expireDays = expire.trim() === '' ? null : Number.parseInt(expire, 10)
+  // Меньше месяца поставить нельзя: баллы, сгорающие через неделю, —
+  // это не программа лояльности, а способ поссориться с гостем.
+  const expireOk =
+    expireDays === null || (Number.isFinite(expireDays) && expireDays >= 30 && expireDays <= 3650)
 
   const draft: ProgramSettings | null =
-    earnOk && redeemOk && capOk
+    earnOk && redeemOk && capOk && expireOk
       ? {
           baseEarnRate: earnRate,
           baseRedeemRate: redeemRate,
+          pointsExpireDays: expireDays,
           cashierRules: {
             requireReceiptNumber: requireReceipt,
             // Баты в сатанги — здесь и больше нигде.
@@ -209,6 +220,31 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
         <span className="field__hint toggle__hint" id="settings-tagging-hint">
           {t('settings.tagging.hint')}
         </span>
+
+        <div className="field settings__cap">
+          <label className="field__label" htmlFor="settings-expire">
+            {t('settings.expire.label')}
+          </label>
+          <input
+            id="settings-expire"
+            className="field__input"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-invalid={!expireOk}
+            aria-describedby="settings-expire-hint"
+            value={expire}
+            onChange={(event) => {
+              setExpire(event.target.value.replace(/\D/g, ''))
+            }}
+          />
+          <span
+            className={expireOk ? 'field__hint' : 'field__hint field__hint--error'}
+            id="settings-expire-hint"
+          >
+            {t('settings.expire.hint')}
+          </span>
+        </div>
 
         <div className="field settings__cap">
           <label className="field__label" htmlFor="settings-cap">

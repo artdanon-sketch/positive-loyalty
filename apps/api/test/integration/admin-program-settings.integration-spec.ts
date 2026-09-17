@@ -43,6 +43,8 @@ const token = (tenantId: string, role: string): string =>
 const defaults = {
   baseEarnRate: 5,
   baseRedeemRate: 20,
+  // Баллы не сгорают, пока владелец не поставил срок (docs/02, раздел 5.6.8).
+  pointsExpireDays: null,
   // Теги на кассе выключены у нового заведения: их включает владелец,
   // зная свои теги (docs/02, раздел 3.7).
   cashierRules: {
@@ -204,10 +206,23 @@ describe('Настройки программы', () => {
     expect(await earnedFor(place)).toBe(5_000)
   })
 
-  it('НАСТРОЙКУ, КОТОРУЮ КАССА НЕ СОБЛЮДАЕТ, СОХРАНИТЬ НЕЛЬЗЯ', async () => {
+  it('СРОК ЖИЗНИ БАЛЛОВ СОХРАНЯЕТСЯ: МЕХАНИКА ПОД НИМ ПОЯВИЛАСЬ', async () => {
     const place = await venue()
 
-    await save(place.owner, { ...defaults, pointsExpireDays: 365 }).expect(400)
+    await save(place.owner, { ...defaults, pointsExpireDays: 365 }).expect(200)
+
+    const response = await request(server())
+      .get('/v1/admin/settings/program')
+      .set('Authorization', `Bearer ${place.owner}`)
+      .expect(200)
+
+    expect(response.body).toMatchObject({ pointsExpireDays: 365 })
+  })
+
+  it('МЕНЬШЕ МЕСЯЦА ПОСТАВИТЬ НЕЛЬЗЯ: ЭТО СПОСОБ ПОССОРИТЬСЯ С ГОСТЕМ', async () => {
+    const place = await venue()
+
+    await save(place.owner, { ...defaults, pointsExpireDays: 7 }).expect(400)
   })
 
   it('ИЗМЕНЕНИЕ У СОСЕДА НЕ ТРОГАЕТ ЭТО ЗАВЕДЕНИЕ', async () => {

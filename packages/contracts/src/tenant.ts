@@ -193,6 +193,16 @@ export const ProgramSettings = z
     baseEarnRate: z.number().min(0).max(50),
     /** Какую долю чека гость может оплатить баллами. */
     baseRedeemRate: z.number().min(0).max(100),
+    /**
+     * Через сколько дней сгорают баллы. null — не сгорают.
+     *
+     * НЕОБЯЗАТЕЛЬНОЕ ПОЛЕ: клиент, который о нём не знает, сохраняет остальное
+     * по-прежнему и чужую настройку не сбрасывает.
+     *
+     * Меньше месяца не даём: баллы, сгорающие через неделю, — это не программа
+     * лояльности, а способ поссориться с гостем.
+     */
+    pointsExpireDays: z.number().int().min(30).max(3650).nullable().optional(),
     cashierRules: z
       .object({
         requireReceiptNumber: z.boolean(),

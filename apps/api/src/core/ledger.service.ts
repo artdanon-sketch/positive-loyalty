@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import {
   AdjustInput,
+  ExpireInput,
   EarnInput,
   GrantInput,
   RedeemInput,
@@ -692,6 +693,69 @@ export class LedgerService {
         })
 
         // Только баланс: визит и оборот двигает покупка, а не правка.
+        await tx.membership.update({
+          where: { id: membership.id },
+          data: { pointsBalance: balanceAfter },
+        })
+
+        return row
+      },
+    })
+  }
+
+  /**
+   * Сгорание баллов. docs/02, раздел 5.6.8.
+   *
+   * СПИСЫВАЕТ РОВНО ТО, ЧТО ПОСЧИТАЛ ВЫЗЫВАЮЩИЙ, но не больше остатка: между
+   * расчётом и записью гость мог расплатиться баллами на кассе, и уйти в минус
+   * из-за сгорания нельзя — это чужие деньги, а не наши.
+   *
+   * СГОРЕВШЕЕ НЕ ВОЗВРАЩАЕТСЯ САМО: ошибочное сгорание правится начислением
+   * вручную, с причиной в истории. Так видно, что произошло.
+   */
+  async expire(input: ExpireInput, scope: TenantScope): Promise<LedgerOperationResult> {
+    const parsed = parseInput(ExpireInput, input, 'expire')
+
+    return this.commit({
+      operation: 'expire',
+      idempotencyKey: parsed.idempotencyKey,
+      tenantId: scope.tenantId,
+      expectation: { type: 'EXPIRE', membershipId: parsed.membershipId, amount: -parsed.amount },
+      write: async (tx) => {
+        const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
+
+        // Внутри транзакции: снаружи расчёт обгоняет оплата баллами на кассе.
+        const amount = Math.min(parsed.amount, membership.pointsBalance)
+
+        if (amount <= 0) {
+          throw new InsufficientBalanceError(membership.id, membership.pointsBalance, parsed.amount)
+        }
+
+        const balanceAfter = shiftBalance(membership.pointsBalance, -amount, membership.id)
+
+        const row = await tx.ledgerEntry.create({
+          data: {
+            tenantId: membership.tenantId,
+            guestId: membership.guestId,
+            membershipId: membership.id,
+            type: 'EXPIRE',
+            amount: -amount,
+            balanceAfter,
+            basisAmount: null,
+            currency: membership.tenant.currency,
+            refType: null,
+            refId: null,
+            idempotencyKey: parsed.idempotencyKey,
+            offerId: null,
+            saleKindId: null,
+            occurredAt: null,
+            source: 'SYSTEM',
+            actorType: 'SYSTEM',
+            actorId: null,
+          },
+        })
+
+        // Только баланс: сгорание не визит и не выручка.
         await tx.membership.update({
           where: { id: membership.id },
           data: { pointsBalance: balanceAfter },
