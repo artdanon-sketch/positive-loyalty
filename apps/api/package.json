@@ -34,6 +34,7 @@
     "nestjs-zod": "5.5.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "web-push": "^3.6.7",
     "zod": "4.4.3"
   },
   "devDependencies": {
@@ -45,6 +46,7 @@
     "@types/jsonwebtoken": "9.0.10",
     "@types/node": "22.20.1",
     "@types/supertest": "7.2.1",
+    "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "4.1.11",
     "supertest": "7.2.2",
     "typescript": "5.9.3",

@@ -24,6 +24,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "setup:supabase": "node ./prisma/scripts/setup-supabase.mjs",
+    "push:keys": "node ./scripts/generate-vapid.mjs",
     "setup:business": "pnpm build:api && node --env-file-if-exists=.env --disable-warning=ExperimentalWarning --experimental-strip-types prisma/provision.ts",
     "setup:deploy": "node ./scripts/deploy-env.mjs",
     "db:reset": "node --env-file-if-exists=.env ./prisma/scripts/guard-destructive.mjs db:reset && prisma migrate reset",
@@ -56,5 +57,8 @@
     "prisma": "7.9.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.68.0"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
   }
 }

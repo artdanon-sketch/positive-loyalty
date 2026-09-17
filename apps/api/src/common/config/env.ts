@@ -134,6 +134,31 @@ const EnvSchema = z
       .url()
       .refine((value) => value.startsWith('https://'), 'Telegram открывает только https')
       .optional(),
+
+    /**
+     * Ключи для уведомлений на телефон (Web Push, VAPID).
+     *
+     * ОТКРЫТЫЙ КЛЮЧ НЕ СЕКРЕТ: он уезжает в браузер гостя при подписке — иначе
+     * подписаться не на что. ЗАКРЫТЫЙ — настоящий секрет: кто им владеет, шлёт
+     * уведомления нашим гостям от нашего имени.
+     *
+     * Пусто — уведомления выключены целиком, и рассылки идут только в Telegram.
+     * Это состояние среды, а не сбой: на голом сервере без ключей всё остальное
+     * обязано работать.
+     *
+     * VAPID_SUBJECT — адрес, по которому служба доставки (Google, Mozilla)
+     * свяжется с нами, если с нашими уведомлениями что-то не так. Требование
+     * протокола: `mailto:` или https-адрес.
+     */
+    VAPID_PUBLIC_KEY: z.string().min(40).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(20).optional(),
+    VAPID_SUBJECT: z
+      .string()
+      .refine(
+        (value) => value.startsWith('mailto:') || value.startsWith('https://'),
+        'нужен mailto: или https-адрес',
+      )
+      .optional(),
   })
   .transform((raw) => ({
     nodeEnv: raw.NODE_ENV,
@@ -146,6 +171,9 @@ const EnvSchema = z
     googleClientId: raw.GOOGLE_CLIENT_ID?.trim() ?? '',
     telegramBotToken: raw.TELEGRAM_BOT_TOKEN?.trim() ?? '',
     guestAppUrl: raw.GUEST_APP_URL?.trim() ?? '',
+    vapidPublicKey: raw.VAPID_PUBLIC_KEY?.trim() ?? '',
+    vapidPrivateKey: raw.VAPID_PRIVATE_KEY?.trim() ?? '',
+    vapidSubject: raw.VAPID_SUBJECT?.trim() ?? '',
   }))
 
 /**
