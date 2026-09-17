@@ -978,3 +978,32 @@ output {
   font-size: 13.5px;
   white-space: pre-line;
 }
+
+/* Установка карты на телефон — внизу экрана, после всего остального. */
+.install {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surf);
+}
+
+.install__hint,
+.install__steps {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--tx-2);
+}
+
+.install__button {
+  justify-self: start;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--grad);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}

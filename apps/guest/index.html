@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark light" />
     <meta name="description" content="POSitive Loyalty — карта гостя в браузере" />
+
+    <!--
+      Карта ставится на телефон как приложение: манифест описывает имя и иконки,
+      служебный поток (public/sw.js) делает её приложением в глазах системы.
+      Без этой пары ни Android, ни iPhone не предложат «добавить на экран».
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/card-192.png" />
+    <meta name="theme-color" content="#0a0e14" />
+    <!-- iPhone открывает добавленную карту без адресной строки только с этим. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Моя карта" />
     <title>POSitive — моя карта</title>
     <!--
       Тема выставляется до первой отрисовки, иначе на слабой сети гость успевает увидеть

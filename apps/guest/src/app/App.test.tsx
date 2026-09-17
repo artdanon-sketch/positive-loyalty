@@ -835,3 +835,43 @@ describe('Карта внутри Telegram', () => {
     }
   })
 })
+
+describe('Карта на телефоне', () => {
+  /** Android присылает событие «страницу можно установить»; в jsdom его шлём сами. */
+  const offerInstall = (): { prompt: ReturnType<typeof vi.fn> } => {
+    const prompt = vi.fn(() => Promise.resolve())
+    const event = Object.assign(new Event('beforeinstallprompt'), {
+      prompt,
+      userChoice: Promise.resolve({ outcome: 'accepted' as const }),
+    })
+
+    fireEvent(window, event)
+
+    return { prompt }
+  }
+
+  it('ANDROID: ПРЕДЛАГАЕМ УСТАНОВКУ И ОТКРЫВАЕМ СИСТЕМНОЕ ОКНО', async () => {
+    stubApi()
+    render(<App />)
+
+    await signIn()
+    await screen.findByRole('region', { name: t('card.venues.title') })
+
+    const { prompt } = offerInstall()
+
+    const section = within(await screen.findByRole('region', { name: t('install.title') }))
+    fireEvent.click(section.getByRole('button', { name: t('install.action') }))
+
+    expect(prompt).toHaveBeenCalledOnce()
+  })
+
+  it('БРАУЗЕР УСТАНОВКУ НЕ ПРЕДЛАГАЛ — БЛОКА НЕТ', async () => {
+    stubApi()
+    render(<App />)
+
+    await signIn()
+    await screen.findByRole('region', { name: t('card.venues.title') })
+
+    expect(screen.queryByRole('region', { name: t('install.title') })).not.toBeInTheDocument()
+  })
+})
