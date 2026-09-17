@@ -35,6 +35,10 @@ import { ReportsController } from './reports.controller'
 import { ReportsService } from './reports.service'
 import { IdentityModule } from '../identity/identity.module'
 
+import { AutomationRunService } from './automation-run.service'
+import { AutomationController } from './automation.controller'
+import { AutomationService } from './automation.service'
+import { AutomationSweeper } from './automation.sweeper'
 import { BroadcastSendService } from './broadcast-send.service'
 import { BroadcastSweeper } from './broadcast.sweeper'
 import { BroadcastsController } from './broadcasts.controller'
@@ -73,6 +77,7 @@ import { StaffService } from './staff.service'
     CertificatesController,
     ReviewsController,
     MessagesController,
+    AutomationController,
     BroadcastsController,
     TodayController,
     SecurityController,
@@ -101,6 +106,9 @@ import { StaffService } from './staff.service'
     BroadcastsService,
     BroadcastSendService,
     BroadcastSweeper,
+    AutomationService,
+    AutomationRunService,
+    AutomationSweeper,
     GuestAudienceService,
     TodayService,
     SecurityService,

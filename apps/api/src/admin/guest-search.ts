@@ -102,5 +102,15 @@ export const guestFilterWhere = (
     and.push({ visitsTotal: 0 })
   }
 
+  if (filters.spentFrom !== undefined) {
+    and.push({ spentTotal: { gte: filters.spentFrom } })
+  }
+
+  if (filters.joinedBefore !== undefined) {
+    // «Вступил не позже чем N дней назад»: для сценария «вступил и не купил»
+    // важно дать человеку время дойти, а не писать ему на следующее утро.
+    and.push({ createdAt: { lt: new Date(now.getTime() - filters.joinedBefore * DAY_MS) } })
+  }
+
   return { AND: and }
 }

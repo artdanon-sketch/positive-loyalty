@@ -95,6 +95,8 @@ export type AuditAction =
   | 'GUEST_MESSAGE_REPLIED'
   /** Владелец создал рассылку: сообщение уходит всей выбранной базе. */
   | 'BROADCAST_CREATED'
+  /** Включён, выключен или изменён автоматический сценарий рассылки. */
+  | 'AUTOMATION_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction

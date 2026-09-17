@@ -1054,6 +1054,7 @@
   "security.action.GUEST_TIER_CHANGED": "Guest tier set manually",
   "security.action.CERTIFICATE_CREATED": "Certificate created",
   "security.action.CERTIFICATE_UPDATED": "Certificate changed",
+  "security.action.AUTOMATION_CHANGED": "Automation changed",
   "security.action.BROADCAST_CREATED": "Broadcast created",
   "security.action.GUEST_MESSAGE_REPLIED": "Message replied",
   "security.action.REVIEW_REPLIED": "Review replied",
