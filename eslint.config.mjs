@@ -143,6 +143,15 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    /**
+     * Служебный поток карты гостя живёт не в окне браузера, а рядом с ним:
+     * там свои `self`, `caches` и `clients`, и ни одного из привычных `window`
+     * и `document`. Без этой оговорки линтер справедливо не узнаёт половину файла.
+     */
+    files: ['apps/guest/public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
     files: ['apps/admin/**/*.{ts,tsx}', 'apps/guest/**/*.{ts,tsx}', 'packages/ui/**/*.ts'],
     languageOptions: { globals: globals.browser },
   },
