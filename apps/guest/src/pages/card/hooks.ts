@@ -10,6 +10,7 @@ import type {
   GuestNews,
   GuestNewsSeen,
   GuestNewsSeenInput,
+  UpdateGuestProfileInput,
   GuestQrToken,
   CreateReviewInput,
   GuestReferral,
@@ -36,6 +37,7 @@ import {
   joinVenue,
   markNewsSeen,
   saveBirthday,
+  saveProfile,
 } from './card-api'
 
 export const WALLET_QUERY_KEY = ['guest', 'wallet'] as const
@@ -234,5 +236,23 @@ export function useHistory(offset: number): UseQueryResult<GuestHistory, Error> 
     queryKey: [...HISTORY_QUERY_KEY, offset],
     queryFn: () => fetchHistory(authGet, offset),
     enabled: session !== null,
+  })
+}
+
+/**
+ * Сохранить имя и язык.
+ *
+ * Ответ кладём в кэш сразу: профиль — это ровно то, что вернул сервер,
+ * и второй запрос за тем же ничего не уточнит.
+ */
+export function useSaveProfile(): UseMutationResult<GuestMe, Error, UpdateGuestProfileInput> {
+  const { authPut } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input) => saveProfile(authPut, input),
+    onSuccess: (me) => {
+      queryClient.setQueryData(ME_QUERY_KEY, me)
+    },
   })
 }

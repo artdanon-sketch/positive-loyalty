@@ -14,7 +14,7 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger'
-import { GuestBirthdayInput } from '@positive/contracts'
+import { GuestBirthdayInput, UpdateGuestProfileInput } from '@positive/contracts'
 import type { GuestMe, GuestQrToken, GuestWallet } from '@positive/contracts'
 
 import { Public } from '../common/tenant/public.decorator'
@@ -39,6 +39,32 @@ export class GuestController {
   @ApiOperation({ summary: 'Профиль гостя' })
   async me(): Promise<GuestMe> {
     return this.guestService.me()
+  }
+
+  @Put('me')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Изменить имя и язык',
+    description:
+      'Телефон меняется входом по новому номеру, день рождения ставится один раз, ' +
+      '«турист или резидент» — наблюдение системы, а не анкета.',
+  })
+  @ApiOkResponse({ description: 'Обновлённый профиль' })
+  @ApiBadRequestResponse({ description: 'Имя короче двух знаков или неизвестный язык' })
+  async updateProfile(@Body() body: unknown): Promise<GuestMe> {
+    const parsed = UpdateGuestProfileInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.guestService.updateProfile(parsed.data)
   }
 
   @Put('me/birthday')

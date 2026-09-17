@@ -152,5 +152,19 @@
   "history.kind.adjust": "Manual change",
   "history.kind.reversal": "Receipt voided",
   "history.kind.grant": "Gift",
-  "history.loading": "Loading…"
+  "history.loading": "Loading…",
+  "profile.show": "About you",
+  "profile.title": "About you",
+  "profile.name": "What to call you",
+  "profile.nameHint": "The cashier sees this name. You can leave it empty.",
+  "profile.nameShort": "A one-letter name — leave it empty or write it in full.",
+  "profile.language": "Language",
+  "profile.languageHint": "Venues write to you in this language.",
+  "profile.language.ru": "Русский",
+  "profile.language.en": "English",
+  "profile.language.th": "ไทย",
+  "profile.phone": "Phone",
+  "profile.save": "Save",
+  "profile.saving": "Saving…",
+  "profile.saved": "Saved."
 }

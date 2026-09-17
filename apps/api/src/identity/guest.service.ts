@@ -8,6 +8,8 @@ import { signGuestQrToken } from '../common/tenant/access-token'
 import { BirthdayService } from '../core/birthday.service'
 import { PrismaService } from '../core/prisma.service'
 import { resolveTier, tierProgress } from '../core/tiers'
+import type { UpdateGuestProfileInput } from '@positive/contracts'
+
 import { currentGuestId } from './current-guest'
 
 /** Токен на кассу живёт пять минут: экран открыт у стойки, а не хранится. */
@@ -83,6 +85,28 @@ export class GuestService {
         },
       })
     }
+
+    return this.me()
+  }
+
+  /**
+   * Изменить имя и язык. docs/02, раздел 2.12.
+   *
+   * ЯЗЫК ЗДЕСЬ НЕ КОСМЕТИКА: на нём уходят сообщения заведения. Гость, читающий
+   * по-тайски, не должен получать рассылку по-русски только потому, что открыл
+   * карту с чужого телефона.
+   *
+   * Границу держит база: политика `guest_self` пускает правку только своей строки.
+   */
+  async updateProfile(input: UpdateGuestProfileInput): Promise<GuestMe> {
+    const guestId = currentGuestId()
+
+    await this.prisma.forGuest(guestId, async (tx) => {
+      await tx.guest.update({
+        where: { id: guestId },
+        data: { displayName: input.displayName, locale: input.locale },
+      })
+    })
 
     return this.me()
   }
