@@ -29,6 +29,26 @@ export const SocialLoginInput = z
 
 export type SocialLoginInput = z.infer<typeof SocialLoginInput>
 
+/**
+ * Вход из мини-приложения Telegram: карта гостя, открытая внутри мессенджера.
+ * docs/02, раздел 1.4.
+ *
+ * ПРИЛОЖЕНИЕ НИЧЕГО НЕ РЕШАЕТ САМО. Оно передаёт строку `initData`, которую
+ * Telegram положил в окно при открытии; кто её прислал и когда, решает подпись,
+ * а проверяет её сервер ключом бота. Поэтому здесь нет ни имени, ни номера:
+ * назваться кем угодно можно, подписаться — нет.
+ *
+ * Длина ограничена сверху: без предела сюда можно прислать мегабайт и заставить
+ * сервер его разбирать (docs/05, раздел 4).
+ */
+export const TelegramMiniAppInput = z
+  .object({
+    initData: z.string().min(16).max(4096),
+  })
+  .strict()
+
+export type TelegramMiniAppInput = z.infer<typeof TelegramMiniAppInput>
+
 export const OtpChannel = z.enum(['DEV', 'SMS', 'TELEGRAM', 'LINE'])
 export type OtpChannel = z.infer<typeof OtpChannel>
 

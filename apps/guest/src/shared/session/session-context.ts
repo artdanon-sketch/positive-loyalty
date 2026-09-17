@@ -31,6 +31,11 @@ export interface SessionContextValue {
    */
   readonly signInWithGoogle: (idToken: string) => Promise<void>
   /**
+   * Вход из мини-приложения Telegram: подписанные данные приносит сам мессенджер,
+   * гость ничего не нажимает. Шаг один — подтверждать нечего, подпись уже есть.
+   */
+  readonly signInWithTelegramMiniApp: (initData: string) => Promise<void>
+  /**
    * Вход через Telegram, шаг 1: получить одноразовую ссылку на бота.
    * Шагов здесь два, потому что подтверждение приходит не из приложения,
    * а из Telegram — возможно, с другого устройства.

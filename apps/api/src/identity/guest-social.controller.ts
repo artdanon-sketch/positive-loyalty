@@ -8,7 +8,7 @@ import {
   Post,
 } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import { SocialLoginInput, TelegramClaimInput } from '@positive/contracts'
+import { SocialLoginInput, TelegramClaimInput, TelegramMiniAppInput } from '@positive/contracts'
 import type {
   GuestAuthResult,
   TelegramClaimResult,
@@ -100,5 +100,29 @@ export class GuestSocialController {
     }
 
     return this.telegramLogin.claim(parsed.data.requestId, parsed.data.claimSecret)
+  }
+
+  /**
+   * Вход из мини-приложения Telegram — в один шаг, без обмена ссылками.
+   *
+   * Разница с `telegram/start` + `telegram/claim` в том, КТО кому предъявляет
+   * подтверждение. Там гость идёт к боту и бот сообщает нам, что это он; здесь
+   * Telegram сам открыл нашу страницу и вложил в неё подписанные данные — идти
+   * никуда не нужно, достаточно проверить подпись ключом бота.
+   */
+  @Post('telegram/mini-app')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Войти из мини-приложения Telegram' })
+  @ApiResponse({ status: 200, description: 'Вход выполнен, выданы токены гостя' })
+  @ApiResponse({ status: 400, description: 'Тело запроса не соответствует контракту' })
+  @ApiResponse({ status: 401, description: 'Подпись Telegram не принята' })
+  async telegramMiniApp(@Body() body: unknown): Promise<GuestAuthResult> {
+    const parsed = TelegramMiniAppInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw this.invalid(parsed.error.issues.map((issue) => issue.path.join('.')))
+    }
+
+    return this.telegramLogin.loginFromMiniApp(parsed.data.initData)
   }
 }

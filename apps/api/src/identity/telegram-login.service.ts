@@ -1,12 +1,19 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common'
-import type { TelegramClaimResult, TelegramLoginStartResult } from '@positive/contracts'
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common'
+import type {
+  GuestAuthResult,
+  TelegramClaimResult,
+  TelegramLoginStartResult,
+} from '@positive/contracts'
 
+import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 
 import { GuestAuthService } from './guest-auth.service'
 import { TelegramBotService } from './telegram-bot.service'
+import { verifyTelegramInitData } from './telegram-init-data'
+import type { TelegramMiniAppUser } from './telegram-init-data'
 import type { TelegramStart } from './telegram-api'
 
 /**
@@ -306,5 +313,45 @@ export class TelegramLoginService {
     )
 
     return { state: 'READY', session }
+  }
+
+  /**
+   * Вход из мини-приложения: Telegram сам открыл нашу страницу и вложил в неё
+   * подписанные данные о том, кто это. Проверяем подпись — и выдаём сессию.
+   *
+   * ПОЧЕМУ ЗДЕСЬ, А НЕ ОТДЕЛЬНЫМ СЕРВИСОМ. Дальше начала работа, которая уже
+   * написана: найти способ входа, склеить карты, завести гостя, выдать токены.
+   * Отличается ровно одно — чем подтверждена личность.
+   *
+   * ЯЗЫК БЕРЁМ ИЗ TELEGRAM. Человек, у которого мессенджер на тайском, скорее
+   * прочитает карту на тайском; у нас пока русский и английский, остальные
+   * языки сводятся к английскому на стороне словаря.
+   */
+  async loginFromMiniApp(initData: string): Promise<GuestAuthResult> {
+    let user: TelegramMiniAppUser
+
+    try {
+      user = verifyTelegramInitData(initData, getEnv().telegramBotToken)
+    } catch (error) {
+      // Наружу — один общий отказ: по тому, ЧЕМ именно плоха строка, подбирать
+      // её было бы удобнее. Причина уходит в лог.
+      this.logger.warn(
+        `Мини-приложение: подпись не принята — ${error instanceof Error ? error.message : 'неизвестно'}`,
+      )
+
+      throw new UnauthorizedException({
+        error: { code: 'TELEGRAM_INIT_DATA_REJECTED', message: 'Telegram не подтвердил вход' },
+      })
+    }
+
+    return this.guestAuth.loginWithTelegram(
+      {
+        externalId: user.id,
+        // Почты Telegram не даёт — склейка карт только вручную.
+        email: null,
+        displayName: user.displayName,
+      },
+      user.languageCode ?? 'ru',
+    )
   }
 }

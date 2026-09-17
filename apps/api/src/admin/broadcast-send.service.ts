@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 
+import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { TelegramBotService } from '../identity/telegram-bot.service'
@@ -160,10 +161,26 @@ export class BroadcastSendService {
     })
   }
 
-  /** Отправить одному. null — дошло, строка — причина отказа. */
+  /**
+   * Отправить одному. null — дошло, строка — причина отказа.
+   *
+   * С кнопкой «Открыть карту», если адрес приложения задан: гость читает
+   * сообщение здесь и сейчас, и заставлять его искать бота в списке чатов
+   * значит потерять половину тех, кто уже собрался зайти.
+   */
   private async deliver(chatId: string, text: string): Promise<string | null> {
+    const card = getEnv().guestAppUrl
+
     try {
-      await this.telegram.api.sendMessage(chatId, text)
+      if (card === '') {
+        await this.telegram.api.sendMessage(chatId, text)
+      } else {
+        await this.telegram.api.sendMessageWithCard(chatId, text, {
+          text: 'Открыть карту',
+          url: card,
+        })
+      }
+
       return null
     } catch (error) {
       return error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
