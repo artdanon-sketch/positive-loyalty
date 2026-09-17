@@ -12,6 +12,7 @@ import type {
   ProgramSettings,
   ReferralSettings,
   ReviewSettings,
+  StaffRewardSettings,
   SuspiciousSettings,
   TierSettings,
 } from '@positive/contracts'
@@ -63,6 +64,14 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
     maxManualAmount: config.cashierRules.maxManualAmount,
     allowManualEntry: config.cashierRules.allowManualEntry,
   },
+})
+
+const pickStaffReward = (config: ProgramConfig): StaffRewardSettings => ({
+  enabled: config.staffReward.enabled,
+  basis: config.staffReward.basis,
+  value: config.staffReward.value,
+  vesting: config.staffReward.vesting,
+  shiftCap: config.staffReward.shiftCap,
 })
 
 const pickTiers = (config: ProgramConfig): TierSettings => ({
@@ -295,6 +304,73 @@ export class ProgramSettingsService {
       })
 
       return { before: pickReferral(current), after: pickReferral(checked) }
+    })
+
+    await this.audit.write({
+      action: 'PROGRAM_CONFIG_CHANGED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      oldValue: before,
+      newValue: after,
+    })
+
+    return after
+  }
+
+  /** Мотивация кассиров. docs/02, раздел 5.6.6 · docs/03, раздел 6. */
+  async getStaffReward(): Promise<StaffRewardSettings> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const tenant = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.tenant.findFirst({ where: { id: tenantId }, select: { settings: true } }),
+    )
+
+    if (tenant === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+      })
+    }
+
+    return pickStaffReward(this.parse(tenantId, tenant.settings))
+  }
+
+  /**
+   * Включить или поменять доплату кассирам — тем же подмешиванием: остальные
+   * ключи не трогаются.
+   *
+   * УЖЕ НАЧИСЛЕННОЕ НЕ ПЕРЕСЧИТЫВАЕТСЯ. Кассир отработал смену по тем правилам,
+   * которые действовали тогда; задним числом меняют условия только те, с кем
+   * потом не работают.
+   */
+  async updateStaffReward(input: StaffRewardSettings): Promise<StaffRewardSettings> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const { before, after } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+
+      if (tenant === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Заведение не найдено' },
+        })
+      }
+
+      const raw = isRecord(tenant.settings) ? tenant.settings : {}
+      const current = this.parse(tenantId, raw)
+      const merged: Record<string, unknown> = { ...raw, staffReward: input }
+      const checked = this.parse(tenantId, merged)
+
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: { settings: merged as Prisma.InputJsonValue },
+      })
+
+      return { before: pickStaffReward(current), after: pickStaffReward(checked) }
     })
 
     await this.audit.write({

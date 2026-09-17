@@ -154,6 +154,7 @@ model Tenant {
   guestMessages          GuestMessage[]
   broadcasts             Broadcast[]
   broadcastRecipients    BroadcastRecipient[]
+  staffRewards           StaffReward[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -328,6 +329,7 @@ model LedgerEntry {
   reversalOf LedgerEntry? @relation("LedgerReversal", fields: [reversalOfId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reversedBy LedgerEntry? @relation("LedgerReversal")
   review     Review?
+  reward     StaffReward?
 
   @@index([tenantId, createdAt])
   // Аналитика группирует по времени СОБЫТИЯ, а не записи: без этого индекса
@@ -1603,6 +1605,52 @@ model News {
 
 /// Состояние рассылки. Черновиков нет: рассылка создаётся уже с аудиторией
 /// и текстом — «сохранить на потом» решает отложенная отправка, а не черновик.
+/// Судьба награды кассиру.
+enum StaffRewardState {
+  /// Начислена, но ещё не дозрела: ждёт второго визита гостя.
+  PENDING
+  /// Дозрела — эти деньги заведение должно сотруднику.
+  VESTED
+  /// Снята: чек отменили, либо правило антифрода не дало засчитать.
+  CANCELLED
+}
+
+/// Награда сотруднику за проведённый чек. docs/03, раздел 6 · docs/01, раздел 4.6.
+///
+/// ОТДЕЛЬНО ОТ ЖУРНАЛА БАЛЛОВ. Баллы гостя — обязательство перед гостем,
+/// награда кассира — обязательство перед сотрудником. Смешать их в одной
+/// таблице значит однажды выдать гостю премию кассира или наоборот.
+///
+/// ДОЗРЕВАНИЕ ПО УМОЛЧАНИЮ — НА ВТОРОМ ВИЗИТЕ. Платить за «нового гостя» сразу
+/// значит платить за оформление, а не за приведённого человека: оформить можно
+/// и случайного прохожего, который больше не придёт (docs/00, пять решений).
+model StaffReward {
+  id            String @id @default(uuid())
+  tenantId      String
+  staffId       String
+  /// Чек, за который награда. UNIQUE: один чек — одна награда.
+  ledgerEntryId String @unique
+  /// Гость, за которого платим: по нему считается второй визит.
+  membershipId  String
+
+  /// Чем считали: PER_NEW_GUEST, PCT_OF_POINTS, PCT_OF_REVENUE.
+  basis  String
+  /// Сколько заработал сотрудник, в минорных единицах.
+  amount Int
+  state  StaffRewardState @default(PENDING)
+  /// Почему снята или почему сразу дозрела — человеку в отчёт.
+  reason String?
+
+  createdAt DateTime  @default(now())
+  vestedAt  DateTime?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  ledgerEntry LedgerEntry @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, staffId, createdAt])
+  @@index([tenantId, state, membershipId])
+}
+
 enum BroadcastStatus {
   SCHEDULED
   SENDING

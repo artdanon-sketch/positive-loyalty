@@ -3,6 +3,8 @@ import { Global, Module } from '@nestjs/common'
 import { AuditService } from './audit.service'
 import { BirthdayService } from './birthday.service'
 import { LedgerEventsService } from './ledger-events.service'
+import { StaffRewardsService } from './staff-rewards.service'
+import { StaffRewardsSweeper } from './staff-rewards.sweeper'
 import { LedgerService } from './ledger.service'
 import { MembershipRulesService } from './membership-rules.service'
 import { OfferGrantService } from './offer-grant.service'
@@ -37,6 +39,8 @@ import { PrismaService } from './prisma.service'
     PrismaService,
     LedgerService,
     LedgerEventsService,
+    StaffRewardsService,
+    StaffRewardsSweeper,
     AuditService,
     OfferGrantService,
     MembershipRulesService,
@@ -46,6 +50,7 @@ import { PrismaService } from './prisma.service'
     PrismaService,
     LedgerService,
     LedgerEventsService,
+    StaffRewardsService,
     AuditService,
     OfferGrantService,
     MembershipRulesService,
