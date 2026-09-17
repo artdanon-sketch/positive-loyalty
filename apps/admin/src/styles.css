@@ -3306,3 +3306,36 @@ body {
   color: var(--tx-2);
   font-size: 13px;
 }
+
+/* Предпросмотр рассылки: четыре числа, и каждое объяснено подписью. */
+.broadcast-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surf-2);
+}
+
+.broadcast-stats__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.broadcast-stats__label {
+  color: var(--tx-3);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-label);
+  letter-spacing: var(--tr-label);
+  text-transform: uppercase;
+}
+
+.broadcast-stats__value {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
