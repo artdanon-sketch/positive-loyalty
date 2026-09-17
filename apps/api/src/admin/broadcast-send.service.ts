@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
+import { PushService } from '../identity/push.service'
 import { TelegramBotService } from '../identity/telegram-bot.service'
 
 /**
@@ -14,6 +15,12 @@ import { TelegramBotService } from '../identity/telegram-bot.service'
  * ОДИН ПОЛУЧАТЕЛЬ — ОДНА СТРОКА, и она обновляется сразу после ответа Telegram.
  * Проход, упавший посередине, не отправит уже отправленное второй раз: следующий
  * возьмёт только тех, кто остался в PENDING.
+ *
+ * ДВА КАНАЛА, TELEGRAM ПЕРВЫЙ. В Telegram сообщение остаётся в переписке и его
+ * можно перечитать; уведомление в приложении живёт до первого нажатия. Поэтому
+ * тем, у кого связан Telegram, шлём туда, а уведомление — тем, у кого его нет,
+ * но кто поставил карту на телефон. Двух каналов одному человеку не бывает:
+ * это одно сообщение, а не два.
  *
  * ОТКАЗ TELEGRAM — НЕ ПОЛОМКА РАССЫЛКИ. Гость, закрывший бота, отвечает ошибкой
  * «bot was blocked»; это судьба одного получателя, а не повод остановить остальные.
@@ -40,6 +47,7 @@ export class BroadcastSendService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramBotService,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -49,8 +57,9 @@ export class BroadcastSendService {
    * рассылок не должно стоить ни одного запроса.
    */
   async tick(now: Date = new Date()): Promise<BroadcastTickResult> {
-    if (!this.telegram.enabled) {
-      // Бот не настроен — слать нечем. Молчим: это состояние среды, а не сбой.
+    if (!this.telegram.enabled && !this.push.enabled) {
+      // Ни бота, ни ключей уведомлений — слать нечем. Молчим: это состояние
+      // среды, а не сбой.
       return { sent: 0, failed: 0 }
     }
 
@@ -98,16 +107,23 @@ export class BroadcastSendService {
     let sent = 0
     let failed = 0
 
+    const brandName = await this.brandName(tenantId)
+
     for (const recipient of pending) {
-      const outcome = await this.deliver(recipient.chatId, text)
+      const outcome =
+        recipient.chatId === null
+          ? await this.push.sendToGuest(recipient.guestId, { title: brandName, body: text })
+          : await this.deliver(recipient.chatId, text)
+
+      const channel = recipient.chatId === null ? 'PUSH' : 'TELEGRAM'
 
       await this.prisma.forTenant(tenantId, async (tx) =>
         tx.broadcastRecipient.updateMany({
           where: { id: recipient.id, tenantId },
           data:
             outcome === null
-              ? { delivery: 'SENT', channel: 'TELEGRAM', sentAt: new Date() }
-              : { delivery: 'FAILED', channel: 'TELEGRAM', error: outcome },
+              ? { delivery: 'SENT', channel, sentAt: new Date() }
+              : { delivery: 'FAILED', channel, error: outcome },
         }),
       )
 
@@ -121,12 +137,17 @@ export class BroadcastSendService {
     return { sent, failed }
   }
 
-  /** Очередная порция: получатели, которым ещё не слали, вместе с их chat id. */
+  /**
+   * Очередная порция: получатели, которым ещё не слали, вместе с каналом.
+   *
+   * `chatId: null` означает «шлём уведомлением в приложение»: Telegram у гостя
+   * нет, но устройство с подпиской есть.
+   */
   private async batch(
     tx: Prisma.TransactionClient,
     tenantId: string,
     broadcastId: string,
-  ): Promise<Array<{ id: string; chatId: string }>> {
+  ): Promise<Array<{ id: string; guestId: string; chatId: string | null }>> {
     const rows = await tx.broadcastRecipient.findMany({
       where: { tenantId, broadcastId, delivery: 'PENDING' },
       orderBy: { id: 'asc' },
@@ -138,15 +159,32 @@ export class BroadcastSendService {
       return []
     }
 
-    const identities = await tx.guestIdentity.findMany({
-      where: { guestId: { in: rows.map((row) => row.guestId) }, provider: 'TELEGRAM' },
-      select: { guestId: true, externalId: true },
-    })
-    const chats = new Map(identities.map((identity) => [identity.guestId, identity.externalId]))
+    const guestIds = rows.map((row) => row.guestId)
 
-    // Гость мог отвязать Telegram между созданием и отправкой — это не ошибка
-    // доставки, а исчезнувший канал.
-    const gone = rows.filter((row) => !chats.has(row.guestId)).map((row) => row.id)
+    const [identities, devices] = await Promise.all([
+      this.telegram.enabled
+        ? tx.guestIdentity.findMany({
+            where: { guestId: { in: guestIds }, provider: 'TELEGRAM' },
+            select: { guestId: true, externalId: true },
+          })
+        : Promise.resolve([]),
+      this.push.enabled
+        ? tx.pushSubscription.findMany({
+            where: { guestId: { in: guestIds }, goneAt: null },
+            select: { guestId: true },
+            distinct: ['guestId'],
+          })
+        : Promise.resolve([]),
+    ])
+
+    const chats = new Map(identities.map((identity) => [identity.guestId, identity.externalId]))
+    const withDevice = new Set(devices.map((device) => device.guestId))
+
+    // Гость мог отвязать Telegram и снести приложение между созданием рассылки
+    // и отправкой — это не ошибка доставки, а исчезнувший канал.
+    const gone = rows
+      .filter((row) => !chats.has(row.guestId) && !withDevice.has(row.guestId))
+      .map((row) => row.id)
 
     if (gone.length > 0) {
       await tx.broadcastRecipient.updateMany({
@@ -155,10 +193,25 @@ export class BroadcastSendService {
       })
     }
 
-    return rows.flatMap((row) => {
+    return rows.flatMap((row): Array<{ id: string; guestId: string; chatId: string | null }> => {
       const chatId = chats.get(row.guestId)
-      return chatId === undefined ? [] : [{ id: row.id, chatId }]
+
+      if (chatId !== undefined) {
+        return [{ id: row.id, guestId: row.guestId, chatId }]
+      }
+
+      return withDevice.has(row.guestId) ? [{ id: row.id, guestId: row.guestId, chatId: null }] : []
     })
+  }
+
+  /** Имя заведения — заголовок уведомления: гость должен видеть, от кого оно. */
+  private async brandName(tenantId: string): Promise<string> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { brandName: true },
+    })
+
+    return tenant?.brandName ?? 'POSitive'
   }
 
   /**

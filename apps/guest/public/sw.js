@@ -72,3 +72,64 @@ self.addEventListener('fetch', (event) => {
     ),
   )
 })
+
+/**
+ * Уведомления заведения.
+ *
+ * ЗАЧЕМ. Карта на телефоне без уведомлений — закладка: гость поставил её и больше
+ * не открыл, потому что повода нет. Это второй канал связи после Telegram — и
+ * единственный для тех, у кого Telegram нет.
+ *
+ * ТЕЛО ПРИХОДИТ ЗАШИФРОВАННЫМ ОТ НАШЕГО СЕРВЕРА, но разбирать его надо осторожно:
+ * пустое или испорченное уведомление лучше показать общими словами, чем не
+ * показать вовсе — браузер накажет за «тихий» push отзывом разрешения.
+ */
+self.addEventListener('push', (event) => {
+  let payload = { title: 'POSitive', body: 'Новое сообщение', url: '/' }
+
+  try {
+    const data = event.data?.json()
+
+    if (data && typeof data === 'object') {
+      payload = {
+        title: typeof data.title === 'string' && data.title !== '' ? data.title : payload.title,
+        body: typeof data.body === 'string' && data.body !== '' ? data.body : payload.body,
+        url: typeof data.url === 'string' && data.url !== '' ? data.url : payload.url,
+      }
+    }
+  } catch {
+    // Не разобрали — покажем общими словами. Молчать нельзя.
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icons/card-192.png',
+      badge: '/icons/card-192.png',
+      data: { url: payload.url },
+      // Одно уведомление от заведения вытесняет предыдущее: три одинаковых
+      // напоминания в шторке раздражают сильнее, чем помогают.
+      tag: 'positive-venue',
+      renotify: true,
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+
+  const target = event.notification.data?.url ?? '/'
+
+  // Уже открытую карту поднимаем, а не открываем вторую копию.
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus()
+        }
+      }
+
+      return self.clients.openWindow(target)
+    }),
+  )
+})

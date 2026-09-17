@@ -198,6 +198,7 @@ model Guest {
   memberships   Membership[]
   guestSessions GuestSession[]
   identities    GuestIdentity[]
+  pushSubscriptions      PushSubscription[]
   ledgerEntries LedgerEntry[]
   offerGrants   OfferGrant[]
   reviews       Review[]
@@ -1760,6 +1761,35 @@ model BroadcastRecipient {
   @@unique([broadcastId, guestId])
   @@index([tenantId, guestId, sentAt])
   @@index([broadcastId, delivery])
+}
+
+/// Подписка на уведомления в приложении гостя (Web Push).
+///
+/// ВТОРОЙ КАНАЛ СВЯЗИ ПОСЛЕ TELEGRAM, и ради него приложение вообще ставят
+/// на телефон: гость, поставивший карту, но не открывший Telegram, до сих пор
+/// считался недостижимым.
+///
+/// ОДНО УСТРОЙСТВО — ОДНА СТРОКА. Адрес подписки (`endpoint`) выдаёт служба
+/// доставки браузера и он же служит ключом: переустановка приложения даёт новый
+/// адрес, а повторная подписка с того же устройства — тот же самый.
+model PushSubscription {
+  id      String @id @default(uuid())
+  guestId String
+
+  /// Адрес службы доставки — уникален для устройства.
+  endpoint String @unique
+  /// Открытый ключ устройства и соль: ими шифруется тело уведомления.
+  p256dh   String
+  auth     String
+
+  createdAt  DateTime  @default(now())
+  lastSentAt DateTime?
+  /// Когда служба доставки ответила «подписки больше нет». Такие чистим.
+  goneAt     DateTime?
+
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([guestId, goneAt])
 }
 
 enum GuestMessageKind {

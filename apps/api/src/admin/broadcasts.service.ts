@@ -35,7 +35,10 @@ import { GuestAudienceService } from './guest-audience.service'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-/** Кого считаем недостижимым: у гостя нет связанного Telegram. */
+/**
+ * Два канала связи, и достаточно любого: связанный Telegram ИЛИ уведомления
+ * в приложении. Недостижим тот, у кого нет ни того, ни другого.
+ */
 const TELEGRAM = 'TELEGRAM' as const
 
 interface Reach {
@@ -159,9 +162,10 @@ export class BroadcastsService {
   /**
    * Кто попадает под фильтры, кому есть куда слать и кто устал.
    *
-   * Три запроса вместо одного: устройство «есть ли Telegram» и «сколько получил
-   * за месяц» живёт в разных таблицах, и склеивать их в одном SQL значило бы
-   * написать то, что Prisma всё равно разберёт на те же три.
+   * Отдельные запросы вместо одного: «есть ли Telegram», «есть ли устройство
+   * с уведомлениями» и «сколько получил за месяц» живут в разных таблицах,
+   * и склеивать их в один SQL значило бы написать то, что Prisma всё равно
+   * разберёт обратно.
    */
   private async reach(
     tx: Prisma.TransactionClient,
@@ -182,10 +186,17 @@ export class BroadcastsService {
     const guestIds = memberships.map((membership) => membership.guestId)
     const since = new Date(Date.now() - BROADCAST_FATIGUE_DAYS * DAY_MS)
 
-    const [identities, recent] = await Promise.all([
+    const [identities, devices, recent] = await Promise.all([
       tx.guestIdentity.findMany({
         where: { guestId: { in: guestIds }, provider: TELEGRAM },
         select: { guestId: true },
+      }),
+      // Устройства с живой подпиской на уведомления: приложение на телефоне
+      // тоже канал, и гость, поставивший карту, больше не «некуда слать».
+      tx.pushSubscription.findMany({
+        where: { guestId: { in: guestIds }, goneAt: null },
+        select: { guestId: true },
+        distinct: ['guestId'],
       }),
       tx.broadcastRecipient.groupBy({
         by: ['guestId'],
@@ -201,7 +212,10 @@ export class BroadcastsService {
 
     return {
       memberships,
-      reachable: new Set(identities.map((identity) => identity.guestId)),
+      reachable: new Set([
+        ...identities.map((identity) => identity.guestId),
+        ...devices.map((device) => device.guestId),
+      ]),
       tired: new Set(
         recent
           .filter((row) => row._count._all >= BROADCAST_FATIGUE_LIMIT)

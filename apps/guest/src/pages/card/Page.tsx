@@ -13,6 +13,7 @@ import { QrCode } from './components/qr-code'
 import { ReviewPrompt } from './components/review-prompt'
 import { ReviewReplies } from './components/review-replies'
 import { InstallCard } from './components/install-card'
+import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
 import { VenueNews } from './components/venue-news'
 import { VenueInvite } from './components/venue-invite'
@@ -104,6 +105,7 @@ export function Page(): ReactElement {
           <VenueNews />
           <VenueMessage memberships={wallet.data.memberships} />
           <InstallCard />
+          <NotifyCard />
 
           {wallet.data.memberships.length === 0 ? (
             <CardEmpty />

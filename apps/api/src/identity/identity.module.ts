@@ -13,6 +13,9 @@ import { GuestReviewsService } from './guest-reviews.service'
 import { GuestMessagesController } from './guest-messages.controller'
 import { GuestMessagesService } from './guest-messages.service'
 import { GuestNewsController } from './guest-news.controller'
+import { GuestPushController } from './guest-push.controller'
+import { GuestPushService } from './guest-push.service'
+import { PushService } from './push.service'
 import { GuestNewsService } from './guest-news.service'
 import { GuestController } from './guest.controller'
 import { GuestSocialController } from './guest-social.controller'
@@ -33,6 +36,7 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestJoinController,
     GuestReviewsController,
     GuestNewsController,
+    GuestPushController,
     GuestMessagesController,
   ],
   providers: [
@@ -42,6 +46,8 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestJoinService,
     GuestReviewsService,
     GuestNewsService,
+    GuestPushService,
+    PushService,
     GuestMessagesService,
     GuestGuard,
     TelegramBotService,
@@ -50,6 +56,6 @@ import { TelegramUpdatesService } from './telegram-updates.service'
   ],
   // Бот нужен рассылкам (AdminModule): канал доставки один и тот же, и заводить
   // второго клиента Telegram значило бы держать два разных представления о боте.
-  exports: [TelegramBotService],
+  exports: [TelegramBotService, PushService],
 })
 export class IdentityModule {}

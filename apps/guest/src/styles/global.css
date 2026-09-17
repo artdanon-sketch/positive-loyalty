@@ -1007,3 +1007,14 @@ output {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* Отказ от уведомлений — действие спокойное, и кнопка у него спокойная. */
+.install__button--ghost {
+  background: var(--surf-2);
+  border: 1px solid var(--line);
+  color: var(--tx-2);
+}
+
+.install__hint--error {
+  color: var(--bad);
+}

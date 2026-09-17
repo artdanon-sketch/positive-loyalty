@@ -134,5 +134,11 @@
   "review.error.notFound": "This receipt can no longer be rated: it may have been voided.",
   "review.error.failed": "Could not send. Check your connection and try again.",
   "news.title": "News from venues",
-  "news.more": "Show all"
+  "news.more": "Show all",
+  "notify.title": "Notifications",
+  "notify.hint": "The venue can tell you about a birthday gift or a new offer. No more than four messages a month.",
+  "notify.enable": "Turn on notifications",
+  "notify.on": "Notifications are on for this device.",
+  "notify.off": "Turn off",
+  "notify.blocked": "Notifications are blocked in your browser. They can only be restored in its settings, under site permissions."
 }
