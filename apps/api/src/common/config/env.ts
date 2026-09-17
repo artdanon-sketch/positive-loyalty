@@ -150,6 +150,18 @@ const EnvSchema = z
      * свяжется с нами, если с нашими уведомлениями что-то не так. Требование
      * протокола: `mailto:` или https-адрес.
      */
+    /**
+     * Свой адрес API — тот, по которому нас видит касса.
+     *
+     * Нужен ровно для одного: показать владельцу на экране интеграции, куда
+     * касса должна слать чеки. Вычислить его из запроса нельзя — за прокси
+     * приходит внутренний адрес контейнера, и владелец вписал бы в кассу его.
+     *
+     * Пусто — на экране честно пишем, что адрес не настроен, вместо того чтобы
+     * показать неправильный.
+     */
+    PUBLIC_API_URL: z.string().url().optional(),
+
     VAPID_PUBLIC_KEY: z.string().min(40).optional(),
     VAPID_PRIVATE_KEY: z.string().min(20).optional(),
     VAPID_SUBJECT: z
@@ -171,6 +183,7 @@ const EnvSchema = z
     googleClientId: raw.GOOGLE_CLIENT_ID?.trim() ?? '',
     telegramBotToken: raw.TELEGRAM_BOT_TOKEN?.trim() ?? '',
     guestAppUrl: raw.GUEST_APP_URL?.trim() ?? '',
+    publicApiUrl: raw.PUBLIC_API_URL?.trim().replace(/\/+$/, '') ?? '',
     vapidPublicKey: raw.VAPID_PUBLIC_KEY?.trim() ?? '',
     vapidPrivateKey: raw.VAPID_PRIVATE_KEY?.trim() ?? '',
     vapidSubject: raw.VAPID_SUBJECT?.trim() ?? '',

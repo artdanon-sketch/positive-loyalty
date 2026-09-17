@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useT } from '../../shared/i18n'
 import { BirthdaySettingsSection } from './components/birthday-settings'
 import { ChannelSettingsSection } from './components/channel-settings'
+import { IntegrationSettingsSection } from './components/integration-settings'
 import { ProfileSettingsSection } from './components/profile-settings'
 import { ReferralSettingsSection } from './components/referral-settings'
 import { StaffRewardSettingsSection } from './components/staff-reward-settings'
@@ -69,6 +70,7 @@ export function SettingsPage(): ReactElement {
           <SecuritySettingsSection />
           <TagSettingsSection />
           <ChannelSettingsSection />
+          <IntegrationSettingsSection />
         </>
       )}
     </section>
