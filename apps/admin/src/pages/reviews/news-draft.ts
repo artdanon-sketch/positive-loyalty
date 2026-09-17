@@ -12,15 +12,39 @@ export interface NewsDraft {
   readonly title: string
   readonly body: string
   readonly publish: boolean
+  /** Ссылка на картинку. Пусто — без картинки. */
+  readonly imageUrl: string
+  /** Сообщить гостям — создаст обычную рассылку. */
+  readonly notify: boolean
 }
 
-export type NewsProblem = 'title' | 'body'
+export type NewsProblem = 'title' | 'body' | 'image'
 
 export type NewsCheck =
   | { readonly ok: true; readonly input: CreateNewsInput }
   | { readonly ok: false; readonly problem: NewsProblem }
 
-export const BLANK_NEWS: NewsDraft = { title: '', body: '', publish: false }
+export const BLANK_NEWS: NewsDraft = {
+  title: '',
+  body: '',
+  publish: false,
+  imageUrl: '',
+  notify: false,
+}
+
+/**
+ * Ссылка на картинку проверяется здесь же, а не только на сервере.
+ *
+ * Только https: картинка по http на карте гостя не покажется — браузер её
+ * заблокирует, и владелец увидит пустое место вместо объяснения.
+ */
+const isImageLink = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 
 export const fromNewsDraft = (draft: NewsDraft): NewsCheck => {
   const title = draft.title.trim()
@@ -35,5 +59,21 @@ export const fromNewsDraft = (draft: NewsDraft): NewsCheck => {
     return { ok: false, problem: 'body' }
   }
 
-  return { ok: true, input: { title, body, publish: draft.publish } }
+  const imageUrl = draft.imageUrl.trim()
+
+  if (imageUrl !== '' && !isImageLink(imageUrl)) {
+    return { ok: false, problem: 'image' }
+  }
+
+  return {
+    ok: true,
+    input: {
+      title,
+      body,
+      publish: draft.publish,
+      imageUrl: imageUrl === '' ? null : imageUrl,
+      // Сообщать о черновике некому: рассылка уйдёт при публикации, не раньше.
+      notify: draft.publish && draft.notify,
+    },
+  }
 }

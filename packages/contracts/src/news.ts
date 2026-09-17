@@ -40,10 +40,27 @@ export const AdminNews = z
     /** Сколько гостей увидело новость. Гость считается один раз, сколько бы ни открывал. */
     views: z.number().int().nonnegative(),
     createdAt: z.iso.datetime(),
+    /** Картинка новости. null — без картинки. */
+    imageUrl: z.url().nullable().default(null),
   })
   .strict()
 
 export type AdminNews = z.infer<typeof AdminNews>
+
+/**
+ * Картинка новости — ССЫЛКОЙ, а не файлом.
+ *
+ * Хранилища картинок у нас пока нет, и заводить его ради новостей — отдельная
+ * работа. Ссылка на уже выложенную картинку (в соцсети заведения, в облаке)
+ * закрывает тот же случай сегодня; загрузка появится вместе с хранилищем.
+ *
+ * Только https: картинка по http не покажется на карте гостя — браузер её
+ * заблокирует, и владелец увидит пустое место вместо объяснения.
+ */
+const ImageUrl = z
+  .url('Нужна ссылка на картинку')
+  .max(500)
+  .refine((value) => value.startsWith('https://'), 'Ссылка должна начинаться с https://')
 
 export const CreateNewsInput = z
   .object({
@@ -51,6 +68,16 @@ export const CreateNewsInput = z
     body: Body,
     /** Сразу показать гостям. По умолчанию — черновик. */
     publish: z.boolean().default(false),
+    /** Картинка к новости. null — без картинки. */
+    imageUrl: ImageUrl.nullable().default(null),
+    /**
+     * Сообщить гостям о новости.
+     *
+     * СОЗДАЁТ ОБЫЧНУЮ РАССЫЛКУ, а не шлёт сам: только так на неё действуют
+     * ограничение «не больше четырёх сообщений в месяц», архив и оба канала
+     * связи. Второго способа писать гостю мы не заводим.
+     */
+    notify: z.boolean().default(false),
   })
   .strict()
 
@@ -61,11 +88,16 @@ export const UpdateNewsInput = z
     title: Title.optional(),
     body: Body.optional(),
     isPublished: z.boolean().optional(),
+    /** Картинка: ссылка или null, чтобы убрать. */
+    imageUrl: ImageUrl.nullable().optional(),
   })
   .strict()
   .refine(
     (input) =>
-      input.title !== undefined || input.body !== undefined || input.isPublished !== undefined,
+      input.title !== undefined ||
+      input.body !== undefined ||
+      input.isPublished !== undefined ||
+      input.imageUrl !== undefined,
     'Нечего менять',
   )
 
@@ -81,6 +113,8 @@ export const GuestNewsItem = z
     title: z.string(),
     body: z.string(),
     publishedAt: z.iso.datetime(),
+    /** Картинка новости. null — без картинки. */
+    imageUrl: z.url().nullable().default(null),
   })
   .strict()
 

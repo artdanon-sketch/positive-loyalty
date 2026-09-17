@@ -1185,5 +1185,10 @@
   "settings.tags.hint": "Tags like \"peanut allergy\" help in the room. But some of your tags are not for the guest to see — and they read the cashier screen over the counter.",
   "settings.tagging.label": "Cashier can add tags",
   "settings.tagging.hint": "Only from your own list — new tags cannot be created at the till, or in a month it will hold \"regular\", \"Regular!\" and \"reg\".",
-  "pos.tags.add": "+ tag"
+  "pos.tags.add": "+ tag",
+  "news.field.image": "Image (link)",
+  "news.image.hint": "A link to an already hosted image, https only. File upload comes later.",
+  "news.problem.image": "The image link must start with https://",
+  "news.notify": "Tell the guests",
+  "news.notify.hint": "Creates a regular broadcast with the news text: it lands in the archive and counts towards the four-messages-a-month limit."
 }

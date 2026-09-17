@@ -71,6 +71,11 @@ export function VenueNews(): ReactElement | null {
           <li className="review__item" key={item.id}>
             <span className="review__venue">{`${item.venue} · ${shortDate(item.publishedAt)}`}</span>
             <p className="news__title">{item.title}</p>
+            {item.imageUrl === null ? null : (
+              // Картинка ниже заголовка, а не над ним: в ленте сначала читают,
+              // о чём новость, и только потом смотрят.
+              <img alt="" className="news__image" loading="lazy" src={item.imageUrl} />
+            )}
             <p className="news__body">{item.body}</p>
           </li>
         ))}
