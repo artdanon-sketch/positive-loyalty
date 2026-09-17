@@ -6,6 +6,7 @@ import type {
   GuestMe,
   GuestMessageView,
   GuestMessages,
+  GuestHistory,
   GuestNews,
   GuestNewsSeen,
   GuestNewsSeenInput,
@@ -26,6 +27,7 @@ import {
   createReview,
   fetchMe,
   fetchMessages,
+  fetchHistory,
   fetchNews,
   fetchQrToken,
   fetchReferral,
@@ -42,6 +44,7 @@ export const ME_QUERY_KEY = ['guest', 'me'] as const
 export const REVIEWS_QUERY_KEY = ['guest', 'reviews'] as const
 export const NEWS_QUERY_KEY = ['guest', 'news'] as const
 export const MESSAGES_QUERY_KEY = ['guest', 'messages'] as const
+export const HISTORY_QUERY_KEY = ['guest', 'history'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -216,6 +219,20 @@ export function useGuestNews(): UseQueryResult<GuestNews, Error> {
   return useQuery({
     queryKey: NEWS_QUERY_KEY,
     queryFn: () => fetchNews(authGet),
+    enabled: session !== null,
+  })
+}
+
+/**
+ * История операций. Страница задаётся снаружи: «показать ещё» — это состояние
+ * экрана, а не запроса, и запрос о нём знать не обязан.
+ */
+export function useHistory(offset: number): UseQueryResult<GuestHistory, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: [...HISTORY_QUERY_KEY, offset],
+    queryFn: () => fetchHistory(authGet, offset),
     enabled: session !== null,
   })
 }

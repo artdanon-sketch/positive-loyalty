@@ -12,6 +12,7 @@ import { InviteClaim } from './components/invite-claim'
 import { QrCode } from './components/qr-code'
 import { ReviewPrompt } from './components/review-prompt'
 import { ReviewReplies } from './components/review-replies'
+import { HistoryList } from './components/history-list'
 import { InstallCard } from './components/install-card'
 import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
@@ -104,6 +105,7 @@ export function Page(): ReactElement {
           <ReviewReplies />
           <VenueNews />
           <VenueMessage memberships={wallet.data.memberships} />
+          <HistoryList />
           <InstallCard />
           <NotifyCard />
 
