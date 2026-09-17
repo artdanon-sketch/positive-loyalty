@@ -53,6 +53,8 @@ import { ReviewsService } from './reviews.service'
 import { SecurityController } from './security.controller'
 import { SecurityService } from './security.service'
 import { NewsController } from './news.controller'
+import { IntegrationController } from './integration.controller'
+import { IntegrationService } from './integration.service'
 import { NewsService } from './news.service'
 import { TodayController } from './today.controller'
 import { TodayService } from './today.service'
@@ -80,6 +82,7 @@ import { StaffService } from './staff.service'
     ReviewsController,
     MessagesController,
     AutomationController,
+    IntegrationController,
     TenantProfileController,
     BroadcastsController,
     TodayController,
@@ -112,6 +115,7 @@ import { StaffService } from './staff.service'
     AutomationService,
     AutomationRunService,
     AutomationSweeper,
+    IntegrationService,
     TenantProfileService,
     GuestAudienceService,
     TodayService,

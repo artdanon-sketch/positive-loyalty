@@ -3359,3 +3359,17 @@ body {
   font: inherit;
   font-size: 12.5px;
 }
+
+/* Адрес и ключ интеграции: моноширинно, переносится и выделяется целиком. */
+.integration__code {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm-lg);
+  background: var(--surf-2);
+  color: var(--tx);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  word-break: break-all;
+  user-select: all;
+}
