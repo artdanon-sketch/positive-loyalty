@@ -60,7 +60,13 @@ export type ActorType = z.infer<typeof ActorType>
  * строка означает refType 'reciept' в одном модуле и 'receipt' в другом — и сверка по
  * ссылкам перестаёт сходиться молча. Значения взяты из комментария к полю в ТЗ.
  */
-export const LedgerRefType = z.enum(['receipt', 'offer_grant', 'referral', 'promo'])
+/**
+ * Чем вызвана запись журнала.
+ *
+ * `catalog_item` — награда из витрины, выданная кассиром за баллы: по журналу
+ * должно быть видно, за что гость их отдал, иначе списание выглядит как ошибка.
+ */
+export const LedgerRefType = z.enum(['receipt', 'offer_grant', 'referral', 'promo', 'catalog_item'])
 
 export type LedgerRefType = z.infer<typeof LedgerRefType>
 

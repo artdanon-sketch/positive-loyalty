@@ -97,3 +97,36 @@ export type GuestCatalogItem = z.infer<typeof GuestCatalogItem>
 
 export const GuestCatalog = z.object({ items: z.array(GuestCatalogItem) }).strict()
 export type GuestCatalog = z.infer<typeof GuestCatalog>
+
+/**
+ * Выдача награды за баллы на кассе. docs/02, раздел 3.8.
+ *
+ * ВЫДАЁТ КАССА, А НЕ ГОСТЬ САМ. Кнопка «получить» в телефоне означала бы, что
+ * баллы списаны, а товар — как повезёт: гость нажал в очереди, ушёл и вернулся
+ * через неделю. Списание и выдача происходят в один момент у стойки.
+ *
+ * `redemptionId` ПРИДУМЫВАЕТ КАССА и повторяет при повторной отправке: сеть
+ * на планшете рвётся чаще, чем кажется, и второй раз списывать баллы за ту же
+ * чашку кофе нельзя.
+ */
+export const RedeemRewardInput = z
+  .object({
+    membershipId: z.uuid(),
+    itemId: z.uuid(),
+    redemptionId: z.uuid(),
+  })
+  .strict()
+
+export type RedeemRewardInput = z.infer<typeof RedeemRewardInput>
+
+export const RedeemRewardResult = z
+  .object({
+    itemName: z.string(),
+    /** Сколько баллов списали. */
+    pointsSpent: z.number().int().positive(),
+    /** Остаток гостя в этом заведении после выдачи. */
+    balanceAfter: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type RedeemRewardResult = z.infer<typeof RedeemRewardResult>

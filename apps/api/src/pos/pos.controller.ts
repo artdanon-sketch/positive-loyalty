@@ -21,6 +21,7 @@ import {
   CommitInput,
   PosGuestQuery,
   PosTagInput,
+  RedeemRewardInput,
   PosVoidInput,
   PreviewInput,
   RedeemGrantInput,
@@ -32,6 +33,7 @@ import type {
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
+  RedeemRewardResult,
   SaleKind,
 } from '@positive/contracts'
 
@@ -125,6 +127,32 @@ export class PosController {
     }
 
     return this.posService.addTag(membershipId, parsed.data.tagId)
+  }
+
+  @Post('rewards/redeem')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Выдать награду из каталога за баллы',
+    description:
+      'Списывает цену позиции в баллах. Повтор с тем же redemptionId ничего не списывает ' +
+      'второй раз.',
+  })
+  @ApiOkResponse({ description: 'Награда выдана, баллы списаны' })
+  @ApiNotFoundResponse({ description: 'Позиции нет на витрине' })
+  async redeemReward(@Body() body: unknown): Promise<RedeemRewardResult> {
+    const parsed = RedeemRewardInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.redeemReward(parsed.data)
   }
 
   @Post('transactions/preview')

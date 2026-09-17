@@ -6,6 +6,8 @@ import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AppModule } from '../../src/app.module'
+import { randomUUID } from 'node:crypto'
+
 import { signAccessToken, signGuestToken } from '../../src/common/tenant/access-token'
 import { LedgerService } from '../../src/core/ledger.service'
 import { PrismaService } from '../../src/core/prisma.service'
@@ -174,5 +176,92 @@ describe('Каталог: гость', () => {
     expect(
       (mine.body as Array<{ name: string }>).some((item) => item.name === 'Кофе в подарок'),
     ).toBe(true)
+  })
+})
+
+describe('Награда за баллы: выдаёт касса', () => {
+  it('КАССИР ВЫДАЁТ НАГРАДУ, БАЛЛЫ СПИСЫВАЮТСЯ', async () => {
+    const cashier = signAccessToken(
+      { tenantId: guest.tenantId, actorId: null, role: 'CASHIER' },
+      'catalog-secret-not-used-anywhere-else',
+    )
+    const item = await prisma.catalogItem.findFirst({
+      where: { tenantId: guest.tenantId, name: 'Сет на двоих' },
+      select: { id: true },
+    })
+
+    // Цена сета выше баланса — сначала уценим его до посильной.
+    await request(server())
+      .patch(`/v1/admin/catalog/${item?.id ?? ''}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ pointsPrice: 200 })
+      .expect(200)
+
+    const redemptionId = randomUUID()
+    const response = await request(server())
+      .post('/v1/pos/rewards/redeem')
+      .set('Authorization', `Bearer ${cashier}`)
+      .send({ membershipId: guest.membershipId, itemId: item?.id, redemptionId })
+
+    expect(response.status).toBe(200)
+    expect(response.body).toMatchObject({ itemName: 'Сет на двоих', pointsSpent: 200 })
+
+    // Повтор с тем же ключом не списывает второй раз: сеть на планшете рвётся.
+    await request(server())
+      .post('/v1/pos/rewards/redeem')
+      .set('Authorization', `Bearer ${cashier}`)
+      .send({ membershipId: guest.membershipId, itemId: item?.id, redemptionId })
+      .expect(200)
+
+    const membership = await prisma.membership.findUnique({
+      where: { id: guest.membershipId },
+      select: { pointsBalance: true },
+    })
+    expect(membership?.pointsBalance).toBe(300)
+  })
+
+  it('НЕ ХВАТАЕТ БАЛЛОВ — ОТКАЗ, А НЕ МИНУСОВОЙ БАЛАНС', async () => {
+    const cashier = signAccessToken(
+      { tenantId: guest.tenantId, actorId: null, role: 'CASHIER' },
+      'catalog-secret-not-used-anywhere-else',
+    )
+    const pricey = await prisma.catalogItem.create({
+      data: { tenantId: guest.tenantId, name: 'Ужин на троих', pointsPrice: 100_000 },
+      select: { id: true },
+    })
+
+    const response = await request(server())
+      .post('/v1/pos/rewards/redeem')
+      .set('Authorization', `Bearer ${cashier}`)
+      .send({
+        membershipId: guest.membershipId,
+        itemId: pricey.id,
+        redemptionId: randomUUID(),
+      })
+
+    expect(response.status).toBe(400)
+    expect(response.body).toMatchObject({ error: { code: 'INSUFFICIENT_BALANCE' } })
+  })
+
+  it('СНЯТУЮ С ВИТРИНЫ НАГРАДУ ВЫДАТЬ НЕЛЬЗЯ', async () => {
+    const cashier = signAccessToken(
+      { tenantId: guest.tenantId, actorId: null, role: 'CASHIER' },
+      'catalog-secret-not-used-anywhere-else',
+    )
+    const hidden = await prisma.catalogItem.findFirst({
+      where: { tenantId: guest.tenantId, name: 'Кофе в подарок' },
+      select: { id: true },
+    })
+
+    const response = await request(server())
+      .post('/v1/pos/rewards/redeem')
+      .set('Authorization', `Bearer ${cashier}`)
+      .send({
+        membershipId: guest.membershipId,
+        itemId: hidden?.id,
+        redemptionId: randomUUID(),
+      })
+
+    expect(response.status).toBe(404)
   })
 })
