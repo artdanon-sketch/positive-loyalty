@@ -152,5 +152,19 @@
   "history.kind.adjust": "Правка вручную",
   "history.kind.reversal": "Чек отменён",
   "history.kind.grant": "Подарок",
-  "history.loading": "Загружаем…"
+  "history.loading": "Загружаем…",
+  "profile.show": "О себе",
+  "profile.title": "О себе",
+  "profile.name": "Как к вам обращаться",
+  "profile.nameHint": "Кассир увидит это имя. Можно оставить пустым.",
+  "profile.nameShort": "Имя из одной буквы — оставьте пустым или напишите полностью.",
+  "profile.language": "Язык",
+  "profile.languageHint": "На нём приходят сообщения заведений.",
+  "profile.language.ru": "Русский",
+  "profile.language.en": "English",
+  "profile.language.th": "ไทย",
+  "profile.phone": "Телефон",
+  "profile.save": "Сохранить",
+  "profile.saving": "Сохраняем…",
+  "profile.saved": "Сохранено."
 }

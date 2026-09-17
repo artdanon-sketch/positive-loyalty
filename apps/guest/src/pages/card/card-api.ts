@@ -17,6 +17,7 @@ import type {
   CreateGuestMessageInput,
   CreateReviewInput,
   GuestNewsSeenInput,
+  UpdateGuestProfileInput,
 } from '@positive/contracts'
 import type { ZodType } from 'zod'
 
@@ -98,6 +99,11 @@ export function createReview(authPost: AuthPost, input: CreateReviewInput): Prom
 /** Новости заведений гостя — одна лента на все (docs/02, раздел 2.9). */
 export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
   return authGet('/guest/news', GuestNews)
+}
+
+/** Имя и язык гостя (docs/02, раздел 2.12). */
+export function saveProfile(authPut: AuthPut, input: UpdateGuestProfileInput): Promise<GuestMe> {
+  return authPut('/guest/me', input, GuestMe)
 }
 
 /**
