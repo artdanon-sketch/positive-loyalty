@@ -63,6 +63,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const pick = (config: ProgramConfig): ProgramSettings => ({
   baseEarnRate: config.baseEarnRate,
   baseRedeemRate: config.baseRedeemRate,
+  pointsExpireDays: config.pointsExpireDays,
   cashierRules: {
     requireReceiptNumber: config.cashierRules.requireReceiptNumber,
     maxManualAmount: config.cashierRules.maxManualAmount,
@@ -154,6 +155,11 @@ export class ProgramSettingsService {
         ...raw,
         baseEarnRate: input.baseEarnRate,
         baseRedeemRate: input.baseRedeemRate,
+        // Ключ приезжает, только если его прислали: старый клиент о сроке
+        // жизни баллов не знает и сбрасывать его не должен.
+        ...(input.pointsExpireDays === undefined
+          ? {}
+          : { pointsExpireDays: input.pointsExpireDays }),
         cashierRules: {
           ...(isRecord(raw['cashierRules']) ? raw['cashierRules'] : {}),
           // Ключи, которых в запросе нет, не приезжают вовсе: клиент, не знающий
