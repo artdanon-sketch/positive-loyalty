@@ -98,6 +98,7 @@ export type AuditAction =
   /** Включён, выключен или изменён автоматический сценарий рассылки. */
   | 'AUTOMATION_CHANGED'
   | 'TENANT_PROFILE_CHANGED'
+  | 'CATALOG_ITEM_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction
