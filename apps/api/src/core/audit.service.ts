@@ -98,6 +98,8 @@ export type AuditAction =
   /** Включён, выключен или изменён автоматический сценарий рассылки. */
   | 'AUTOMATION_CHANGED'
   | 'TENANT_PROFILE_CHANGED'
+  | 'INTEGRATION_SECRET_REVEALED'
+  | 'INTEGRATION_SECRET_ROTATED'
 
 export interface AuditEntry {
   readonly action: AuditAction
@@ -123,6 +125,8 @@ const REASON_REQUIRED: ReadonlySet<AuditAction> = new Set<AuditAction>([
   'BALANCE_ADJUSTED',
   'DATABASE_EXPORTED',
   'GUEST_TIER_CHANGED',
+  // Перевыпуск ключа останавливает приём чеков, пока его не поменяют в кассе.
+  'INTEGRATION_SECRET_ROTATED',
 ])
 
 /** Причина не может быть пробелом ради галочки. */
