@@ -13,7 +13,13 @@ import { ProgramSettings } from './tenant.js'
 const valid = {
   baseEarnRate: 5,
   baseRedeemRate: 20,
-  cashierRules: { requireReceiptNumber: true, maxManualAmount: null, allowManualEntry: true },
+  cashierRules: {
+    requireReceiptNumber: true,
+    maxManualAmount: null,
+    allowManualEntry: true,
+    showGuestTags: false,
+    allowTagging: false,
+  },
 }
 
 describe('Настройки программы', () => {

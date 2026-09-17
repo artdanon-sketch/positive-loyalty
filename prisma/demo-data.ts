@@ -230,6 +230,8 @@ export const TENANTS: readonly TenantSeed[] = [
         requireReceiptNumber: true,
         maxManualAmount: 300_000,
         allowManualEntry: true,
+        showGuestTags: false,
+        allowTagging: false,
       },
       staffReward: {
         enabled: true,
@@ -274,6 +276,8 @@ export const TENANTS: readonly TenantSeed[] = [
         requireReceiptNumber: true,
         maxManualAmount: 500_000,
         allowManualEntry: true,
+        showGuestTags: false,
+        allowTagging: false,
       },
       staffReward: {
         enabled: true,
@@ -315,6 +319,8 @@ export const TENANTS: readonly TenantSeed[] = [
         requireReceiptNumber: false,
         maxManualAmount: null,
         allowManualEntry: true,
+        showGuestTags: false,
+        allowTagging: false,
       },
       staffReward: {
         enabled: false,

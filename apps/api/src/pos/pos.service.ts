@@ -11,6 +11,7 @@ import type {
   IssuedGrant,
   PosConfig,
   PosGuest,
+  ProgramConfig,
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
@@ -174,6 +175,80 @@ export class PosService {
   ) {}
 
   /**
+   * Теги гостя для экрана кассы. docs/03, раздел 4.
+   *
+   * ПУСТОЙ СПИСОК, ПОКА ВЛАДЕЛЕЦ НЕ РАЗРЕШИЛ. Теги заводятся для бэк-офиса,
+   * и среди них бывают «жалобщик» и «не давать скидку»: экран кассы гость
+   * читает через плечо, и такой тег стоит дороже, чем помогает.
+   */
+  private async tagsFor(
+    tx: Tx,
+    tenantId: string,
+    membershipId: string,
+    config: ProgramConfig,
+  ): Promise<PosGuest['tags']> {
+    if (!config.cashierRules.showGuestTags) {
+      return []
+    }
+
+    const rows = await tx.guestTag.findMany({
+      where: { tenantId, membershipId },
+      orderBy: { createdAt: 'asc' },
+      select: { tag: { select: { id: true, name: true, color: true } } },
+    })
+
+    return rows.map((row) => ({ id: row.tag.id, name: row.tag.name, color: row.tag.color }))
+  }
+
+  /**
+   * Повесить гостю тег с кассы. docs/02, раздел 3.7.
+   *
+   * ТОЛЬКО ИЗ СПРАВОЧНИКА ЗАВЕДЕНИЯ: заводить новые теги отсюда нельзя, иначе
+   * через месяц в справочнике будет «постоянный», «Постоянный!» и «пост».
+   *
+   * ПОВТОР — НЕ ОШИБКА: кассир нажал дважды, гость от этого не изменился.
+   */
+  async addTag(membershipId: string, tagId: string): Promise<PosGuest['tags']> {
+    const { tenantId } = TenantContext.getOrThrow()
+    const config = await this.loadConfig(tenantId)
+
+    if (!config.cashierRules.showGuestTags || !config.cashierRules.allowTagging) {
+      throw new ForbiddenException({
+        error: { code: 'FORBIDDEN', message: 'Теги на кассе выключены в настройках' },
+      })
+    }
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: membershipId, tenantId },
+        select: { id: true },
+      })
+
+      if (membership === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Гость не найден' },
+        })
+      }
+
+      const tag = await tx.tag.findFirst({ where: { id: tagId, tenantId }, select: { id: true } })
+
+      if (tag === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Такого тега нет в справочнике' },
+        })
+      }
+
+      await tx.guestTag.upsert({
+        where: { membershipId_tagId: { membershipId, tagId } },
+        create: { tenantId, membershipId, tagId },
+        update: {},
+      })
+
+      return this.tagsFor(tx, tenantId, membershipId, config)
+    })
+  }
+
+  /**
    * Поиск гостя по телефону.
    *
    * ВАЖНОЕ СЛЕДСТВИЕ ИЗОЛЯЦИИ. Политика RLS показывает гостя только тому
@@ -216,8 +291,9 @@ export class PosService {
       }
 
       const { tier } = await this.rules.tierFor(tx, tenantId, config, membership)
+      const tags = await this.tagsFor(tx, tenantId, membership.id, config)
 
-      return { guest, membership, tier }
+      return { guest, membership, tier, tags }
     })
 
     if (found === null) {
@@ -228,7 +304,7 @@ export class PosService {
       })
     }
 
-    const { guest, membership, tier } = found
+    const { guest, membership, tier, tags } = found
 
     return {
       guestId: guest.id,
@@ -244,6 +320,7 @@ export class PosService {
           : null,
       isControlGroup: membership.isControlGroup,
       tier: tierBadge(tier),
+      tags,
     }
   }
 
@@ -296,11 +373,12 @@ export class PosService {
       }
 
       const { tier } = await this.rules.tierFor(tx, tenantId, config, membership)
+      const tags = await this.tagsFor(tx, tenantId, membership.id, config)
 
-      return { guest: visibleGuest, membership, tier }
+      return { guest: visibleGuest, membership, tier, tags }
     })
 
-    const { guest, membership, tier } = found
+    const { guest, membership, tier, tags } = found
 
     // Приветственные баллы «при вступлении» — после транзакции: журнал пишет своей
     // транзакцией и участия, созданного в чужой незавершённой, не увидел бы.
@@ -324,6 +402,7 @@ export class PosService {
           : null,
       isControlGroup: membership.isControlGroup,
       tier: tierBadge(tier),
+      tags,
     }
   }
 
@@ -852,10 +931,24 @@ export class PosService {
     const { tenantId } = TenantContext.getOrThrow()
     const { cashierRules } = await this.loadConfig(tenantId)
 
+    // Справочник тегов едет на кассу только когда ими разрешено пользоваться:
+    // иначе список тегов заведения читался бы кассиром без всякого повода.
+    const tags =
+      cashierRules.showGuestTags && cashierRules.allowTagging
+        ? await this.prisma.forTenant(tenantId, async (tx) =>
+            tx.tag.findMany({
+              where: { tenantId },
+              orderBy: { name: 'asc' },
+              select: { id: true, name: true, color: true },
+            }),
+          )
+        : []
+
     return {
       requireReceiptNumber: cashierRules.requireReceiptNumber,
       maxManualAmount: cashierRules.maxManualAmount,
       allowManualEntry: cashierRules.allowManualEntry,
+      tags,
     }
   }
 

@@ -63,6 +63,8 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
     requireReceiptNumber: config.cashierRules.requireReceiptNumber,
     maxManualAmount: config.cashierRules.maxManualAmount,
     allowManualEntry: config.cashierRules.allowManualEntry,
+    showGuestTags: config.cashierRules.showGuestTags,
+    allowTagging: config.cashierRules.allowTagging,
   },
 })
 
