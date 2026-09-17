@@ -43,6 +43,8 @@ import { BroadcastSendService } from './broadcast-send.service'
 import { BroadcastSweeper } from './broadcast.sweeper'
 import { BroadcastsController } from './broadcasts.controller'
 import { BroadcastsService } from './broadcasts.service'
+import { TenantProfileController } from './tenant-profile.controller'
+import { TenantProfileService } from './tenant-profile.service'
 import { GuestAudienceService } from './guest-audience.service'
 import { MessagesController } from './messages.controller'
 import { MessagesService } from './messages.service'
@@ -78,6 +80,7 @@ import { StaffService } from './staff.service'
     ReviewsController,
     MessagesController,
     AutomationController,
+    TenantProfileController,
     BroadcastsController,
     TodayController,
     SecurityController,
@@ -109,6 +112,7 @@ import { StaffService } from './staff.service'
     AutomationService,
     AutomationRunService,
     AutomationSweeper,
+    TenantProfileService,
     GuestAudienceService,
     TodayService,
     SecurityService,

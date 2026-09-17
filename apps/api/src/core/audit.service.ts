@@ -97,6 +97,7 @@ export type AuditAction =
   | 'BROADCAST_CREATED'
   /** Включён, выключен или изменён автоматический сценарий рассылки. */
   | 'AUTOMATION_CHANGED'
+  | 'TENANT_PROFILE_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction

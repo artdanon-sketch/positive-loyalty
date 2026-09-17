@@ -2339,6 +2339,7 @@ body {
 
 .referral-form,
 .birthday-form,
+.profile-form,
 .certificate-form {
   display: flex;
   flex-direction: column;
