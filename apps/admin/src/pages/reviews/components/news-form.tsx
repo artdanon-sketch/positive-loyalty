@@ -18,6 +18,7 @@ import { useCreateNews } from '../news-hooks'
 const PROBLEMS: Readonly<Record<NewsProblem, TranslationKey>> = {
   title: 'news.problem.title',
   body: 'news.problem.body',
+  image: 'news.problem.image',
 }
 
 export function NewsForm(): ReactElement {
@@ -83,6 +84,25 @@ export function NewsForm(): ReactElement {
         />
       </div>
 
+      <div className="field">
+        <label className="field__label" htmlFor="news-image">
+          {t('news.field.image')}
+        </label>
+        <input
+          id="news-image"
+          className="field__input"
+          type="url"
+          maxLength={500}
+          placeholder="https://"
+          autoComplete="off"
+          value={draft.imageUrl}
+          onChange={(event) => {
+            setDraft({ ...draft, imageUrl: event.target.value })
+          }}
+        />
+        <p className="field__hint">{t('news.image.hint')}</p>
+      </div>
+
       <label className="toggle">
         <input
           type="checkbox"
@@ -93,6 +113,19 @@ export function NewsForm(): ReactElement {
         />
         <span className="toggle__text">{t('news.publishNow')}</span>
       </label>
+
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={draft.publish && draft.notify}
+          disabled={!draft.publish}
+          onChange={(event) => {
+            setDraft({ ...draft, notify: event.target.checked })
+          }}
+        />
+        <span className="toggle__text">{t('news.notify')}</span>
+      </label>
+      <span className="field__hint toggle__hint">{t('news.notify.hint')}</span>
 
       <div className="save-bar">
         {touched && !checked.ok ? (

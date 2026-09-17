@@ -10,6 +10,8 @@ describe('Новости', () => {
       title: 'Новое меню',
       body: 'С понедельника — суп дня',
       publish: false,
+      imageUrl: null,
+      notify: false,
     })
   })
 
@@ -36,5 +38,25 @@ describe('Новости', () => {
       GuestNewsSeenInput.safeParse({ ids: Array.from({ length: GUEST_NEWS_MAX + 1 }, () => id) })
         .success,
     ).toBe(false)
+  })
+})
+
+describe('Новости: картинка и уведомление', () => {
+  it('КАРТИНКА ТОЛЬКО ПО HTTPS: ПО HTTP БРАУЗЕР ГОСТЯ ЕЁ ЗАБЛОКИРУЕТ', () => {
+    const news = { title: 'Меню', body: 'Суп' }
+
+    expect(CreateNewsInput.safeParse({ ...news, imageUrl: 'http://a.example/x.jpg' }).success).toBe(
+      false,
+    )
+    expect(
+      CreateNewsInput.safeParse({ ...news, imageUrl: 'https://a.example/x.jpg' }).success,
+    ).toBe(true)
+  })
+
+  it('КАРТИНКА НЕОБЯЗАТЕЛЬНА, А ССЫЛКОЙ ДОЛЖНА БЫТЬ ССЫЛКА', () => {
+    const news = { title: 'Меню', body: 'Суп' }
+
+    expect(CreateNewsInput.parse(news).imageUrl).toBeNull()
+    expect(CreateNewsInput.safeParse({ ...news, imageUrl: 'картинка' }).success).toBe(false)
   })
 })

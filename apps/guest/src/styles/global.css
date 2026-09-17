@@ -1168,3 +1168,13 @@ output {
   opacity: 0.6;
   cursor: default;
 }
+
+/* Картинка новости: во всю ширину карточки, высоту ограничиваем — лента
+   не должна превращаться в один снимок на весь экран. */
+.news__image {
+  width: 100%;
+  max-height: 200px;
+  margin: 6px 0;
+  border-radius: 10px;
+  object-fit: cover;
+}

@@ -1593,6 +1593,8 @@ model News {
   title       String
   body        String
   isPublished Boolean   @default(false)
+  /// Картинка новости — ссылка на уже выложенный файл. NULL — без картинки.
+  imageUrl    String?
   /// Когда впервые опубликована — по ней лента гостя. null — ни разу.
   publishedAt DateTime?
   createdAt   DateTime  @default(now())

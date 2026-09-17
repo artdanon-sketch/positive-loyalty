@@ -842,6 +842,8 @@ describe('Новости', () => {
         title: 'Новое меню',
         body: 'С понедельника — суп дня.',
         publish: false,
+        imageUrl: null,
+        notify: false,
       })
     })
 

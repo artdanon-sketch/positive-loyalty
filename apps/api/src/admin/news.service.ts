@@ -1,9 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
+import { BROADCAST_TEXT_MAX } from '@positive/contracts'
 import type { AdminNews, CreateNewsInput, UpdateNewsInput } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
+
+import { BroadcastsService } from './broadcasts.service'
 
 /**
  * Новости заведения в бэк-офисе. docs/02, раздел 5.14 · docs/11, У13.
@@ -26,6 +29,7 @@ const NEWS_SELECT = {
   body: true,
   isPublished: true,
   publishedAt: true,
+  imageUrl: true,
   createdAt: true,
   _count: { select: { views: true } },
 } as const
@@ -39,6 +43,7 @@ interface NewsRow {
   body: string
   isPublished: boolean
   publishedAt: Date | null
+  imageUrl: string | null
   createdAt: Date
   _count: { views: number }
 }
@@ -50,6 +55,7 @@ const toAdminNews = (row: NewsRow): AdminNews => ({
   isPublished: row.isPublished,
   publishedAt: row.publishedAt?.toISOString() ?? null,
   views: row._count.views,
+  imageUrl: row.imageUrl,
   createdAt: row.createdAt.toISOString(),
 })
 
@@ -58,6 +64,7 @@ export class NewsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly broadcasts: BroadcastsService,
   ) {}
 
   async list(): Promise<AdminNews[]> {
@@ -86,10 +93,21 @@ export class NewsService {
           body: input.body,
           isPublished: input.publish,
           publishedAt: input.publish ? new Date() : null,
+          imageUrl: input.imageUrl,
         },
         select: NEWS_SELECT,
       }),
     )
+
+    // Сообщить гостям — значит создать ОБЫЧНУЮ рассылку: только так на новость
+    // действуют «не больше четырёх сообщений в месяц», архив и оба канала связи.
+    if (input.notify && input.publish) {
+      await this.broadcasts.createFor(tenantId, actorId, (role ?? 'OWNER') as AuditActorType, {
+        title: `Новость: ${row.title}`,
+        text: `${row.title}\n\n${row.body}`.slice(0, BROADCAST_TEXT_MAX),
+        audience: {},
+      })
+    }
 
     await this.audit.write({
       action: 'NEWS_CREATED',
@@ -125,6 +143,7 @@ export class NewsService {
           ...(input.title === undefined ? {} : { title: input.title }),
           ...(input.body === undefined ? {} : { body: input.body }),
           ...(input.isPublished === undefined ? {} : { isPublished: input.isPublished }),
+          ...(input.imageUrl === undefined ? {} : { imageUrl: input.imageUrl }),
           ...(publishingFirstTime ? { publishedAt: new Date() } : {}),
         },
         select: NEWS_SELECT,
