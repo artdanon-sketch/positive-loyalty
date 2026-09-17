@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from 'react'
 import type { ProgramSettings } from '@positive/contracts'
 
 import { useT } from '../../../shared/i18n'
+import { sameProgramSettings } from '../program-draft'
 import { useSaveProgramSettings } from '../hooks'
 import { EarnExample } from './earn-example'
 
@@ -28,8 +29,8 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   const [redeem, setRedeem] = useState(String(initial.baseRedeemRate))
   const [requireReceipt, setRequireReceipt] = useState(initial.cashierRules.requireReceiptNumber)
   const [manualEntry, setManualEntry] = useState(initial.cashierRules.allowManualEntry)
-  const [showTags, setShowTags] = useState(initial.cashierRules.showGuestTags)
-  const [allowTagging, setAllowTagging] = useState(initial.cashierRules.allowTagging)
+  const [showTags, setShowTags] = useState(initial.cashierRules.showGuestTags ?? false)
+  const [allowTagging, setAllowTagging] = useState(initial.cashierRules.allowTagging ?? false)
   const [cap, setCap] = useState(
     initial.cashierRules.maxManualAmount === null
       ? ''
@@ -63,7 +64,7 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
       : null
 
   const reference = save.data ?? initial
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(reference)
+  const dirty = draft !== null && !sameProgramSettings(draft, reference)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()

@@ -53,6 +53,10 @@ import type { Prisma } from '../generated/prisma/client'
  * чеке, нельзя в принципе: отказ приходит владельцу сейчас, а не кассиру в час пик.
  */
 
+/** Убрать ключи со значением `undefined`: их наличие означало бы «сбрось». */
+const omitUndefined = (value: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined))
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -152,7 +156,9 @@ export class ProgramSettingsService {
         baseRedeemRate: input.baseRedeemRate,
         cashierRules: {
           ...(isRecord(raw['cashierRules']) ? raw['cashierRules'] : {}),
-          ...input.cashierRules,
+          // Ключи, которых в запросе нет, не приезжают вовсе: клиент, не знающий
+          // о новой настройке, сохраняет остальное и её не сбрасывает.
+          ...omitUndefined(input.cashierRules),
         },
       }
 
