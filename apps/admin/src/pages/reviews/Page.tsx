@@ -3,9 +3,12 @@ import type { ReactElement } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { DashboardPeriod } from '@positive/contracts'
 
+import { useAuth } from '../../shared/auth/auth-context'
 import { useT } from '../../shared/i18n'
 import type { TranslationKey } from '../../shared/i18n'
 import { PERIODS } from '../overview/hooks'
+import { AutomationView } from './components/automation-view'
+import { BroadcastsView } from './components/broadcasts-view'
 import { ReviewCard } from './components/review-card'
 import { MessagesView } from './components/messages-view'
 import { NewsView } from './components/news-view'
@@ -38,22 +41,35 @@ const ANSWERED_OPTIONS: ReadonlyArray<{ value: ReviewAnswered | null; label: Tra
   { value: 'yes', label: 'reviews.filter.answered' },
 ]
 
-type CommunicationTab = 'reviews' | 'messages' | 'news'
+type CommunicationTab = 'reviews' | 'messages' | 'news' | 'broadcasts' | 'automation'
 
 const COMMUNICATION_TABS: ReadonlyArray<{ value: CommunicationTab; label: TranslationKey }> = [
   { value: 'reviews', label: 'communication.tab.reviews' },
   { value: 'messages', label: 'communication.tab.messages' },
   { value: 'news', label: 'communication.tab.news' },
+  { value: 'broadcasts', label: 'communication.tab.broadcasts' },
+  { value: 'automation', label: 'communication.tab.automation' },
 ]
 
-/** Вкладка из адреса: ссылку на жалобы можно переслать так же, как на новости. */
-const tabFromParams = (value: string | null): CommunicationTab =>
-  value === 'news' || value === 'messages' ? value : 'reviews'
+/**
+ * Вкладка из адреса: ссылку на жалобы можно переслать так же, как на новости.
+ *
+ * Рассылки и автосценарии — только владельцу: сервер всё равно откажет менеджеру,
+ * а вкладка, которая всегда отвечает «нельзя», — это обещание, которое мы не держим.
+ */
+const tabFromParams = (value: string | null, isOwner: boolean): CommunicationTab => {
+  if (value === 'news' || value === 'messages') {
+    return value
+  }
+
+  return (value === 'broadcasts' || value === 'automation') && isOwner ? value : 'reviews'
+}
 
 export function ReviewsPage(): ReactElement {
   const t = useT()
   const [params, setParams] = useSearchParams()
-  const tab = tabFromParams(params.get('tab'))
+  const isOwner = useAuth().session?.subject.role === 'OWNER'
+  const tab = tabFromParams(params.get('tab'), isOwner)
   const filters = filtersFromParams(params)
   const [period, setPeriod] = useState<DashboardPeriod>('30d')
 
@@ -106,7 +122,9 @@ export function ReviewsPage(): ReactElement {
       </header>
 
       <div className="tabs" role="tablist" aria-label={t('communication.tabs.label')}>
-        {COMMUNICATION_TABS.map((option) => (
+        {COMMUNICATION_TABS.filter(
+          (option) => isOwner || (option.value !== 'broadcasts' && option.value !== 'automation'),
+        ).map((option) => (
           <button
             key={option.value}
             className={option.value === tab ? 'tabs__tab tabs__tab--on' : 'tabs__tab'}
@@ -126,6 +144,10 @@ export function ReviewsPage(): ReactElement {
 
       {tab === 'news' ? (
         <NewsView />
+      ) : tab === 'broadcasts' ? (
+        <BroadcastsView />
+      ) : tab === 'automation' ? (
+        <AutomationView />
       ) : tab === 'messages' ? (
         <MessagesView />
       ) : reviews.isPending ? (
