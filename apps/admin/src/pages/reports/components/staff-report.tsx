@@ -23,6 +23,20 @@ const ROLE_LABELS: Readonly<Record<StaffReportRow['role'], TranslationKey>> = {
 }
 
 /**
+ * Заработок по мотивации. Недозревшее показываем отдельно в скобках: эти деньги
+ * ещё не обязательство заведения — гость должен прийти второй раз.
+ */
+const earnedCell = (row: StaffReportCounts): string => {
+  if (row.earned === 0) {
+    return '—'
+  }
+
+  return row.earnedPending === 0
+    ? formatBaht(row.earned)
+    : `${formatBaht(row.earned)} (${formatBaht(row.earnedPending)})`
+}
+
+/**
  * Оценка — со числом отзывов: «5,0» по одному отзыву и «4,8» по сорока выглядят
  * одинаково, а значат разное. Отзывов нет — прочерк, а не ноль: ноль звёзд не бывает.
  */
@@ -59,6 +73,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                     <th className="data-table__num">{t('reports.staff.col.turnover')}</th>
                     <th className="data-table__num">{t('reports.staff.col.newGuests')}</th>
                     <th className="data-table__num">{t('reports.staff.col.rating')}</th>
+                    <th className="data-table__num">{t('reports.staff.col.earned')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -73,6 +88,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                       <td className="data-table__num">{formatBaht(row.turnover)}</td>
                       <td className="data-table__num">{row.newGuests}</td>
                       <td className="data-table__num">{ratingCell(row, t)}</td>
+                      <td className="data-table__num">{earnedCell(row)}</td>
                     </tr>
                   ))}
                   {data.system.operations === 0 ? null : (
@@ -83,6 +99,7 @@ export function StaffReportView({ period }: { period: DashboardPeriod }): ReactE
                       <td className="data-table__num">{formatBaht(data.system.turnover)}</td>
                       <td className="data-table__num">{data.system.newGuests}</td>
                       <td className="data-table__num">{ratingCell(data.system, t)}</td>
+                      <td className="data-table__num">—</td>
                     </tr>
                   )}
                 </tbody>

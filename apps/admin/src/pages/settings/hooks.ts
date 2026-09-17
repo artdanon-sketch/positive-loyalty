@@ -5,6 +5,8 @@ import type {
   ProgramSettings,
   ReferralSettings,
   ReviewSettings,
+  StaffReport,
+  StaffRewardSettings,
   SuspiciousSettings,
   TierSettings,
 } from '@positive/contracts'
@@ -22,6 +24,7 @@ import { useAuth } from '../../shared/auth/auth-context'
 const KEY = ['admin', 'settings', 'program'] as const
 const TIERS_KEY = ['admin', 'settings', 'tiers'] as const
 const REFERRAL_KEY = ['admin', 'settings', 'referral'] as const
+const STAFF_REWARD_KEY = ['admin', 'settings', 'staff-reward'] as const
 const BIRTHDAY_KEY = ['admin', 'settings', 'birthday'] as const
 const REVIEWS_KEY = ['admin', 'settings', 'reviews'] as const
 const SUSPICIOUS_KEY = ['admin', 'settings', 'suspicious'] as const
@@ -117,6 +120,52 @@ export function useSaveReferralSettings(): UseMutationResult<
     onSuccess: (saved) => {
       queryClient.setQueryData(REFERRAL_KEY, saved)
     },
+  })
+}
+
+/** Доплата кассирам — своим входом (docs/03, раздел 6). */
+export function useStaffRewardSettings(): UseQueryResult<StaffRewardSettings, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: STAFF_REWARD_KEY,
+    queryFn: () => authFetch<StaffRewardSettings>('/admin/settings/program/staff-reward'),
+  })
+}
+
+export function useSaveStaffRewardSettings(): UseMutationResult<
+  StaffRewardSettings,
+  Error,
+  StaffRewardSettings
+> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (settings) =>
+      authFetch<StaffRewardSettings>('/admin/settings/program/staff-reward', {
+        method: 'PUT',
+        body: JSON.stringify(settings),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(STAFF_REWARD_KEY, saved)
+    },
+  })
+}
+
+/**
+ * Отчёт «Сотрудники» за месяц — только ради расчёта стоимости доплаты.
+ *
+ * Тот же адрес, что у самого отчёта: второй источник тех же чисел означал бы,
+ * что настройка обещает одно, а отчёт показывает другое.
+ */
+export function useStaffReportForRewards(): UseQueryResult<StaffReport, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['admin', 'reports', 'staff', '30d'],
+    queryFn: () => authFetch<StaffReport>('/admin/reports/staff?period=30d'),
   })
 }
 

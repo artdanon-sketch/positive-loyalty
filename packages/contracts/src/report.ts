@@ -139,6 +139,10 @@ export const StaffReportCounts = z
     reviews: Count,
     /** Средняя оценка по ним, до десятых. null — отзывов не было. */
     rating: z.number().min(1).max(5).nullable(),
+    /** Заработано по мотивации за период, в минорных единицах (docs/03, раздел 6). */
+    earned: Minor,
+    /** Из них ещё не дозрело — ждут второго визита гостя. */
+    earnedPending: Minor,
   })
   .strict()
 

@@ -11,6 +11,7 @@ import {
   BirthdaySettings,
   ProgramSettings,
   ReferralSettings,
+  StaffRewardSettings,
   ReviewSettings,
   SuspiciousSettings,
   TierSettings,
@@ -111,6 +112,43 @@ export class ProgramSettingsController {
     }
 
     return this.settings.updateTiers(parsed.data)
+  }
+
+  @Get('staff-reward')
+  @ApiOperation({
+    summary: 'Мотивация кассиров',
+    description: 'Включена ли доплата, за что платим, когда зачитываем. docs/03, раздел 6.',
+  })
+  @ApiOkResponse({ description: 'Текущие настройки доплаты' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  async getStaffReward(): Promise<StaffRewardSettings> {
+    return this.settings.getStaffReward()
+  }
+
+  @Put('staff-reward')
+  @ApiOperation({
+    summary: 'Изменить мотивацию кассиров',
+    description:
+      'Заменяет настройки доплаты целиком; остальное не трогает. Уже начисленные ' +
+      'награды не пересчитываются: смена отработана по прежним правилам.',
+  })
+  @ApiOkResponse({ description: 'Сохранено' })
+  @ApiBadRequestResponse({ description: 'Нулевая включённая доплата, процент больше 50' })
+  @ApiForbiddenResponse({ description: 'Не владелец' })
+  async updateStaffReward(@Body() body: unknown): Promise<StaffRewardSettings> {
+    const parsed = StaffRewardSettings.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректные настройки доплаты',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.settings.updateStaffReward(parsed.data)
   }
 
   @Get('referral')

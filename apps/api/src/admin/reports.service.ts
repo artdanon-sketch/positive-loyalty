@@ -74,6 +74,12 @@ interface StaffNewGuestsRow {
   newGuests: unknown
 }
 
+interface StaffEarnedRow {
+  staffId: string | null
+  earned: unknown
+  earnedPending: unknown
+}
+
 interface StaffReviewsRow {
   staffId: string | null
   reviews: unknown
@@ -90,6 +96,8 @@ interface StaffTally {
   newGuests: number
   reviews: number
   ratingSum: number
+  earned: number
+  earnedPending: number
 }
 
 const EMPTY_TALLY: StaffTally = {
@@ -98,6 +106,8 @@ const EMPTY_TALLY: StaffTally = {
   newGuests: 0,
   reviews: 0,
   ratingSum: 0,
+  earned: 0,
+  earnedPending: 0,
 }
 
 const finishTally = (tally: StaffTally): StaffReportCounts => ({
@@ -106,6 +116,8 @@ const finishTally = (tally: StaffTally): StaffReportCounts => ({
   newGuests: tally.newGuests,
   reviews: tally.reviews,
   rating: tally.reviews === 0 ? null : Math.round((tally.ratingSum / tally.reviews) * 10) / 10,
+  earned: tally.earned,
+  earnedPending: tally.earnedPending,
 })
 
 @Injectable()
@@ -351,12 +363,12 @@ export class ReportsService {
     const { tenantId } = TenantContext.getOrThrow()
     const days = PERIOD_DAYS[period]
 
-    const { counts, firsts, reviews, people } = await this.prisma.forTenant(
+    const { counts, firsts, earned, reviews, people } = await this.prisma.forTenant(
       tenantId,
       async (tx) => {
         const zone = await this.zone(tx, tenantId)
 
-        const [counts, firsts, reviews] = await Promise.all([
+        const [counts, firsts, earned, reviews] = await Promise.all([
           tx.$queryRaw<StaffCountsRow[]>`
           WITH bounds AS (
             SELECT
@@ -413,6 +425,27 @@ export class ReportsService {
           WHERE f.local_at >= b.cur_start AND f.local_at < b.cur_end
           GROUP BY 1
         `,
+          // Заработок по мотивации — по наградам за период. Снятые не в счёт:
+          // строка «заработал, но не заплатили» вводила бы в заблуждение обоих.
+          tx.$queryRaw<StaffEarnedRow[]>`
+          WITH bounds AS (
+            SELECT
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                - make_interval(days => ${days}::int - 1) AS cur_start,
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                + interval '1 day'                        AS cur_end
+          )
+          SELECT
+            r."staffId"                                                   AS "staffId",
+            coalesce(sum(r.amount), 0)                                    AS "earned",
+            coalesce(sum(r.amount) FILTER (WHERE r.state = 'PENDING'), 0) AS "earnedPending"
+          FROM "StaffReward" r, bounds b
+          WHERE r."tenantId" = ${tenantId}::text
+            AND r.state <> 'CANCELLED'
+            AND (r."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (r."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+          GROUP BY 1
+        `,
           // Оценка сотрудника — по отзывам на ЕГО чеки за период, а не по дате отзыва:
           // строка отчёта говорит об одних и тех же чеках, и гость нередко оценивает назавтра.
           tx.$queryRaw<StaffReviewsRow[]>`
@@ -443,7 +476,7 @@ export class ReportsService {
 
         const ids = [
           ...new Set(
-            [...counts, ...firsts, ...reviews].flatMap((row) =>
+            [...counts, ...firsts, ...earned, ...reviews].flatMap((row) =>
               row.staffId === null ? [] : [row.staffId],
             ),
           ),
@@ -457,7 +490,7 @@ export class ReportsService {
                 select: { id: true, displayName: true, role: true, isActive: true },
               })
 
-        return { counts, firsts, reviews, people }
+        return { counts, firsts, earned, reviews, people }
       },
     )
 
@@ -487,6 +520,12 @@ export class ReportsService {
       const current = bucket(keyOf(row.staffId))
       current.reviews += toNumber(row.reviews)
       current.ratingSum += toNumber(row.ratingSum)
+    }
+
+    for (const row of earned) {
+      const current = bucket(keyOf(row.staffId))
+      current.earned += toNumber(row.earned)
+      current.earnedPending += toNumber(row.earnedPending)
     }
 
     const staff: StaffReportRow[] = people

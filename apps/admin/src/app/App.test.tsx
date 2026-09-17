@@ -561,6 +561,7 @@ describe('Безопасность', () => {
     '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
     '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
     '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+    '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
     '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
     '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
   }
@@ -1598,6 +1599,13 @@ const BIRTHDAY_SETTINGS = {
 
 /** Приглашения друзей заведения: не включались. */
 const REFERRAL_SETTINGS = { enabled: false, reward: 0, limit: 10 }
+const STAFF_REWARD_SETTINGS = {
+  enabled: false,
+  basis: 'PER_NEW_GUEST',
+  value: 0,
+  vesting: 'ON_SECOND_VISIT',
+  shiftCap: 15,
+}
 
 /** Теги заведения: один стоит на госте, второй — чтобы было что отметить. */
 const TAG_VIP = { id: '16161616-1616-4161-8161-161616161616', name: 'VIP', color: 'amber' }
@@ -1629,6 +1637,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1645,6 +1654,82 @@ describe('Настройки программы', () => {
     expect(await screen.findByText('100,00 ฿')).toBeInTheDocument()
   })
 
+  it('ДОПЛАТА КАССИРАМ: ВКЛЮЧИЛИ, ЗАДАЛИ СУММУ — УШЛО В САТАНГАХ, СО СТОИМОСТЬЮ НА ЭКРАНЕ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/reports/staff': () =>
+        json({
+          period: '30d',
+          staff: [
+            {
+              staffId: '22222222-2222-4222-8222-222222222222',
+              displayName: 'Сомчай',
+              role: 'CASHIER',
+              isActive: true,
+              operations: 300,
+              turnover: 3_000_000,
+              newGuests: 60,
+              reviews: 0,
+              rating: null,
+              earned: 0,
+              earnedPending: 0,
+            },
+          ],
+          system: {
+            operations: 0,
+            turnover: 0,
+            newGuests: 0,
+            reviews: 0,
+            rating: null,
+            earned: 0,
+            earnedPending: 0,
+          },
+        }),
+      '/v1/admin/settings/program/staff-reward': (init) =>
+        init?.method === 'PUT'
+          ? json(JSON.parse(init.body as string))
+          : json(STAFF_REWARD_SETTINGS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    const section = within(await screen.findByRole('region', { name: t('staffReward.title') }))
+    fireEvent.click(section.getByRole('checkbox', { name: new RegExp(t('staffReward.enabled')) }))
+
+    fireEvent.change(await section.findByLabelText(t('staffReward.valueFixed')), {
+      target: { value: '100' },
+    })
+
+    // Шестьдесят новых гостей за месяц по 100 ฿ — это 6 000 ฿ в месяц и пятая
+    // часть выручки. Владелец видит цену решения до того, как его принял.
+    expect(await section.findByTestId('staff-reward-forecast')).toHaveTextContent(/6 000/)
+
+    fireEvent.click(section.getByRole('button', { name: t('staffReward.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/settings/program/staff-reward') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        enabled: true,
+        basis: 'PER_NEW_GUEST',
+        value: 10_000,
+        vesting: 'ON_SECOND_VISIT',
+        shiftCap: 15,
+      })
+    })
+  })
+
   it('ПОТОЛОК ЧЕКА УХОДИТ В САТАНГАХ, А НЕ В БАТАХ', async () => {
     // Владелец пишет «3000» и думает батами. Касса считает сатангами. Перепутать
     // — значит поставить потолок в 30 ฿, и касса откажет на первом же обеде.
@@ -1654,6 +1739,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': (init) =>
         init?.method === 'PUT'
@@ -1691,6 +1777,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1714,6 +1801,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1733,6 +1821,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1811,6 +1900,7 @@ describe('Настройки программы', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -1855,6 +1945,7 @@ describe('Источники в настройках', () => {
     '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
     '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
     '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+    '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
     '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
     '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
   }
@@ -2133,9 +2224,19 @@ describe('Отчёты: вкладки', () => {
               newGuests: 31,
               reviews: 24,
               rating: 4.8,
+              earned: 120_000,
+              earnedPending: 40_000,
             },
           ],
-          system: { operations: 190, turnover: 8_800_000, newGuests: 13, reviews: 0, rating: null },
+          system: {
+            operations: 190,
+            turnover: 8_800_000,
+            newGuests: 13,
+            reviews: 0,
+            rating: null,
+            earned: 0,
+            earnedPending: 0,
+          },
         }),
     })
     render(<App />)
@@ -2149,11 +2250,13 @@ describe('Отчёты: вкладки', () => {
     expect(within(cashier).getByText('31')).toBeInTheDocument()
 
     expect(within(cashier).getByText('4.8 · 24')).toBeInTheDocument()
+    // Недозревшее — в скобках: эти деньги заведение ещё не должно.
+    expect(within(cashier).getByText(/1 200.*400/)).toBeInTheDocument()
 
     const system = within(table).getByRole('row', { name: new RegExp(t('reports.staff.system')) })
     expect(within(system).getByText('190')).toBeInTheDocument()
-    // Чеки из кассы некому оценивать поимённо — в этой строке прочерк, а не ноль.
-    expect(within(system).getByText('—')).toBeInTheDocument()
+    // Чеки из кассы некому оценивать и некому платить — два прочерка, а не нули.
+    expect(within(system).getAllByText('—')).toHaveLength(2)
   })
 })
 
@@ -2299,6 +2402,7 @@ describe('Сертификаты', () => {
       '/v1/admin/settings/program/birthday': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -2450,6 +2554,7 @@ describe('Отзывы', () => {
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -3969,6 +4074,7 @@ describe('Статусы гостей в настройках', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': (init) =>
         init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
@@ -4028,6 +4134,7 @@ describe('Статусы гостей в настройках', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
     })
@@ -4062,6 +4169,7 @@ describe('Статус в карточке гостя', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () =>
         json({
           ...TIER_SETTINGS,
@@ -4182,6 +4290,7 @@ describe('Гости: фильтры и выгрузка', () => {
       '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
       '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
       '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
       '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
       '/v1/admin/guests/export': () =>
         new Response(csv, { status: 200, headers: { 'Content-Type': 'text/csv; charset=utf-8' } }),
