@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import type { CommitResult, PosGuest, PreviewResult } from '@positive/contracts'
+import type { CommitResult, PosGuest, PosTag, PreviewResult } from '@positive/contracts'
 
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
 import { IssuedGrants, OfferLines } from './components/offer-lines'
 import { QrScanner } from './components/qr-scanner'
+import { GuestTags } from './components/guest-tags'
 import { RedeemPanel } from './components/redeem-panel'
 import { StuckQueue } from './components/stuck-queue'
 import { StuckReceipts } from './components/stuck-receipts'
@@ -348,7 +349,7 @@ function AmountStep({
 
   return (
     <div className="pos__step">
-      <GuestCard guest={guest} />
+      <GuestCard guest={guest} tags={config.data?.tags ?? []} />
 
       <form
         className="pos__form"
@@ -806,7 +807,7 @@ function DoneStep({
 }
 
 /** Карточка гостя: то, что кассир должен знать до ввода суммы. */
-function GuestCard({ guest }: { guest: PosGuest }): ReactElement {
+function GuestCard({ guest, tags }: { guest: PosGuest; tags?: readonly PosTag[] }): ReactElement {
   const t = useT()
 
   return (
@@ -823,6 +824,7 @@ function GuestCard({ guest }: { guest: PosGuest }): ReactElement {
       {guest.isControlGroup ? (
         <span className="chip chip--muted">{t('pos.guest.control')}</span>
       ) : null}
+      <GuestTags available={tags ?? []} guest={guest} />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import type {
   CommitResult,
   PosConfig,
   PosGuest,
+  PosTag,
   PosVoidResult,
   PreviewResult,
   RedeemGrantInput,
@@ -167,3 +168,26 @@ export function useRedeemGrant(): UseMutationResult<RedeemGrantResult, Error, Re
  */
 export const generateReceiptId = (): string =>
   `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+
+/**
+ * Повесить гостю тег с кассы.
+ *
+ * Ответ сервера — полный список тегов гостя: экран показывает то, что реально
+ * записалось, а не то, что кассир нажал.
+ */
+export function useAddGuestTag(): UseMutationResult<
+  PosTag[],
+  Error,
+  { membershipId: string; tagId: string }
+> {
+  const { authFetch } = useAuth()
+
+  return useMutation({
+    mutationFn: ({ membershipId, tagId }) =>
+      authFetch<PosTag[]>(`/pos/guest/${encodeURIComponent(membershipId)}/tags`, {
+        method: 'POST',
+        body: JSON.stringify({ tagId }),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  })
+}

@@ -3,6 +3,7 @@ import type { FormEvent, ReactElement } from 'react'
 import type { ProgramSettings } from '@positive/contracts'
 
 import { useT } from '../../../shared/i18n'
+import { sameProgramSettings } from '../program-draft'
 import { useSaveProgramSettings } from '../hooks'
 import { EarnExample } from './earn-example'
 
@@ -28,6 +29,8 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   const [redeem, setRedeem] = useState(String(initial.baseRedeemRate))
   const [requireReceipt, setRequireReceipt] = useState(initial.cashierRules.requireReceiptNumber)
   const [manualEntry, setManualEntry] = useState(initial.cashierRules.allowManualEntry)
+  const [showTags, setShowTags] = useState(initial.cashierRules.showGuestTags ?? false)
+  const [allowTagging, setAllowTagging] = useState(initial.cashierRules.allowTagging ?? false)
   const [cap, setCap] = useState(
     initial.cashierRules.maxManualAmount === null
       ? ''
@@ -53,12 +56,15 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
             // Баты в сатанги — здесь и больше нигде.
             maxManualAmount: capBaht === null ? null : Math.round(capBaht * 100),
             allowManualEntry: manualEntry,
+            showGuestTags: showTags,
+            // Вешать теги, не видя их, нельзя: выключенный показ выключает и правку.
+            allowTagging: showTags && allowTagging,
           },
         }
       : null
 
   const reference = save.data ?? initial
-  const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(reference)
+  const dirty = draft !== null && !sameProgramSettings(draft, reference)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -167,6 +173,41 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
         </label>
         <span className="field__hint toggle__hint" id="settings-manual-hint">
           {t('settings.manual.hint')}
+        </span>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showTags}
+            aria-describedby="settings-tags-hint"
+            onChange={(event) => {
+              setShowTags(event.target.checked)
+            }}
+          />
+          <span className="toggle__text">
+            <b>{t('settings.tags.label')}</b>
+          </span>
+        </label>
+        <span className="field__hint toggle__hint" id="settings-tags-hint">
+          {t('settings.tags.hint')}
+        </span>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={showTags && allowTagging}
+            disabled={!showTags}
+            aria-describedby="settings-tagging-hint"
+            onChange={(event) => {
+              setAllowTagging(event.target.checked)
+            }}
+          />
+          <span className="toggle__text">
+            <b>{t('settings.tagging.label')}</b>
+          </span>
+        </label>
+        <span className="field__hint toggle__hint" id="settings-tagging-hint">
+          {t('settings.tagging.hint')}
         </span>
 
         <div className="field settings__cap">

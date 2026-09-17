@@ -10,10 +10,17 @@ import {
   Post,
   Query,
 } from '@nestjs/common'
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger'
 import {
   CommitInput,
   PosGuestQuery,
+  PosTagInput,
   PosVoidInput,
   PreviewInput,
   RedeemGrantInput,
@@ -88,6 +95,36 @@ export class PosController {
     }
 
     return this.posService.findGuestByPhone(parsed.data.phone as string)
+  }
+
+  @Post('guest/:membershipId/tags')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Повесить гостю тег',
+    description:
+      'Только из справочника заведения и только если владелец разрешил теги на кассе. ' +
+      'Повтор ничего не меняет.',
+  })
+  @ApiOkResponse({ description: 'Теги гостя после добавления' })
+  @ApiForbiddenResponse({ description: 'Теги на кассе выключены в настройках' })
+  @ApiNotFoundResponse({ description: 'Нет такого гостя или тега' })
+  async addTag(
+    @Param('membershipId') membershipId: string,
+    @Body() body: unknown,
+  ): Promise<PosGuest['tags']> {
+    const parsed = PosTagInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.addTag(membershipId, parsed.data.tagId)
   }
 
   @Post('transactions/preview')

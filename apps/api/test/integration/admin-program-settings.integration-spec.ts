@@ -43,7 +43,15 @@ const token = (tenantId: string, role: string): string =>
 const defaults = {
   baseEarnRate: 5,
   baseRedeemRate: 20,
-  cashierRules: { requireReceiptNumber: true, maxManualAmount: null, allowManualEntry: true },
+  // Теги на кассе выключены у нового заведения: их включает владелец,
+  // зная свои теги (docs/02, раздел 3.7).
+  cashierRules: {
+    requireReceiptNumber: true,
+    maxManualAmount: null,
+    allowManualEntry: true,
+    showGuestTags: false,
+    allowTagging: false,
+  },
 }
 
 /** Заведение с гостем и токенами владельца и кассира. */

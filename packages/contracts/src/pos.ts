@@ -43,6 +43,17 @@ export type GuestMode = z.infer<typeof GuestMode>
  * отдельным контрактом: кассе незачем видеть ставки начисления, лестницу
  * статусов и мотивацию персонала — это данные бэк-офиса.
  */
+/** Тег гостя так, как его видит касса: название и цвет, без служебных полей. */
+export const PosTag = z
+  .object({
+    id: z.uuid(),
+    name: z.string().min(1),
+    color: z.string().min(1),
+  })
+  .strict()
+
+export type PosTag = z.infer<typeof PosTag>
+
 export const PosConfig = z
   .object({
     /** Без номера чека операцию не с чем сверить при разборе. */
@@ -51,6 +62,11 @@ export const PosConfig = z
     maxManualAmount: z.number().int().positive().nullable(),
     /** Разрешён ли ручной ввод суммы вообще. */
     allowManualEntry: z.boolean(),
+    /**
+     * Теги, которые кассир может повесить гостю. Пустой список — вешать нечего
+     * или нельзя: касса не должна догадываться, что именно из двух.
+     */
+    tags: z.array(PosTag).default([]),
   })
   .strict()
 
@@ -95,10 +111,20 @@ export const PosGuest = z
      * в заведении нет, чек считается по базовым ставкам.
      */
     tier: TierBadge.nullable(),
+    /**
+     * Теги гостя — то, что заведение о нём помнит: «аллергия на арахис»,
+     * «любит у окна». Пустой список приходит и тогда, когда показ тегов
+     * кассиру выключен: экран кассы не должен догадываться о настройке.
+     */
+    tags: z.array(PosTag).default([]),
   })
   .strict()
 
 export type PosGuest = z.infer<typeof PosGuest>
+
+/** Добавить гостю тег из справочника заведения. */
+export const PosTagInput = z.object({ tagId: z.uuid() }).strict()
+export type PosTagInput = z.infer<typeof PosTagInput>
 
 export const PreviewInput = z
   .object({
