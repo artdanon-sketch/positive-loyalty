@@ -121,6 +121,15 @@ afterAll(async () => {
 })
 
 describe('Мотивация кассиров: начисление', () => {
+  it('НАСТРОЙКА ДОПЛАТЫ СОХРАНИЛАСЬ — ИНАЧЕ ОСТАЛЬНОЕ ПРОВЕРЯТЬ НЕЧЕГО', async () => {
+    const response = await request(server())
+      .get('/v1/admin/settings/program/staff-reward')
+      .set('Authorization', `Bearer ${ownerToken}`)
+
+    expect(response.status).toBe(200)
+    expect(response.body).toMatchObject({ enabled: true, basis: 'PER_NEW_GUEST', value: 10_000 })
+  })
+
   it('ЗА НОВОГО ГОСТЯ НАГРАДА ЕСТЬ, НО ЖДЁТ ВТОРОГО ВИЗИТА', async () => {
     const entryId = await receipt(fresh, 100_000)
 

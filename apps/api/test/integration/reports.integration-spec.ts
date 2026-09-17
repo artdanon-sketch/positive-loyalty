@@ -265,6 +265,8 @@ describe('Отчёт «Сотрудники»', () => {
         newGuests: 1,
         reviews: 2,
         rating: 4.5,
+        earned: 0,
+        earnedPending: 0,
       },
     ])
     // Оценка с отменённого чека не попала ни в одну строку.
@@ -274,6 +276,8 @@ describe('Отчёт «Сотрудники»', () => {
       newGuests: 1,
       reviews: 0,
       rating: null,
+      earned: 0,
+      earnedPending: 0,
     })
   })
 })

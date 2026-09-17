@@ -141,10 +141,17 @@ export class StaffRewardsService {
         return true
       })
     } catch (error) {
-      // UNIQUE на чеке: параллельный проход успел раньше — это не ошибка.
-      this.logger.debug(
-        `Награда по чеку ${receipt.id} не записана: ${error instanceof Error ? error.message : 'неизвестно'}`,
-      )
+      // UNIQUE на чеке значит, что параллельный проход успел раньше, — это не
+      // ошибка. Всё остальное ошибка, и молчать о ней нельзя: разгребатель,
+      // который «работает», но ничего не пишет, ищется потом часами.
+      const message = error instanceof Error ? error.message : 'неизвестно'
+      const duplicate = message.includes('Unique constraint')
+
+      if (duplicate) {
+        this.logger.debug(`Награда по чеку ${receipt.id} уже записана`)
+      } else {
+        this.logger.warn(`Награда по чеку ${receipt.id} не записана: ${message}`)
+      }
 
       return false
     }
