@@ -6,6 +6,7 @@ import { getEnv } from '../common/config/env'
 import { maskPhone } from '../common/pii/mask-phone'
 import { signGuestQrToken } from '../common/tenant/access-token'
 import { BirthdayService } from '../core/birthday.service'
+import { upcomingExpiry } from '../core/points-expiry'
 import { PrismaService } from '../core/prisma.service'
 import { resolveTier, tierProgress } from '../core/tiers'
 import type { UpdateGuestProfileInput } from '@positive/contracts'
@@ -112,6 +113,66 @@ export class GuestService {
   }
 
   /**
+   * Что сгорит у гостя ближайшим днём, по каждому участию.
+   *
+   * СЧИТАЕМ ТОЛЬКО ТАМ, ГДЕ СРОК ЗАДАН. Заведений без сгорания большинство,
+   * и лезть за их историей ради заведомого `null` — лишние запросы на каждое
+   * открытие карты.
+   *
+   * БЕРЁМ ПОСЛЕДНИЕ ДВЕСТИ НАЧИСЛЕНИЙ. Их хватает с запасом: сгорает самая
+   * старая партия, а гость с тысячей операций и без того тратит быстрее,
+   * чем копит.
+   */
+  private async expiringByMembership(
+    guestId: string,
+    rows: ReadonlyArray<{ id: string; tenantId: string; tenant: { settings: unknown } }>,
+  ): Promise<Map<string, { points: number; at: string }>> {
+    const now = new Date()
+    const result = new Map<string, { points: number; at: string }>()
+
+    const withExpiry = rows.flatMap((row) => {
+      const program = ProgramConfig.safeParse(row.tenant.settings ?? {})
+      const days = program.success ? program.data.pointsExpireDays : null
+
+      return days === null ? [] : [{ membershipId: row.id, days }]
+    })
+
+    if (withExpiry.length === 0) {
+      return result
+    }
+
+    await this.prisma.forGuest(guestId, async (tx) => {
+      for (const item of withExpiry) {
+        const entries = await tx.ledgerEntry.findMany({
+          where: { membershipId: item.membershipId },
+          orderBy: [{ occurredAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+          take: 200,
+          select: { amount: true, occurredAt: true, createdAt: true },
+        })
+
+        const earns = entries
+          .filter((entry) => entry.amount > 0)
+          .map((entry) => ({ at: entry.occurredAt ?? entry.createdAt, amount: entry.amount }))
+
+        const spent = entries
+          .filter((entry) => entry.amount < 0)
+          .reduce((sum, entry) => sum + Math.abs(entry.amount), 0)
+
+        const upcoming = upcomingExpiry(earns, spent, item.days, now)
+
+        if (upcoming !== null) {
+          result.set(item.membershipId, {
+            points: upcoming.points,
+            at: upcoming.at.toISOString(),
+          })
+        }
+      }
+    })
+
+    return result
+  }
+
+  /**
    * Кошелёк — участия во всех заведениях. Гостевой контур RLS отдаёт ровно
    * свои строки: и участия, и витрины заведений (миграция 20260826230000).
    * Никакого перебора тенантов в коде: изоляцию держит база.
@@ -129,6 +190,10 @@ export class GuestService {
         orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
       }),
     )
+
+    // Что сгорит ближайшим днём — одним запросом на все участия: гость должен
+    // узнать заранее, а не обнаружить пропажу баллов у стойки.
+    const expiring = await this.expiringByMembership(guestId, rows)
 
     const memberships = rows.map((row) => {
       // Статус — тем же расчётом, что у кассы. Рекомендации гостю не посчитать:
@@ -159,6 +224,7 @@ export class GuestService {
           referral !== null && referral.enabled && referral.reward > 0 && !row.isControlGroup
             ? referral.reward
             : null,
+        expiring: expiring.get(row.id) ?? null,
         tier: tier === null ? null : { name: tier.name },
         nextTier:
           progress === null

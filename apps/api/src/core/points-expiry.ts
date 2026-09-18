@@ -49,3 +49,58 @@ export const expiryCutoff = (now: Date, days: number): Date => {
 /** Ключ идемпотентности: одно сгорание на участие в сутки. */
 export const expiryKey = (membershipId: string, now: Date): string =>
   `expire:${membershipId}:${now.toISOString().slice(0, 10)}`
+
+/**
+ * Что сгорит в ближайшее время и когда. docs/02, раздел 2.1.
+ *
+ * ГОСТЬ ДОЛЖЕН УЗНАТЬ ЗАРАНЕЕ, А НЕ ПОСТФАКТУМ. Сгоревшие молча баллы — это
+ * не экономия заведения, а обиженный человек у стойки: он копил и не знал,
+ * что у накоплений есть срок.
+ *
+ * СЧИТАЕМ ПО ТОМУ ЖЕ ПРАВИЛУ FIFO, что и само сгорание: списания гасят самые
+ * старые начисления. Иначе предупреждение разойдётся с тем, что произойдёт,
+ * и это хуже молчания.
+ *
+ * ПОКАЗЫВАЕМ ТОЛЬКО БЛИЖАЙШУЮ ПАРТИЮ. «Сгорит 120 баллов 3 октября» — это
+ * повод зайти; полный график сгорания на год вперёд — это таблица, которую
+ * никто не читает.
+ */
+
+export interface EarnBatch {
+  /** Когда начислено. */
+  readonly at: Date
+  /** Сколько начислено. */
+  readonly amount: number
+}
+
+export interface UpcomingExpiry {
+  readonly points: number
+  readonly at: Date
+}
+
+export const upcomingExpiry = (
+  earns: readonly EarnBatch[],
+  spentTotal: number,
+  days: number,
+  now: Date,
+): UpcomingExpiry | null => {
+  let left = spentTotal
+  const cutoff = expiryCutoff(now, days)
+
+  for (const earn of earns) {
+    // Списания гасят самые старые начисления: пока хватает потраченного,
+    // партия уже погашена и сгорать в ней нечему.
+    if (left >= earn.amount) {
+      left -= earn.amount
+      continue
+    }
+
+    const rest = earn.amount - left
+    const at = new Date(earn.at.getTime() + days * 24 * 60 * 60 * 1000)
+
+    // Партия, уже перешедшая рубеж, сгорит ближайшим проходом — сегодня.
+    return { points: rest, at: earn.at < cutoff ? now : at }
+  }
+
+  return null
+}

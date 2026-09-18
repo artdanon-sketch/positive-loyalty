@@ -20,6 +20,7 @@ import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
 import { VenueNews } from './components/venue-news'
 import { VenueInvite } from './components/venue-invite'
+import { ExpiryNote } from './components/expiry-note'
 import { VenueBotInviteButton } from './components/venue-bot-invite'
 import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
@@ -135,6 +136,7 @@ export function Page(): ReactElement {
                           : t('card.venues.firstVisit')}
                       </span>
                       <VenueTier membership={membership} />
+                      <ExpiryNote membership={membership} />
                     </div>
                     <div className="venue__side">
                       <b className="venue__points">{formatBaht(membership.points)}</b>
