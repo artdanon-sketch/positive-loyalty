@@ -12,6 +12,9 @@ import { GuestReviewsController } from './guest-reviews.controller'
 import { GuestReviewsService } from './guest-reviews.service'
 import { GuestMessagesController } from './guest-messages.controller'
 import { GuestMessagesService } from './guest-messages.service'
+import { VenueBotLinkController } from './venue-bot-link.controller'
+import { VenueBotLinkService } from './venue-bot-link.service'
+import { VenueBotUpdatesService } from './venue-bot-updates.service'
 import { GuestCatalogController } from './guest-catalog.controller'
 import { GuestCatalogService } from './guest-catalog.service'
 import { GuestHistoryController } from './guest-history.controller'
@@ -39,6 +42,7 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestReferralController,
     GuestJoinController,
     GuestReviewsController,
+    VenueBotLinkController,
     GuestCatalogController,
     GuestHistoryController,
     GuestNewsController,
@@ -51,6 +55,8 @@ import { TelegramUpdatesService } from './telegram-updates.service'
     GuestReferralService,
     GuestJoinService,
     GuestReviewsService,
+    VenueBotLinkService,
+    VenueBotUpdatesService,
     GuestCatalogService,
     GuestHistoryService,
     GuestNewsService,

@@ -168,5 +168,7 @@
   "profile.saving": "Сохраняем…",
   "profile.saved": "Сохранено.",
   "rewards.title": "За баллы",
-  "rewards.hint": "Покажите карту на кассе — списание проведёт кассир."
+  "rewards.hint": "Покажите карту на кассе — списание проведёт кассир.",
+  "venueBot.connect": "Получать сообщения от заведения",
+  "venueBot.opening": "Открываем Telegram…"
 }

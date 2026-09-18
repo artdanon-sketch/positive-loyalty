@@ -146,6 +146,7 @@ model Tenant {
   catalogItems           CatalogItem[]
   venueBot               VenueBot?
   venueBotChats          VenueBotChat[]
+  venueBotLinks          VenueBotLink[]
   posQueueItems          PosQueueItem[]
   offers                 Offer[]
   offerGrants            OfferGrant[]
@@ -203,6 +204,7 @@ model Guest {
   identities    GuestIdentity[]
   pushSubscriptions      PushSubscription[]
   venueBotChats          VenueBotChat[]
+  venueBotLinks          VenueBotLink[]
   ledgerEntries LedgerEntry[]
   offerGrants   OfferGrant[]
   reviews       Review[]
@@ -1299,6 +1301,28 @@ model VenueBot {
 
 /// Кто из гостей запустил бота заведения. Telegram не даёт писать первым:
 /// пока гость не нажал «Запустить», сообщение ему не уйдёт.
+/// Приглашение гостя в бота заведения: одноразовый код из ссылки
+/// t.me/<бот>?start=<код>. Telegram не даёт боту писать первым, и это
+/// единственный способ связать чат у бота кафе с картой гостя.
+model VenueBotLink {
+  id       String @id @default(uuid())
+  tenantId String
+  guestId  String
+
+  /// Хеш одноразового кода. Сам код не хранится: он предъявляется вместо
+  /// подписи, и в базе ему место только в виде хеша.
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, guestId])
+  @@index([expiresAt])
+}
+
 model VenueBotChat {
   id       String @id @default(uuid())
   tenantId String

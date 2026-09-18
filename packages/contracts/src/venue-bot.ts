@@ -42,3 +42,18 @@ export const VenueBotStatus = z
   .strict()
 
 export type VenueBotStatus = z.infer<typeof VenueBotStatus>
+
+/**
+ * Ссылка-приглашение в бота заведения, которую открывает гость.
+ *
+ * Код внутри одноразовый и живёт час: кто его знает, тот подключит свой
+ * Telegram к чужой карте и начнёт получать чужие сообщения.
+ */
+export const VenueBotInvite = z
+  .object({
+    url: z.string(),
+    botUsername: z.string(),
+  })
+  .strict()
+
+export type VenueBotInvite = z.infer<typeof VenueBotInvite>

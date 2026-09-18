@@ -168,5 +168,7 @@
   "profile.saving": "Saving…",
   "profile.saved": "Saved.",
   "rewards.title": "For points",
-  "rewards.hint": "Show your card at the till — the cashier will take the points."
+  "rewards.hint": "Show your card at the till — the cashier will take the points.",
+  "venueBot.connect": "Get messages from this venue",
+  "venueBot.opening": "Opening Telegram…"
 }
