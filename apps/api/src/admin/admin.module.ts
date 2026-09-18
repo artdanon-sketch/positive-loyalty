@@ -57,6 +57,8 @@ import { IntegrationController } from './integration.controller'
 import { IntegrationService } from './integration.service'
 import { CatalogController } from './catalog.controller'
 import { CatalogService } from './catalog.service'
+import { VenueBotController } from './venue-bot.controller'
+import { VenueBotService } from './venue-bot.service'
 import { NewsService } from './news.service'
 import { TodayController } from './today.controller'
 import { TodayService } from './today.service'
@@ -85,6 +87,7 @@ import { StaffService } from './staff.service'
     MessagesController,
     AutomationController,
     IntegrationController,
+    VenueBotController,
     CatalogController,
     TenantProfileController,
     BroadcastsController,
@@ -119,6 +122,7 @@ import { StaffService } from './staff.service'
     AutomationRunService,
     AutomationSweeper,
     IntegrationService,
+    VenueBotService,
     CatalogService,
     TenantProfileService,
     GuestAudienceService,

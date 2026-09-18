@@ -1233,5 +1233,17 @@
   "catalog.on": "On the showcase",
   "catalog.off": "Hidden",
   "catalog.hide": "Hide",
-  "catalog.show": "Show again"
+  "catalog.show": "Show again",
+  "bot.title": "Your own Telegram bot",
+  "bot.hint": "Messages will reach guests from your venue, not from \"POSitive\". Signing in stays on the shared bot — a guest should not need one bot per cafe.",
+  "bot.step.1": "Open the chat with @BotFather in Telegram and send /newbot.",
+  "bot.step.2": "It asks for a name — write the venue name as guests know it.",
+  "bot.step.3": "Then it asks for an address — Latin letters, ending in bot, e.g. katabeach_bot.",
+  "bot.step.4": "You get a long key in reply. Copy all of it and paste it here.",
+  "bot.field.token": "Key from @BotFather",
+  "bot.field.tokenHint": "We check the key with Telegram and store it. It is never shown back — if you lose it, get a new one from @BotFather.",
+  "bot.connect": "Connect the bot",
+  "bot.connected": "Bot @{username} connected, key {key}.",
+  "bot.subscribers": "Guests who started the bot: {count}. Until there are any, messages go through the shared bot.",
+  "bot.disconnect": "Disconnect the bot"
 }

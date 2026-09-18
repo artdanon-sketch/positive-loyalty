@@ -20,6 +20,7 @@ import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
 import { VenueNews } from './components/venue-news'
 import { VenueInvite } from './components/venue-invite'
+import { VenueBotInviteButton } from './components/venue-bot-invite'
 import { VenueTier } from './components/venue-tier'
 import { VoucherList } from './components/voucher-list'
 import { useQrToken, useWallet } from './hooks'
@@ -142,6 +143,7 @@ export function Page(): ReactElement {
                       ) : null}
                     </div>
                     <VenueInvite membership={membership} />
+                    <VenueBotInviteButton tenantId={membership.tenantId} />
                   </li>
                 ))}
               </ul>

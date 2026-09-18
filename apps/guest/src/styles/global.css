@@ -1251,3 +1251,23 @@ output {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* «Получать сообщения от заведения»: тихая ссылка под карточкой места —
+   предложение, а не призыв. */
+.venue__botLink {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand-telegram, var(--cyan));
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.venue__botLink:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

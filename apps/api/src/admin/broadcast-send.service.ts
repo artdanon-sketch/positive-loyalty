@@ -4,6 +4,7 @@ import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { PushService } from '../identity/push.service'
+import { TelegramApiFactory } from '../identity/telegram-api.factory'
 import { TelegramBotService } from '../identity/telegram-bot.service'
 
 /**
@@ -15,6 +16,11 @@ import { TelegramBotService } from '../identity/telegram-bot.service'
  * ОДИН ПОЛУЧАТЕЛЬ — ОДНА СТРОКА, и она обновляется сразу после ответа Telegram.
  * Проход, упавший посередине, не отправит уже отправленное второй раз: следующий
  * возьмёт только тех, кто остался в PENDING.
+ *
+ * СВОЙ БОТ ЗАВЕДЕНИЯ — ПЕРВЫЙ ИЗ КАНАЛОВ. Сообщение от «Kata Beach Kitchen»
+ * читают иначе, чем сообщение от «POSitive Loyalty»: от имени отправителя
+ * зависит, откроют его или отпишутся. Если гость запустил бота кафе — пишем
+ * туда, и только иначе через общего.
  *
  * ДВА КАНАЛА, TELEGRAM ПЕРВЫЙ. В Telegram сообщение остаётся в переписке и его
  * можно перечитать; уведомление в приложении живёт до первого нажатия. Поэтому
@@ -48,6 +54,7 @@ export class BroadcastSendService {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramBotService,
     private readonly push: PushService,
+    private readonly venueApi: TelegramApiFactory,
   ) {}
 
   /**
@@ -57,9 +64,12 @@ export class BroadcastSendService {
    * рассылок не должно стоить ни одного запроса.
    */
   async tick(now: Date = new Date()): Promise<BroadcastTickResult> {
-    if (!this.telegram.enabled && !this.push.enabled) {
-      // Ни бота, ни ключей уведомлений — слать нечем. Молчим: это состояние
-      // среды, а не сбой.
+    if (!this.telegram.enabled && !this.push.enabled && !(await this.anyVenueBot())) {
+      // Ни общего бота, ни ключей уведомлений, ни своего бота хоть у одного
+      // заведения — слать нечем. Молчим: это состояние среды, а не сбой.
+      //
+      // Бота заведения проверяем здесь же: без этого заведение со своим ботом
+      // молча не рассылало бы ничего на сервере, где общий бот не настроен.
       return { sent: 0, failed: 0 }
     }
 
@@ -108,14 +118,20 @@ export class BroadcastSendService {
     let failed = 0
 
     const brandName = await this.brandName(tenantId)
+    const venueBot = await this.venueBot(tenantId)
 
     for (const recipient of pending) {
-      const outcome =
-        recipient.chatId === null
+      // Свой бот заведения — первым: сообщение от кафе читают иначе, чем
+      // сообщение от сервиса.
+      const viaVenue = venueBot !== null && recipient.venueChatId !== null
+
+      const outcome = viaVenue
+        ? await this.deliverVia(venueBot, recipient.venueChatId ?? '', text)
+        : recipient.chatId === null
           ? await this.push.sendToGuest(recipient.guestId, { title: brandName, body: text })
           : await this.deliver(recipient.chatId, text)
 
-      const channel = recipient.chatId === null ? 'PUSH' : 'TELEGRAM'
+      const channel = viaVenue ? 'VENUE_BOT' : recipient.chatId === null ? 'PUSH' : 'TELEGRAM'
 
       await this.prisma.forTenant(tenantId, async (tx) =>
         tx.broadcastRecipient.updateMany({
@@ -147,7 +163,9 @@ export class BroadcastSendService {
     tx: Prisma.TransactionClient,
     tenantId: string,
     broadcastId: string,
-  ): Promise<Array<{ id: string; guestId: string; chatId: string | null }>> {
+  ): Promise<
+    Array<{ id: string; guestId: string; chatId: string | null; venueChatId: string | null }>
+  > {
     const rows = await tx.broadcastRecipient.findMany({
       where: { tenantId, broadcastId, delivery: 'PENDING' },
       orderBy: { id: 'asc' },
@@ -161,7 +179,7 @@ export class BroadcastSendService {
 
     const guestIds = rows.map((row) => row.guestId)
 
-    const [identities, devices] = await Promise.all([
+    const [identities, devices, venueChats] = await Promise.all([
       this.telegram.enabled
         ? tx.guestIdentity.findMany({
             where: { guestId: { in: guestIds }, provider: 'TELEGRAM' },
@@ -175,15 +193,24 @@ export class BroadcastSendService {
             distinct: ['guestId'],
           })
         : Promise.resolve([]),
+      // Чаты у бота самого заведения: им пишем в первую очередь.
+      tx.venueBotChat.findMany({
+        where: { tenantId, guestId: { in: guestIds }, blockedAt: null },
+        select: { guestId: true, chatId: true },
+      }),
     ])
 
     const chats = new Map(identities.map((identity) => [identity.guestId, identity.externalId]))
+    const ownChats = new Map(venueChats.map((chat) => [chat.guestId, chat.chatId]))
     const withDevice = new Set(devices.map((device) => device.guestId))
 
     // Гость мог отвязать Telegram и снести приложение между созданием рассылки
     // и отправкой — это не ошибка доставки, а исчезнувший канал.
     const gone = rows
-      .filter((row) => !chats.has(row.guestId) && !withDevice.has(row.guestId))
+      .filter(
+        (row) =>
+          !chats.has(row.guestId) && !withDevice.has(row.guestId) && !ownChats.has(row.guestId),
+      )
       .map((row) => row.id)
 
     if (gone.length > 0) {
@@ -193,15 +220,67 @@ export class BroadcastSendService {
       })
     }
 
-    return rows.flatMap((row): Array<{ id: string; guestId: string; chatId: string | null }> => {
-      const chatId = chats.get(row.guestId)
+    return rows.flatMap(
+      (
+        row,
+      ): Array<{
+        id: string
+        guestId: string
+        chatId: string | null
+        venueChatId: string | null
+      }> => {
+        const venueChatId = ownChats.get(row.guestId) ?? null
+        const chatId = chats.get(row.guestId) ?? null
 
-      if (chatId !== undefined) {
-        return [{ id: row.id, guestId: row.guestId, chatId }]
+        if (venueChatId !== null || chatId !== null) {
+          return [{ id: row.id, guestId: row.guestId, chatId, venueChatId }]
+        }
+
+        return withDevice.has(row.guestId)
+          ? [{ id: row.id, guestId: row.guestId, chatId: null, venueChatId: null }]
+          : []
+      },
+    )
+  }
+
+  /** Есть ли хоть одно заведение со своим ботом: иначе слать действительно нечем. */
+  private async anyVenueBot(): Promise<boolean> {
+    return (await this.prisma.venueBot.count({ where: { isActive: true } })) > 0
+  }
+
+  /** Ключ бота заведения. null — своего бота нет, шлём как раньше. */
+  private async venueBot(tenantId: string): Promise<string | null> {
+    const bot = await this.prisma.venueBot.findFirst({
+      where: { tenantId, isActive: true },
+      select: { token: true },
+    })
+
+    return bot?.token ?? null
+  }
+
+  /**
+   * Отправка через бота заведения.
+   *
+   * Отказ «гость заблокировал бота» помечает чат: писать в него дальше значит
+   * копить «не доставлено» на пустом месте.
+   */
+  private async deliverVia(token: string, chatId: string, text: string): Promise<string | null> {
+    try {
+      await this.venueApi.for(token).sendMessage(chatId, text)
+
+      return null
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      if (message.includes('blocked') || message.includes('bot was blocked')) {
+        await this.prisma.venueBotChat.updateMany({
+          where: { chatId },
+          data: { blockedAt: new Date() },
+        })
       }
 
-      return withDevice.has(row.guestId) ? [{ id: row.id, guestId: row.guestId, chatId: null }] : []
-    })
+      return message.slice(0, 200)
+    }
   }
 
   /** Имя заведения — заголовок уведомления: гость должен видеть, от кого оно. */

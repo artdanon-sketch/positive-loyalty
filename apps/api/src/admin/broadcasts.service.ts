@@ -36,8 +36,8 @@ import { GuestAudienceService } from './guest-audience.service'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Два канала связи, и достаточно любого: связанный Telegram ИЛИ уведомления
- * в приложении. Недостижим тот, у кого нет ни того, ни другого.
+ * Три канала связи, и достаточно любого: чат с ботом заведения, связанный
+ * Telegram или уведомления в приложении. Недостижим тот, у кого нет ни одного.
  */
 const TELEGRAM = 'TELEGRAM' as const
 
@@ -186,7 +186,7 @@ export class BroadcastsService {
     const guestIds = memberships.map((membership) => membership.guestId)
     const since = new Date(Date.now() - BROADCAST_FATIGUE_DAYS * DAY_MS)
 
-    const [identities, devices, recent] = await Promise.all([
+    const [identities, devices, venueChats, recent] = await Promise.all([
       tx.guestIdentity.findMany({
         where: { guestId: { in: guestIds }, provider: TELEGRAM },
         select: { guestId: true },
@@ -197,6 +197,12 @@ export class BroadcastsService {
         where: { guestId: { in: guestIds }, goneAt: null },
         select: { guestId: true },
         distinct: ['guestId'],
+      }),
+      // Чаты с ботом самого заведения: гость, запустивший его, достижим
+      // даже без общего Telegram и без уведомлений.
+      tx.venueBotChat.findMany({
+        where: { tenantId, guestId: { in: guestIds }, blockedAt: null },
+        select: { guestId: true },
       }),
       tx.broadcastRecipient.groupBy({
         by: ['guestId'],
@@ -215,6 +221,7 @@ export class BroadcastsService {
       reachable: new Set([
         ...identities.map((identity) => identity.guestId),
         ...devices.map((device) => device.guestId),
+        ...venueChats.map((chat) => chat.guestId),
       ]),
       tired: new Set(
         recent
