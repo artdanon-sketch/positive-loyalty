@@ -187,6 +187,38 @@ const tier = (
   conditions: TierCondition[],
 ): Tier => ({ id, name, earnRate, redeemRate, hidden: false, conditions })
 
+/**
+ * Витрина «что взять за баллы». docs/02, раздел 5.17.
+ *
+ * ДЕМО ДОЛЖНО ПОКАЗЫВАТЬ СМЫСЛ, А НЕ ТАБЛИЦУ. Поэтому у каждого заведения
+ * есть и дешёвая награда, до которой доходит средний гость, и дорогая,
+ * ради которой стоит копить, и позиция без цены в баллах — чтобы было видно,
+ * что такие гостю не показываются.
+ */
+export interface CatalogItemSeed {
+  readonly id: string
+  readonly tenantId: string
+  readonly name: string
+  readonly description: string
+  readonly priceMinor: number | null
+  readonly pointsPrice: number | null
+  readonly sortOrder: number
+}
+
+/**
+ * Автосценарий рассылки. docs/02, раздел 5.4.1.
+ *
+ * Включён у одного заведения из трёх: так на демо видно и включённое
+ * состояние, и выключенное по умолчанию.
+ */
+export interface AutomationSeed {
+  readonly tenantId: string
+  readonly kind: 'SLEEPING' | 'JOINED_NO_PURCHASE' | 'SPENT_TOTAL'
+  readonly enabled: boolean
+  readonly threshold: number
+  readonly text: string
+}
+
 export const TENANTS: readonly TenantSeed[] = [
   {
     id: uuidFromIndex('10000000', 1),
@@ -230,8 +262,10 @@ export const TENANTS: readonly TenantSeed[] = [
         requireReceiptNumber: true,
         maxManualAmount: 300_000,
         allowManualEntry: true,
-        showGuestTags: false,
-        allowTagging: false,
+        // У этого заведения теги на кассе включены: на полигоне должно быть
+        // видно и включённое состояние, и выключенное по умолчанию у соседей.
+        showGuestTags: true,
+        allowTagging: true,
       },
       staffReward: {
         enabled: true,
@@ -785,3 +819,79 @@ export const STAFF: readonly StaffSeed[] = TENANTS.flatMap((tenant, tenantIndex)
     deviceLabel: template.label,
   }))
 })
+
+/** Витрины трёх заведений: по три позиции у каждого. */
+export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
+  {
+    id: uuidFromIndex('c0000000', 1),
+    tenantId: TENANTS[0]?.id ?? '',
+    name: 'Кофе в подарок',
+    description: 'Любой напиток из меню кофейной стойки.',
+    priceMinor: 12_000,
+    pointsPrice: 600,
+    sortOrder: 0,
+  },
+  {
+    id: uuidFromIndex('c0000000', 2),
+    tenantId: TENANTS[0]?.id ?? '',
+    name: 'Сет на двоих',
+    description: 'Два основных блюда и десерт.',
+    priceMinor: 180_000,
+    pointsPrice: 9_000,
+    sortOrder: 1,
+  },
+  {
+    id: uuidFromIndex('c0000000', 3),
+    tenantId: TENANTS[0]?.id ?? '',
+    name: 'Паста дня',
+    description: 'Позиция без цены в баллах: гость её в карте не увидит.',
+    priceMinor: 32_000,
+    pointsPrice: null,
+    sortOrder: 2,
+  },
+  {
+    id: uuidFromIndex('c0000000', 4),
+    tenantId: TENANTS[1]?.id ?? '',
+    name: 'Массаж стоп, 30 минут',
+    description: 'Быстрое восстановление после пляжа.',
+    priceMinor: 45_000,
+    pointsPrice: 2_500,
+    sortOrder: 0,
+  },
+  {
+    id: uuidFromIndex('c0000000', 5),
+    tenantId: TENANTS[1]?.id ?? '',
+    name: 'Тайский массаж, час',
+    description: 'Классика, ради которой копят.',
+    priceMinor: 90_000,
+    pointsPrice: 6_000,
+    sortOrder: 1,
+  },
+  {
+    id: uuidFromIndex('c0000000', 6),
+    tenantId: TENANTS[2]?.id ?? '',
+    name: 'День аренды скутера',
+    description: 'Шлем и бензин включены.',
+    priceMinor: 30_000,
+    pointsPrice: 3_000,
+    sortOrder: 0,
+  },
+]
+
+/** Автосценарии: включён один, остальные показывают состояние по умолчанию. */
+export const AUTOMATIONS: readonly AutomationSeed[] = [
+  {
+    tenantId: TENANTS[0]?.id ?? '',
+    kind: 'SLEEPING',
+    enabled: true,
+    threshold: 30,
+    text: 'Соскучились! Заходите — у нас для вас всё как вы любите.',
+  },
+  {
+    tenantId: TENANTS[1]?.id ?? '',
+    kind: 'JOINED_NO_PURCHASE',
+    enabled: false,
+    threshold: 7,
+    text: 'Вы с нами, но ещё не заглядывали. Ждём вас.',
+  },
+]
