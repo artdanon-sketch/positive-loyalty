@@ -3,6 +3,7 @@ import {
   GuestMe,
   GuestMessageView,
   GuestMessages,
+  GuestCatalog,
   GuestHistory,
   GuestNews,
   GuestNewsSeen,
@@ -99,6 +100,11 @@ export function createReview(authPost: AuthPost, input: CreateReviewInput): Prom
 /** Новости заведений гостя — одна лента на все (docs/02, раздел 2.9). */
 export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
   return authGet('/guest/news', GuestNews)
+}
+
+/** Что можно взять за баллы (docs/02, раздел 2.13). */
+export function fetchGuestCatalog(authGet: AuthGet): Promise<GuestCatalog> {
+  return authGet('/guest/catalog', GuestCatalog)
 }
 
 /** Имя и язык гостя (docs/02, раздел 2.12). */

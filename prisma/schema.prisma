@@ -143,6 +143,7 @@ model Tenant {
   webhookDeliveries      WebhookDelivery[]
   partnershipTriggerRuns PartnershipTriggerRun[]
   saleKinds              SaleKind[]
+  catalogItems           CatalogItem[]
   posQueueItems          PosQueueItem[]
   offers                 Offer[]
   offerGrants            OfferGrant[]
@@ -1272,6 +1273,32 @@ model PartnershipTerm {
 /// НЕ ЗАВИСИТ ОТ КАССЫ. Вид выбирает кассир, когда проводит начисление в нашем
 /// приложении. Партнёру не нужен POSitive POS: у него своя касса для денег,
 /// наше приложение — для лояльности.
+/// Позиция каталога: витрина заведения. Остатки и поставщики — дело кассы,
+/// здесь только то, что показывают гостю, и цена в баллах.
+model CatalogItem {
+  id       String @id @default(uuid())
+  tenantId String
+
+  name        String
+  description String  @default("")
+  /// Цена деньгами в минорных единицах. NULL — цену не показываем.
+  priceMinor  Int?
+  /// Цена в баллах. NULL — за баллы не отдаём.
+  pointsPrice Int?
+  imageUrl    String?
+
+  /// Выключенная позиция остаётся у владельца и исчезает у гостя.
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([tenantId, sortOrder])
+  @@index([tenantId, isActive])
+}
+
 model SaleKind {
   id       String @id @default(uuid())
   tenantId String

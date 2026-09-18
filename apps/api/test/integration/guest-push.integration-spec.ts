@@ -156,7 +156,19 @@ describe('Уведомления как второй канал рассылки
 
     const broadcastId = (created.body as { id: string }).id
 
-    await sender.tick()
+    // Разгребатель берёт по три рассылки за проход, а в базе одновременно
+    // лежат рассылки соседних тестов: гоняем его, пока не дойдёт до нашей.
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const left = await prisma.broadcastRecipient.count({
+        where: { broadcastId, delivery: 'PENDING' },
+      })
+
+      if (left === 0) {
+        break
+      }
+
+      await sender.tick()
+    }
 
     const rows = await prisma.broadcastRecipient.findMany({
       where: { broadcastId },

@@ -12,6 +12,8 @@ import type {
   PosConfig,
   PosGuest,
   ProgramConfig,
+  RedeemRewardInput,
+  RedeemRewardResult,
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
@@ -31,7 +33,7 @@ import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
 import { AccessTokenInvalidError } from '../common/tenant/tenant.errors'
 import { TenantContext } from '../common/tenant/tenant-context'
-import { AlreadyReversedError } from '../core/ledger.errors'
+import { AlreadyReversedError, InsufficientBalanceError } from '../core/ledger.errors'
 import { BirthdayService } from '../core/birthday.service'
 import { LedgerService } from '../core/ledger.service'
 import { MembershipRulesService } from '../core/membership-rules.service'
@@ -992,6 +994,66 @@ export class PosService {
    * платформы, где все причины отказа слиты в одну: там ответ читает тот,
    * кто подбирает, здесь — тот, кто обслуживает.
    */
+  /**
+   * Выдать награду из каталога за баллы. docs/02, раздел 3.8.
+   *
+   * ДОСТАТОЧНОСТЬ ПРОВЕРЯЕТ ЖУРНАЛ, А НЕ ЭТОТ КОД. Проверка «хватает ли»
+   * снаружи транзакции обгоняется параллельным списанием на второй кассе;
+   * `ledger.redeem` делает её внутри и отказывает честно.
+   *
+   * ПОВТОР БЕЗОПАСЕН: ключ идемпотентности строится из `redemptionId`, который
+   * придумывает касса. Планшет, отправивший запрос дважды из-за сети, спишет
+   * баллы один раз.
+   */
+  async redeemReward(input: RedeemRewardInput): Promise<RedeemRewardResult> {
+    const { tenantId, actorId } = TenantContext.getOrThrow()
+
+    const item = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.catalogItem.findFirst({
+        where: { id: input.itemId, tenantId, isActive: true },
+        select: { name: true, pointsPrice: true },
+      }),
+    )
+
+    if (item === null || item.pointsPrice === null) {
+      // Снятая с витрины позиция и позиция без цены в баллах — для кассы одно
+      // и то же: выдавать нечего.
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Такой награды нет на витрине' },
+      })
+    }
+
+    try {
+      const result = await this.ledger.redeem(
+        {
+          membershipId: input.membershipId,
+          amount: item.pointsPrice,
+          idempotencyKey: `pos:reward:${input.redemptionId}`,
+          refType: 'catalog_item',
+          refId: input.itemId,
+          source: 'STAFF_MANUAL',
+          actorType: 'STAFF',
+          actorId: actorId ?? undefined,
+        },
+        { tenantId },
+      )
+
+      return {
+        itemName: item.name,
+        pointsSpent: item.pointsPrice,
+        balanceAfter: result.entry.balanceAfter,
+      }
+    } catch (error) {
+      if (error instanceof InsufficientBalanceError) {
+        throw new BadRequestException({
+          error: { code: 'INSUFFICIENT_BALANCE', message: 'У гостя не хватает баллов' },
+        })
+      }
+
+      throw error
+    }
+  }
+
   async redeemGrant(input: {
     code: string
     receiptId?: string | undefined

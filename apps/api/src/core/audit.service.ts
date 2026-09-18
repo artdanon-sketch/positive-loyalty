@@ -100,6 +100,7 @@ export type AuditAction =
   | 'TENANT_PROFILE_CHANGED'
   | 'INTEGRATION_SECRET_REVEALED'
   | 'INTEGRATION_SECRET_ROTATED'
+  | 'CATALOG_ITEM_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction

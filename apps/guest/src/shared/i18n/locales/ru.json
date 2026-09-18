@@ -166,5 +166,7 @@
   "profile.phone": "Телефон",
   "profile.save": "Сохранить",
   "profile.saving": "Сохраняем…",
-  "profile.saved": "Сохранено."
+  "profile.saved": "Сохранено.",
+  "rewards.title": "За баллы",
+  "rewards.hint": "Покажите карту на кассе — списание проведёт кассир."
 }

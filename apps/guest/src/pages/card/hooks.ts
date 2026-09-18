@@ -6,6 +6,7 @@ import type {
   GuestMe,
   GuestMessageView,
   GuestMessages,
+  GuestCatalog,
   GuestHistory,
   GuestNews,
   GuestNewsSeen,
@@ -28,6 +29,7 @@ import {
   createReview,
   fetchMe,
   fetchMessages,
+  fetchGuestCatalog,
   fetchHistory,
   fetchNews,
   fetchQrToken,
@@ -254,5 +256,16 @@ export function useSaveProfile(): UseMutationResult<GuestMe, Error, UpdateGuestP
     onSuccess: (me) => {
       queryClient.setQueryData(ME_QUERY_KEY, me)
     },
+  })
+}
+
+/** Витрина «что взять за баллы». Пустая — блок на карте не показывается. */
+export function useGuestCatalog(): UseQueryResult<GuestCatalog, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: ['guest', 'catalog'],
+    queryFn: () => fetchGuestCatalog(authGet),
+    enabled: session !== null,
   })
 }

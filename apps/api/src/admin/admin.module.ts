@@ -55,6 +55,8 @@ import { SecurityService } from './security.service'
 import { NewsController } from './news.controller'
 import { IntegrationController } from './integration.controller'
 import { IntegrationService } from './integration.service'
+import { CatalogController } from './catalog.controller'
+import { CatalogService } from './catalog.service'
 import { NewsService } from './news.service'
 import { TodayController } from './today.controller'
 import { TodayService } from './today.service'
@@ -83,6 +85,7 @@ import { StaffService } from './staff.service'
     MessagesController,
     AutomationController,
     IntegrationController,
+    CatalogController,
     TenantProfileController,
     BroadcastsController,
     TodayController,
@@ -116,6 +119,7 @@ import { StaffService } from './staff.service'
     AutomationRunService,
     AutomationSweeper,
     IntegrationService,
+    CatalogService,
     TenantProfileService,
     GuestAudienceService,
     TodayService,

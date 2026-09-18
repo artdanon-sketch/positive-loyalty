@@ -12,6 +12,7 @@ import { PartnersPage } from '../pages/partners/Page'
 import { PosPage } from '../pages/pos/Page'
 import { ReportsPage } from '../pages/reports/Page'
 import { ReviewsPage } from '../pages/reviews/Page'
+import { CatalogPage } from '../pages/catalog/Page'
 import { SaleKindsPage } from '../pages/sale-kinds/Page'
 import { SecurityPage } from '../pages/security/Page'
 import { SettingsPage } from '../pages/settings/Page'
@@ -95,6 +96,7 @@ export function AppRoutes(): ReactElement {
         <Route path="partners" element={<PartnersPage />} />
         <Route path="partners/:id" element={<PartnerPage />} />
         <Route path="sale-kinds" element={<SaleKindsPage />} />
+        <Route path="catalog" element={<CatalogPage />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/security" element={<SecurityPage />} />
