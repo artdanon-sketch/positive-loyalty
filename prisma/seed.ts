@@ -55,13 +55,17 @@
 import { loadApiRuntime } from './api-runtime.ts'
 import { formatMinorUnits, heading, out, renderTable, type TableColumn } from './console-table.ts'
 import {
+  AUTOMATIONS,
   buildGuests,
   buildMemberships,
   buildVisits,
+  CATALOG_ITEMS,
   SALE_KINDS,
   SEED_VERSION,
   STAFF,
   TENANTS,
+  type AutomationSeed,
+  type CatalogItemSeed,
   type GuestSeed,
   type MembershipSeed,
   type SaleKindSeed,
@@ -415,6 +419,53 @@ const renderStaffLogins = (): string => {
   return renderTable(STAFF_COLUMNS, rows)
 }
 
+/**
+ * Витрина «что взять за баллы».
+ *
+ * Upsert по id: seed перезапускаемый, а поменянная цена должна доезжать
+ * до полигона, а не оставаться от прошлого запуска.
+ */
+const upsertCatalog = async (items: readonly CatalogItemSeed[]): Promise<void> => {
+  for (const item of items) {
+    await prisma.catalogItem.upsert({
+      where: { id: item.id },
+      create: {
+        id: item.id,
+        tenantId: item.tenantId,
+        name: item.name,
+        description: item.description,
+        priceMinor: item.priceMinor,
+        pointsPrice: item.pointsPrice,
+        sortOrder: item.sortOrder,
+      },
+      update: {
+        name: item.name,
+        description: item.description,
+        priceMinor: item.priceMinor,
+        pointsPrice: item.pointsPrice,
+        sortOrder: item.sortOrder,
+      },
+    })
+  }
+}
+
+/** Автосценарии рассылок: у каждого заведения свой набор. */
+const upsertAutomations = async (rules: readonly AutomationSeed[]): Promise<void> => {
+  for (const rule of rules) {
+    await prisma.automationRule.upsert({
+      where: { tenantId_kind: { tenantId: rule.tenantId, kind: rule.kind } },
+      create: {
+        tenantId: rule.tenantId,
+        kind: rule.kind,
+        enabled: rule.enabled,
+        threshold: rule.threshold,
+        text: rule.text,
+      },
+      update: { enabled: rule.enabled, threshold: rule.threshold, text: rule.text },
+    })
+  }
+}
+
 const seed = async (): Promise<void> => {
   const guests = buildGuests()
   const memberships = buildMemberships(guests)
@@ -434,6 +485,12 @@ const seed = async (): Promise<void> => {
 
   await upsertSaleKinds(SALE_KINDS)
   out(`Видов продаж записано: ${SALE_KINDS.length}`)
+
+  await upsertCatalog(CATALOG_ITEMS)
+  out(`Позиций в витринах: ${CATALOG_ITEMS.length}`)
+
+  await upsertAutomations(AUTOMATIONS)
+  out(`Автосценариев записано: ${AUTOMATIONS.length}`)
 
   await upsertStaff()
   out(`Сотрудников записано: ${STAFF.length}, устройств: ${STAFF.length}`)
