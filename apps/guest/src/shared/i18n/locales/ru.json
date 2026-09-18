@@ -170,5 +170,6 @@
   "rewards.title": "За баллы",
   "rewards.hint": "Покажите карту на кассе — списание проведёт кассир.",
   "venueBot.connect": "Получать сообщения от заведения",
-  "venueBot.opening": "Открываем Telegram…"
+  "venueBot.opening": "Открываем Telegram…",
+  "card.venues.expiring": "{points} баллов сгорят {date}"
 }

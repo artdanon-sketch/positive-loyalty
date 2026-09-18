@@ -127,6 +127,18 @@ export const WalletMembership = z
     visitsTotal: z.number().int().nonnegative(),
     lastVisitAt: z.iso.datetime().nullable(),
     isControlGroup: z.boolean(),
+    /**
+     * Что сгорит ближайшим днём: сколько баллов и когда. null — не сгорает
+     * ничего: у заведения нет срока жизни баллов или гость всё потратил.
+     *
+     * Гость должен узнать заранее, а не постфактум: сгоревшие молча баллы —
+     * не экономия заведения, а обиженный человек у стойки.
+     */
+    expiring: z
+      .object({ points: z.number().int().positive(), at: z.iso.datetime() })
+      .strict()
+      .nullable()
+      .default(null),
     /** Статус гостя в заведении. null — лестницы статусов в заведении нет. */
     tier: z.object({ name: z.string() }).strict().nullable(),
     /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { expiringPoints, expiryCutoff, expiryKey } from './points-expiry'
+import { expiringPoints, expiryCutoff, expiryKey, upcomingExpiry } from './points-expiry'
 
 /**
  * Это арифметика чужих денег: ошибка здесь сжигает баллы, которые гость
@@ -66,5 +66,48 @@ describe('Сгорание баллов: рубеж и ключ', () => {
 
     expect(morning).toBe(evening)
     expect(morning).not.toBe(tomorrow)
+  })
+})
+
+describe('Сгорание баллов: предупреждение заранее', () => {
+  const day = 24 * 60 * 60 * 1000
+  const now = new Date('2026-09-18T12:00:00')
+
+  it('СГОРИТ ТА ПАРТИЯ, КОТОРУЮ НЕ ПОГАСИЛИ СПИСАНИЯ', () => {
+    const earns = [
+      { at: new Date(now.getTime() - 20 * day), amount: 300 },
+      { at: new Date(now.getTime() - 5 * day), amount: 200 },
+    ]
+
+    // Потрачено 100: гасится самая старая партия, от неё остаётся 200.
+    expect(upcomingExpiry(earns, 100, 30, now)).toMatchObject({ points: 200 })
+  })
+
+  it('ДАТА — ЭТО ДЕНЬ НАЧИСЛЕНИЯ ПЛЮС СРОК', () => {
+    const at = new Date(now.getTime() - 10 * day)
+    const result = upcomingExpiry([{ at, amount: 500 }], 0, 30, now)
+
+    expect(result?.at.getTime()).toBe(at.getTime() + 30 * day)
+  })
+
+  it('ПАРТИЯ, УЖЕ ПЕРЕШЕДШАЯ РУБЕЖ, СГОРИТ БЛИЖАЙШИМ ПРОХОДОМ', () => {
+    const result = upcomingExpiry(
+      [{ at: new Date(now.getTime() - 60 * day), amount: 400 }],
+      0,
+      30,
+      now,
+    )
+
+    expect(result).toMatchObject({ points: 400, at: now })
+  })
+
+  it('ВСЁ ПОТРАЧЕНО — ТЕРЯТЬ НЕЧЕГО, И ПРЕДУПРЕЖДАТЬ НЕ О ЧЕМ', () => {
+    const earns = [{ at: new Date(now.getTime() - 20 * day), amount: 300 }]
+
+    expect(upcomingExpiry(earns, 300, 30, now)).toBeNull()
+  })
+
+  it('НАЧИСЛЕНИЙ НЕ БЫЛО — ТОЖЕ null, А НЕ НОЛЬ БАЛЛОВ', () => {
+    expect(upcomingExpiry([], 0, 30, now)).toBeNull()
   })
 })
