@@ -30,6 +30,26 @@ export const StaffPinLoginInput = z
 
 export type StaffPinLoginInput = z.infer<typeof StaffPinLoginInput>
 
+/**
+ * Вход владельца и менеджера по почте и паролю.
+ *
+ * ЗДЕСЬ НЕТ tenantId — как и у входа по PIN. Заведение определяется по почте:
+ * она глобально уникальна, и принимать заведение от клиента нельзя, иначе его
+ * можно перебирать по разнице ответов.
+ *
+ * Почта опознаёт человека, пароль подтверждает. Это вход для тех, кто работает
+ * с ноутбука или телефона; кассир за планшетом остаётся на устройстве и PIN.
+ */
+export const StaffEmailLoginInput = z
+  .object({
+    email: z.string().trim().toLowerCase().email('Введите почту').max(200),
+    /** Пароль длиннее PIN: это доступ ко всем деньгам заведения. */
+    password: z.string().min(8, 'Не короче восьми знаков').max(200),
+  })
+  .strict()
+
+export type StaffEmailLoginInput = z.infer<typeof StaffEmailLoginInput>
+
 export const RefreshInput = z
   .object({
     refreshToken: z.string().min(32).max(512),

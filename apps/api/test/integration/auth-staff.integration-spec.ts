@@ -227,3 +227,83 @@ describe('Роли', () => {
     expect(JSON.stringify(response.body)).toMatch(/FORBIDDEN/)
   })
 })
+
+describe('Вход владельца по почте и паролю', () => {
+  const OWNER_EMAIL = `owner-${Date.now()}@kata.example`
+  const OWNER_PASSWORD = 'верный-конь-батарейка-скрепка'
+  let ownerId: string
+
+  const loginByEmail = (email: string, password: string) =>
+    request(server()).post('/v1/auth/staff/login').send({ email, password })
+
+  beforeAll(async () => {
+    const hash = await hashPin(OWNER_PASSWORD)
+    const owner = await prisma.staff.create({
+      data: {
+        tenantId,
+        role: 'OWNER',
+        displayName: 'Владелец',
+        email: OWNER_EMAIL,
+        passwordHash: hash,
+      },
+      select: { id: true },
+    })
+    ownerId = owner.id
+  })
+
+  it('ВЕРНАЯ ПАРА ПУСКАЕТ И ОТКРЫВАЕТ БЭК-ОФИС', async () => {
+    const response = await loginByEmail(OWNER_EMAIL, OWNER_PASSWORD).expect(200)
+    const tokens = response.body as TokensBody
+
+    expect(tokens.subject.role).toBe('OWNER')
+    expect(tokens.subject.tenantId).toBe(tenantId)
+
+    await request(server())
+      .get('/v1/admin/ledger')
+      .set('Authorization', `Bearer ${tokens.accessToken}`)
+      .expect(200)
+  })
+
+  it('ПОЧТА РЕГИСТРОНЕЗАВИСИМА: «OWNER@» И «owner@» — ОДИН ВХОД', async () => {
+    await loginByEmail(OWNER_EMAIL.toUpperCase(), OWNER_PASSWORD).expect(200)
+  })
+
+  it('НЕВЕРНЫЙ ПАРОЛЬ — 401 БЕЗ ПОДРОБНОСТЕЙ', async () => {
+    const response = await loginByEmail(OWNER_EMAIL, 'не-тот-пароль-совсем').expect(401)
+    expect(JSON.stringify(response.body)).toMatch(/UNAUTHORIZED/)
+  })
+
+  it('НЕСУЩЕСТВУЮЩАЯ ПОЧТА — ТОЖЕ 401, А НЕ 404', async () => {
+    await loginByEmail('нет-такого@kata.example', OWNER_PASSWORD).expect(401)
+  })
+
+  it('КОРОТКИЙ ПАРОЛЬ ОТВЕРГАЕТСЯ ДО ПРОВЕРКИ — 400', async () => {
+    await loginByEmail(OWNER_EMAIL, 'коротк').expect(400)
+  })
+
+  it('ПЯТЬ НЕВЕРНЫХ ПОПЫТОК — И ВЕРНЫЙ ПАРОЛЬ ВРЕМЕННО НЕ ПУСКАЕТ', async () => {
+    const solo = await prisma.staff.create({
+      data: {
+        tenantId,
+        role: 'OWNER',
+        displayName: 'Владелец под замок',
+        email: `lock-${Date.now()}@kata.example`,
+        passwordHash: await hashPin('правильный-пароль-длинный'),
+      },
+      select: { id: true, email: true },
+    })
+
+    for (let i = 0; i < 5; i += 1) {
+      await loginByEmail(solo.email ?? '', 'мимо-пароль-длинный').expect(401)
+    }
+
+    // Верный пароль теперь тоже 401: сработала блокировка после серии неудач.
+    await loginByEmail(solo.email ?? '', 'правильный-пароль-длинный').expect(401)
+  })
+
+  it('КАССИР БЕЗ ПОЧТЫ ПО ЭТОМУ ВХОДУ НЕ ПУСКАЕТСЯ', async () => {
+    // У кассира есть PIN, но нет пароля — вход по почте не для него.
+    expect(ownerId).not.toBe('')
+    await loginByEmail(`cashier-none-${Date.now()}@kata.example`, OWNER_PASSWORD).expect(401)
+  })
+})

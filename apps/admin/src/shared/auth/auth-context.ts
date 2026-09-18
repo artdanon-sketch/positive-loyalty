@@ -20,6 +20,8 @@ export interface AuthContextValue {
   readonly status: AuthStatus
   readonly session: Session | null
   readonly login: (deviceId: string, pin: string) => Promise<void>
+  /** Вход владельца и менеджера по почте и паролю. */
+  readonly loginByEmail: (email: string, password: string) => Promise<void>
   readonly logout: () => void
   /**
    * Запрос от имени сессии: подставляет токен, на 401 один раз обновляет

@@ -100,6 +100,17 @@ const slugify = (name: string): string => {
  * внутреннего метода readline на живой машине не сработала, и вставленный
  * секрет оказался на экране. Читаем посимвольно сами.
  */
+/** Обычный видимый ввод строки — для почты: она не секрет. */
+const askLine = async (prompt: string): Promise<string> => {
+  const { createInterface } = await import('node:readline/promises')
+  const rl = createInterface({ input: process.stdin, output: out })
+  try {
+    return await rl.question(prompt)
+  } finally {
+    rl.close()
+  }
+}
+
 const askHidden = (prompt: string): Promise<string> =>
   new Promise((resolve) => {
     const stdin = process.stdin
@@ -235,7 +246,7 @@ if (ownerUrl !== undefined && ownerUrl !== '') {
   process.env['DATABASE_URL'] = ownerUrl
 }
 
-// ── PIN ──────────────────────────────────────────────────────────────────────
+// ── Почта и пароль владельца ───────────────────────────────────────────────
 
 say('')
 say('═══════════════════════════════════════════════════════════════')
@@ -248,24 +259,45 @@ for (const b of businesses) {
 }
 
 say('')
-say('Придумай PIN для входа — от 4 до 8 цифр. Он будет один на все заведения.')
-say('Запиши его: восстановить PIN нельзя, только задать новый.')
-say('Вместо цифр будут звёздочки.')
+say('Владелец входит в бэк-офис по почте и паролю. Для каждого заведения')
+say('своя почта: по ней вход понимает, куда пускать. Пароль скрыт звёздочками.')
+say('Запиши пароль: восстановление по почте появится позже, пока новый пароль')
+say('задаётся этой же командой.')
 say('')
 
-const pin = await askHidden('PIN: ')
+/** Собираем учётки владельца ДО создания: половинчатый ввод не должен оставить заведение. */
+const creds: Array<{ email: string; password: string }> = []
+const seenEmails = new Set<string>()
 
-if (!/^\d{4,8}$/.test(pin)) {
-  die('PIN должен состоять только из цифр, от 4 до 8 штук.')
+for (const b of businesses) {
+  say(`— ${b.brandName}`)
+  const email = (await askLine('  Почта владельца: ')).trim().toLowerCase()
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    die('Это не похоже на почту. Ничего не создано, попробуй снова.')
+  }
+
+  if (seenEmails.has(email)) {
+    die('Одна почта на два заведения не годится: по ней вход не различит их.')
+  }
+
+  seenEmails.add(email)
+
+  const password = await askHidden('  Пароль (от 8 знаков): ')
+
+  if (password.length < 8) {
+    die('Пароль короче восьми знаков. Ничего не создано, попробуй снова.')
+  }
+
+  const again = await askHidden('  Ещё раз:              ')
+
+  if (again !== password) {
+    die('Второй раз набрано другое. Ничего не создано, попробуй снова.')
+  }
+
+  creds.push({ email, password })
+  say('')
 }
-
-const again = await askHidden('Ещё раз:  ')
-
-if (again !== pin) {
-  die('Второй раз набрано другое. Ничего не создано, попробуй снова.')
-}
-
-say('')
 
 // ── Создание ─────────────────────────────────────────────────────────────────
 
@@ -273,17 +305,17 @@ const runtime = await loadApiRuntime()
 const { prisma } = runtime
 
 try {
-  const pinHash = await runtime.hashPin(pin)
-
   /** Настройки программы берутся из схемы контракта: свои цифры не выдумываем. */
   const settings = parseProgramConfig({})
 
-  const created: Array<{ brand: string; deviceId: string }> = []
+  const created: Array<{ brand: string; email: string }> = []
 
-  for (const business of businesses) {
+  for (const [index, business] of businesses.entries()) {
     const tenantId = business.slug
     const staffId = `${business.slug}-owner`
-    const deviceId = `owner-${business.slug}`
+    const cred = creds[index] ?? die('Внутренняя ошибка: не набрана учётка для заведения.')
+
+    const passwordHash = await runtime.hashPin(cred.password)
 
     await prisma.tenant.upsert({
       where: { id: tenantId },
@@ -299,30 +331,22 @@ try {
       },
     })
 
+    // Владелец входит по почте и паролю; PIN и устройство ему не нужны —
+    // это ключ кассира за планшетом.
     await prisma.staff.upsert({
       where: { id: staffId },
-      update: { pinHash, isActive: true },
+      update: { email: cred.email, passwordHash, pinHash: null, isActive: true },
       create: {
         id: staffId,
         tenantId,
         role: 'OWNER',
         displayName: 'Владелец',
-        pinHash,
+        email: cred.email,
+        passwordHash,
       },
     })
 
-    await prisma.staffDevice.upsert({
-      where: { deviceId },
-      update: { staffId, tenantId, isActive: true, revokedAt: null },
-      create: {
-        tenantId,
-        staffId,
-        deviceId,
-        label: 'Устройство владельца',
-      },
-    })
-
-    created.push({ brand: business.brandName, deviceId })
+    created.push({ brand: business.brandName, email: cred.email })
   }
 
   say('Готово. Входить так:')
@@ -331,14 +355,12 @@ try {
   const width = Math.max(...created.map((c) => c.brand.length))
 
   for (const c of created) {
-    say(`  ${c.brand.padEnd(width)}   код устройства:  ${c.deviceId}`)
+    say(`  ${c.brand.padEnd(width)}   почта:  ${c.email}`)
   }
 
   say('')
-  say('  PIN — тот, что ты сейчас задал. На экран он не выводится.')
-  say('')
-  say('  Код устройства секретом не является: без PIN он бесполезен.')
-  say('  А вот PIN никому не показывай — он и есть ключ.')
+  say('  Пароль — тот, что ты сейчас задал. На экран он не выводится.')
+  say('  Никому его не показывай — он и есть ключ ко всем деньгам заведения.')
   say('')
 } finally {
   await runtime.close()
