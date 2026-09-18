@@ -400,7 +400,9 @@ describe('Вход по коду восстановления', () => {
   }
 
   it('ЗАПАСНОЙ КЛЮЧ ОТКРЫВАЕТ ДВЕРЬ, КОГДА ТЕЛЕФОН ПОТЕРЯН', async () => {
-    const { admin, password, secret } = await createAdmin({ withDevice: 'старый-ноутбук' })
+    const { admin, password, secret } = await createAdmin({
+      withDevice: `старый-ноутбук-${randomUUID()}`,
+    })
     const code = await issueCode(admin.id)
     const now = new Date()
 
@@ -415,7 +417,9 @@ describe('Вход по коду восстановления', () => {
   })
 
   it('КОД СГОРАЕТ ПОСЛЕ ПЕРВОГО ИСПОЛЬЗОВАНИЯ', async () => {
-    const { admin, password, secret } = await createAdmin({ withDevice: 'старый-ноутбук' })
+    const { admin, password, secret } = await createAdmin({
+      withDevice: `старый-ноутбук-${randomUUID()}`,
+    })
     const code = await issueCode(admin.id)
     const now = new Date()
 
@@ -437,7 +441,7 @@ describe('Вход по коду восстановления', () => {
   })
 
   it('ЧУЖОЙ КОД НЕ ПОДХОДИТ: КОДЫ ПРИВЯЗАНЫ К СВОЕЙ УЧЁТКЕ', async () => {
-    const mine = await createAdmin({ withDevice: 'мой-ноутбук' })
+    const mine = await createAdmin({ withDevice: `мой-ноутбук-${randomUUID()}` })
     const other = await createAdmin()
     const foreign = await issueCode(other.admin.id)
 
@@ -452,7 +456,7 @@ describe('Вход по коду восстановления', () => {
   })
 
   it('БЕЗ ПАРОЛЯ КОД ВОССТАНОВЛЕНИЯ БЕСПОЛЕЗЕН', async () => {
-    const { admin, secret } = await createAdmin({ withDevice: 'ноутбук' })
+    const { admin, secret } = await createAdmin({ withDevice: `ноутбук-${randomUUID()}` })
     const code = await issueCode(admin.id)
 
     await expect(
@@ -472,7 +476,7 @@ describe('Вход по коду восстановления', () => {
   })
 
   it('ВХОД ЗАПАСНЫМ КЛЮЧОМ ВИДЕН В ИСТОРИИ ОТДЕЛЬНОЙ ЗАПИСЬЮ', async () => {
-    const { admin, password, secret } = await createAdmin({ withDevice: 'ноутбук' })
+    const { admin, password, secret } = await createAdmin({ withDevice: `ноутбук-${randomUUID()}` })
     const code = await issueCode(admin.id)
 
     await service.signIn(
