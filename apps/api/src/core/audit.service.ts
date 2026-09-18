@@ -101,6 +101,7 @@ export type AuditAction =
   | 'INTEGRATION_SECRET_REVEALED'
   | 'INTEGRATION_SECRET_ROTATED'
   | 'CATALOG_ITEM_CHANGED'
+  | 'VENUE_BOT_CHANGED'
 
 export interface AuditEntry {
   readonly action: AuditAction

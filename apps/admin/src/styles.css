@@ -3373,3 +3373,13 @@ body {
   word-break: break-all;
   user-select: all;
 }
+
+/* Четыре шага до своего бота: нумерованный список, читаемый с одного взгляда. */
+.bot-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}

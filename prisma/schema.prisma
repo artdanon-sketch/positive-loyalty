@@ -144,6 +144,8 @@ model Tenant {
   partnershipTriggerRuns PartnershipTriggerRun[]
   saleKinds              SaleKind[]
   catalogItems           CatalogItem[]
+  venueBot               VenueBot?
+  venueBotChats          VenueBotChat[]
   posQueueItems          PosQueueItem[]
   offers                 Offer[]
   offerGrants            OfferGrant[]
@@ -200,6 +202,7 @@ model Guest {
   guestSessions GuestSession[]
   identities    GuestIdentity[]
   pushSubscriptions      PushSubscription[]
+  venueBotChats          VenueBotChat[]
   ledgerEntries LedgerEntry[]
   offerGrants   OfferGrant[]
   reviews       Review[]
@@ -1275,6 +1278,45 @@ model PartnershipTerm {
 /// наше приложение — для лояльности.
 /// Позиция каталога: витрина заведения. Остатки и поставщики — дело кассы,
 /// здесь только то, что показывают гостю, и цена в баллах.
+/// Свой Telegram-бот заведения: от его имени уходят рассылки и сообщения.
+///
+/// Одно заведение — один бот: второй означал бы два одинаковых сообщения
+/// гостю из разных чатов.
+model VenueBot {
+  id       String @id @default(uuid())
+  tenantId String @unique
+
+  /// Ключ от @BotFather. Настоящий секрет: наружу уходит только хвост.
+  token    String
+  /// Имя бота для ссылки t.me/<имя>.
+  username String
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+}
+
+/// Кто из гостей запустил бота заведения. Telegram не даёт писать первым:
+/// пока гость не нажал «Запустить», сообщение ему не уйдёт.
+model VenueBotChat {
+  id       String @id @default(uuid())
+  tenantId String
+  guestId  String
+
+  /// Идентификатор чата у ЭТОГО бота.
+  chatId    String
+  startedAt DateTime  @default(now())
+  /// Когда бот получил отказ «гость заблокировал»: таким больше не пишем.
+  blockedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, guestId])
+  @@index([tenantId, blockedAt])
+}
+
 model CatalogItem {
   id       String @id @default(uuid())
   tenantId String
