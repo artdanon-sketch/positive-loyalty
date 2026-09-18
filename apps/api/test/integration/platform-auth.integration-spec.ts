@@ -384,8 +384,13 @@ describe('Вход в админку платформы', () => {
 describe('Вход по коду восстановления', () => {
   /** Выдаёт админу бумажный код: так же, как это делает bootstrap-admin. */
   const issueCode = async (adminId: string): Promise<string> => {
-    const { createHash } = await import('node:crypto')
-    const code = 'ABCD2345EFGH'
+    const { createHash, randomInt } = await import('node:crypto')
+    // Код у каждой проверки свой: хеш кода уникален на всю базу, и общий
+    // код столкнулся бы сам с собой уже во втором тесте.
+    const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+    const code = Array.from({ length: 12 }, () => alphabet.charAt(randomInt(alphabet.length))).join(
+      '',
+    )
 
     await prisma.platformRecoveryCode.create({
       data: { adminId, codeHash: createHash('sha256').update(code).digest('hex') },
