@@ -4,7 +4,7 @@ import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { PushService } from '../identity/push.service'
-import { TelegramApi } from '../identity/telegram-api'
+import { TelegramApiFactory } from '../identity/telegram-api.factory'
 import { TelegramBotService } from '../identity/telegram-bot.service'
 
 /**
@@ -54,6 +54,7 @@ export class BroadcastSendService {
     private readonly prisma: PrismaService,
     private readonly telegram: TelegramBotService,
     private readonly push: PushService,
+    private readonly venueApi: TelegramApiFactory,
   ) {}
 
   /**
@@ -257,7 +258,7 @@ export class BroadcastSendService {
    */
   private async deliverVia(token: string, chatId: string, text: string): Promise<string | null> {
     try {
-      await new TelegramApi(token).sendMessage(chatId, text)
+      await this.venueApi.for(token).sendMessage(chatId, text)
 
       return null
     } catch (error) {

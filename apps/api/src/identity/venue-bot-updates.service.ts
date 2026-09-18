@@ -4,7 +4,8 @@ import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common'
 import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
 
-import { parseStart, TelegramApi } from './telegram-api'
+import { parseStart, type TelegramApi } from './telegram-api'
+import { TelegramApiFactory } from './telegram-api.factory'
 import { VenueBotLinkService } from './venue-bot-link.service'
 
 /**
@@ -44,6 +45,7 @@ export class VenueBotUpdatesService implements OnApplicationBootstrap, OnModuleD
   constructor(
     private readonly prisma: PrismaService,
     private readonly links: VenueBotLinkService,
+    private readonly telegram: TelegramApiFactory,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -120,7 +122,7 @@ export class VenueBotUpdatesService implements OnApplicationBootstrap, OnModuleD
   }
 
   private async poll(tenantId: string, token: string, stop: AbortController): Promise<void> {
-    const api = new TelegramApi(token)
+    const api = this.telegram.for(token)
 
     // Накопленное за время простоя пропускаем: коды приглашений живут час,
     // и отвечать на позавчерашние «Запустить» бессмысленно.

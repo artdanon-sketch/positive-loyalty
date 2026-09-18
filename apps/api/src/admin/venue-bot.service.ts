@@ -4,7 +4,7 @@ import type { ConnectVenueBotInput, VenueBotStatus } from '@positive/contracts'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
-import { TelegramApi } from '../identity/telegram-api'
+import { TelegramApiFactory } from '../identity/telegram-api.factory'
 
 /**
  * Свой бот заведения. docs/02, раздел 5.18.
@@ -32,6 +32,7 @@ export class VenueBotService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly telegram: TelegramApiFactory,
   ) {}
 
   async status(): Promise<VenueBotStatus> {
@@ -106,7 +107,7 @@ export class VenueBotService {
   /** Спрашиваем Telegram, чей это ключ: он же скажет, если ключ нерабочий. */
   private async usernameOf(token: string): Promise<string> {
     try {
-      const me = await new TelegramApi(token).getMe()
+      const me = await this.telegram.for(token).getMe()
 
       return me.username
     } catch (error) {
