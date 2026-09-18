@@ -380,3 +380,118 @@ describe('Вход в админку платформы', () => {
     ).rejects.toBeInstanceOf(PlatformSignInFailedError)
   })
 })
+
+describe('Вход по коду восстановления', () => {
+  /** Выдаёт админу бумажный код: так же, как это делает bootstrap-admin. */
+  const issueCode = async (adminId: string): Promise<string> => {
+    const { createHash, randomInt } = await import('node:crypto')
+    // Код у каждой проверки свой: хеш кода уникален на всю базу, и общий
+    // код столкнулся бы сам с собой уже во втором тесте.
+    const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+    const code = Array.from({ length: 12 }, () => alphabet.charAt(randomInt(alphabet.length))).join(
+      '',
+    )
+
+    await prisma.platformRecoveryCode.create({
+      data: { adminId, codeHash: createHash('sha256').update(code).digest('hex') },
+    })
+
+    return code
+  }
+
+  it('ЗАПАСНОЙ КЛЮЧ ОТКРЫВАЕТ ДВЕРЬ, КОГДА ТЕЛЕФОН ПОТЕРЯН', async () => {
+    const { admin, password, secret } = await createAdmin({
+      withDevice: `старый-ноутбук-${randomUUID()}`,
+    })
+    const code = await issueCode(admin.id)
+    const now = new Date()
+
+    const result = await service.signIn(
+      signInInput(admin.email, password, secret, now, {
+        totpCode: code,
+        deviceId: `новый-телефон-${randomUUID()}`,
+      }),
+    )
+
+    expect(result.adminId).toBe(admin.id)
+  })
+
+  it('КОД СГОРАЕТ ПОСЛЕ ПЕРВОГО ИСПОЛЬЗОВАНИЯ', async () => {
+    const { admin, password, secret } = await createAdmin({
+      withDevice: `старый-ноутбук-${randomUUID()}`,
+    })
+    const code = await issueCode(admin.id)
+    const now = new Date()
+
+    await service.signIn(
+      signInInput(admin.email, password, secret, now, {
+        totpCode: code,
+        deviceId: `телефон-${randomUUID()}`,
+      }),
+    )
+
+    await expect(
+      service.signIn(
+        signInInput(admin.email, password, secret, new Date(now.getTime() + 60_000), {
+          totpCode: code,
+          deviceId: `ещё-телефон-${randomUUID()}`,
+        }),
+      ),
+    ).rejects.toThrow()
+  })
+
+  it('ЧУЖОЙ КОД НЕ ПОДХОДИТ: КОДЫ ПРИВЯЗАНЫ К СВОЕЙ УЧЁТКЕ', async () => {
+    const mine = await createAdmin({ withDevice: `мой-ноутбук-${randomUUID()}` })
+    const other = await createAdmin()
+    const foreign = await issueCode(other.admin.id)
+
+    await expect(
+      service.signIn(
+        signInInput(mine.admin.email, mine.password, mine.secret, new Date(), {
+          totpCode: foreign,
+          deviceId: `телефон-${randomUUID()}`,
+        }),
+      ),
+    ).rejects.toThrow()
+  })
+
+  it('БЕЗ ПАРОЛЯ КОД ВОССТАНОВЛЕНИЯ БЕСПОЛЕЗЕН', async () => {
+    const { admin, secret } = await createAdmin({ withDevice: `ноутбук-${randomUUID()}` })
+    const code = await issueCode(admin.id)
+
+    await expect(
+      service.signIn(
+        signInInput(admin.email, 'не-тот-пароль-совсем', secret, new Date(), {
+          totpCode: code,
+          deviceId: `телефон-${randomUUID()}`,
+        }),
+      ),
+    ).rejects.toThrow()
+
+    // Код остался неиспользованным: до него дело не дошло.
+    const left = await prisma.platformRecoveryCode.count({
+      where: { adminId: admin.id, usedAt: null },
+    })
+    expect(left).toBe(1)
+  })
+
+  it('ВХОД ЗАПАСНЫМ КЛЮЧОМ ВИДЕН В ИСТОРИИ ОТДЕЛЬНОЙ ЗАПИСЬЮ', async () => {
+    const { admin, password, secret } = await createAdmin({ withDevice: `ноутбук-${randomUUID()}` })
+    const code = await issueCode(admin.id)
+
+    await service.signIn(
+      signInInput(admin.email, password, secret, new Date(), {
+        totpCode: code,
+        deviceId: `телефон-${randomUUID()}`,
+      }),
+    )
+
+    const entry = await prisma.auditLog.findFirst({
+      where: { entityId: admin.id, action: 'PLATFORM_ADMIN_SIGNED_IN' },
+      orderBy: { occurredAt: 'desc' },
+      select: { newValue: true },
+    })
+
+    expect(entry?.newValue).toMatchObject({ способ: 'КОД_ВОССТАНОВЛЕНИЯ' })
+  })
+})

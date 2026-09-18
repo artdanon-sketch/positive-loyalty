@@ -135,6 +135,14 @@ const REFRESH_TTL_DAYS = 30
 /** 15 минут — docs/05, раздел 2: столько же, сколько у владельца заведения. */
 const ACCESS_TTL_SECONDS = 900
 
+/**
+ * Двенадцать букв и цифр из нашего алфавита — это код восстановления;
+ * шесть цифр — код аутентификатора. Спутать их нельзя, поэтому переключателя
+ * в форме входа нет.
+ */
+const isRecoveryShape = (value: string): boolean =>
+  /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{12}$/i.test(value.trim())
+
 @Injectable()
 export class PlatformAuthService {
   private readonly logger = new Logger(PlatformAuthService.name)
@@ -201,28 +209,59 @@ export class PlatformAuthService {
     // Безопасность при этом не страдает — код требуется в любом случае,
     // и пароля в одиночку не хватает ни на одном шаге.
 
-    const secret = openSecret(admin.totpSecretEnc, keyFromEnv(process.env['PLATFORM_TOTP_ENC_KEY']))
-    const counter = matchTotpCounter(secret, input.totpCode, input.now.getTime())
+    // Код восстановления — запасной ключ от той же двери. Он нужен ровно
+    // в одном случае: телефон с аутентификатором утонул, и другого способа
+    // предъявить второй фактор не осталось. Поэтому он проверяется здесь же,
+    // после пароля, и сгорает при первом использовании.
+    const recovery = isRecoveryShape(input.totpCode)
+      ? await this.burnRecoveryCode(admin.id, input.totpCode)
+      : null
 
-    if (counter === null) {
-      await this.recordFailure(admin.id, email, 'НЕВЕРНЫЙ_КОД', input)
-      throw new PlatformSignInFailedError()
+    let counter: number | null = null
+
+    if (recovery === null) {
+      const secret = openSecret(
+        admin.totpSecretEnc,
+        keyFromEnv(process.env['PLATFORM_TOTP_ENC_KEY']),
+      )
+      counter = matchTotpCounter(secret, input.totpCode, input.now.getTime())
+
+      if (counter === null) {
+        await this.recordFailure(admin.id, email, 'НЕВЕРНЫЙ_КОД', input)
+        throw new PlatformSignInFailedError()
+      }
     }
 
     // RFC 6238, раздел 5.2: принятый код не принимается второй раз. Строгое
     // «больше», а не «больше или равно», отсекает и повтор того же кода,
     // и попытку предъявить код из более раннего окна.
-    if (admin.lastTotpCounter !== null && BigInt(counter) <= admin.lastTotpCounter) {
+    if (
+      counter !== null &&
+      admin.lastTotpCounter !== null &&
+      BigInt(counter) <= admin.lastTotpCounter
+    ) {
       await this.recordFailure(admin.id, email, 'ПОВТОР_КОДА', input)
       throw new PlatformSignInFailedError()
     }
 
     const deviceIdHash = sha256(input.deviceId)
-    const enrolled = await this.resolveDevice(admin.id, deviceIdHash, input)
+    // Вход по коду восстановления заводит устройство сам: телефон потерян
+    // вместе с доверием к нему, и требовать «войдите со старого устройства»
+    // значит не восстановить доступ, а запереть дверь окончательно.
+    const enrolled =
+      recovery === null
+        ? await this.resolveDevice(admin.id, deviceIdHash, input)
+        : await this.enrollDevice(admin.id, deviceIdHash, input)
 
     if (enrolled === null) {
       await this.recordFailure(admin.id, email, 'ЧУЖОЕ_УСТРОЙСТВО', input)
       throw new PlatformSignInFailedError()
+    }
+
+    if (recovery !== null) {
+      // Отдельная запись в истории: вход запасным ключом — событие, о котором
+      // владелец должен узнать, даже если это был он сам.
+      await this.audit.write(this.recoveryEntry(admin.id, email, input))
     }
 
     return this.completeSignIn(
@@ -280,11 +319,63 @@ export class PlatformAuthService {
     return true
   }
 
+  /**
+   * Сжечь код восстановления.
+   *
+   * ОДИН РАЗ И НАСОВСЕМ. Код, который можно предъявить дважды, — это пароль,
+   * записанный на бумаге и оставленный действующим навсегда.
+   *
+   * Возвращает `null`, если такого кода нет или он уже использован: наружу
+   * различие не выходит, иначе по ответу можно было бы перебирать бумажку.
+   */
+  private async burnRecoveryCode(adminId: string, code: string): Promise<{ id: string } | null> {
+    const codeHash = sha256(code.trim().toUpperCase())
+
+    const burned = await this.prisma.platformRecoveryCode.updateMany({
+      where: { adminId, codeHash, usedAt: null },
+      data: { usedAt: new Date() },
+    })
+
+    return burned.count === 0 ? null : { id: codeHash }
+  }
+
+  /**
+   * Завести доверенное устройство при входе по коду восстановления.
+   *
+   * Старые устройства не трогаем: человек мог потерять телефон, а мог просто
+   * оставить его дома, и отзывать за него доверие — решение владельца,
+   * а не наше.
+   */
+  private async enrollDevice(
+    adminId: string,
+    deviceIdHash: string,
+    input: SignInInput,
+  ): Promise<boolean> {
+    const known = await this.prisma.platformAdminDevice.findFirst({
+      where: { adminId, deviceIdHash, revokedAt: null },
+    })
+
+    if (known !== null) {
+      return false
+    }
+
+    await this.prisma.platformAdminDevice.create({
+      data: {
+        adminId,
+        deviceIdHash,
+        label: input.deviceLabel?.trim() || 'Устройство после восстановления',
+        lastSeenAt: input.now,
+      },
+    })
+
+    return true
+  }
+
   /** Успешный вход: сбросить счётчики, запомнить окно, завести сессию, оставить след. */
   private async completeSignIn(
     adminId: string,
     displayName: string,
-    counter: number,
+    counter: number | null,
     deviceIdHash: string,
     deviceEnrolled: boolean,
     totpWasUnconfirmed: boolean,
@@ -298,11 +389,15 @@ export class PlatformAuthService {
       data: {
         failedAttempts: 0,
         lockedUntil: null,
-        lastTotpCounter: BigInt(counter),
+        // Окно аутентификатора двигаем только когда им и входили: вход
+        // по коду восстановления не должен обесценивать следующий код TOTP.
+        ...(counter === null ? {} : { lastTotpCounter: BigInt(counter) }),
         lastSeenAt: input.now,
         // Проставляется один раз: сошедшийся код доказал, что аутентификатор
         // подключён. Повторные входы значение не трогают.
-        ...(totpWasUnconfirmed ? { totpConfirmedAt: input.now } : {}),
+        // Аутентификатор подтверждает только сошедшийся код из него самого:
+        // код восстановления доказывает владение бумажкой, а не телефоном.
+        ...(totpWasUnconfirmed && counter !== null ? { totpConfirmedAt: input.now } : {}),
       },
     })
 
@@ -384,6 +479,32 @@ export class PlatformAuthService {
     this.logger.warn(`Вход в админку платформы отклонён: ${reason}, почта ${maskEmail(email)}`)
 
     await this.audit.write(this.auditEntry(adminId, email, reason, input))
+  }
+
+  /**
+   * Вход запасным ключом — отдельная запись в истории.
+   *
+   * Это не отказ и не обычный вход: владелец должен увидеть в журнале, что
+   * кто-то воспользовался кодом восстановления, даже если это был он сам.
+   * Молчаливое «вошёл как обычно» лишило бы единственного сигнала о том,
+   * что бумажка с кодами попала в чужие руки.
+   */
+  private recoveryEntry(
+    adminId: string,
+    email: string,
+    input: SignInInput,
+  ): Parameters<AuditService['write']>[0] {
+    return {
+      action: 'PLATFORM_ADMIN_SIGNED_IN',
+      actorType: 'PLATFORM_ADMIN',
+      actorId: adminId,
+      tenantId: null,
+      entityType: 'PlatformAdmin',
+      entityId: adminId,
+      newValue: { исход: 'УСПЕХ', способ: 'КОД_ВОССТАНОВЛЕНИЯ', почта: maskEmail(email) },
+      ip: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+    }
   }
 
   private auditEntry(
