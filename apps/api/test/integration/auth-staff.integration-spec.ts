@@ -274,7 +274,7 @@ describe('Вход владельца по почте и паролю', () => {
   })
 
   it('НЕСУЩЕСТВУЮЩАЯ ПОЧТА — ТОЖЕ 401, А НЕ 404', async () => {
-    await loginByEmail('нет-такого@kata.example', OWNER_PASSWORD).expect(401)
+    await loginByEmail('no-such-owner@kata.example', OWNER_PASSWORD).expect(401)
   })
 
   it('КОРОТКИЙ ПАРОЛЬ ОТВЕРГАЕТСЯ ДО ПРОВЕРКИ — 400', async () => {
