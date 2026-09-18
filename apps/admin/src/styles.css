@@ -730,6 +730,13 @@ body {
   gap: 6px;
 }
 
+/* Подсказка под полем входа: откуда взять код и что делать, если забыл. */
+.login__fieldHint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--tx-3);
+}
+
 .login__label {
   font-size: 11px;
   font-weight: 750;

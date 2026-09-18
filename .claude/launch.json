@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@positive/guest", "run", "preview"],
       "port": 5174
+    },
+    {
+      "name": "admin-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@positive/admin", "run", "dev"],
+      "port": 5173
     }
   ]
 }

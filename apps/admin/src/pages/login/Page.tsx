@@ -74,6 +74,7 @@ export function LoginPage(): ReactElement {
             required
             minLength={8}
           />
+          <span className="login__fieldHint">{t('login.device.hint')}</span>
         </label>
 
         <label className="login__field">
@@ -92,6 +93,7 @@ export function LoginPage(): ReactElement {
             minLength={4}
             maxLength={32}
           />
+          <span className="login__fieldHint">{t('login.pin.hint')}</span>
         </label>
 
         {error !== null ? (
