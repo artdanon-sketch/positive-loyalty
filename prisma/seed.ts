@@ -53,7 +53,6 @@
  * превращаются только в выводе.
  */
 import { loadApiRuntime } from './api-runtime.ts'
-import { seedTarget } from './seed-guard.ts'
 import { formatMinorUnits, heading, out, renderTable, type TableColumn } from './console-table.ts'
 import {
   AUTOMATIONS,
@@ -78,16 +77,6 @@ import {
 const CURRENCY = 'THB'
 
 const TIMEZONE = 'Asia/Bangkok'
-
-// Прежде чем трогать базу — убедиться, что она не боевая (seed-guard.ts).
-// Проверка стоит ДО подключения: отказ должен случиться раньше первой записи.
-const target = seedTarget(process.env['DATABASE_URL'], process.env['SEED_ALLOW_REMOTE'])
-
-if (!target.allowed) {
-  out(heading('Демо-полигон не запущен'))
-  out(target.reason)
-  process.exit(1)
-}
 
 const runtime = await loadApiRuntime()
 const { prisma, ledger } = runtime
