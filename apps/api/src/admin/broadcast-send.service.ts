@@ -64,9 +64,12 @@ export class BroadcastSendService {
    * рассылок не должно стоить ни одного запроса.
    */
   async tick(now: Date = new Date()): Promise<BroadcastTickResult> {
-    if (!this.telegram.enabled && !this.push.enabled) {
-      // Ни бота, ни ключей уведомлений — слать нечем. Молчим: это состояние
-      // среды, а не сбой.
+    if (!this.telegram.enabled && !this.push.enabled && !(await this.anyVenueBot())) {
+      // Ни общего бота, ни ключей уведомлений, ни своего бота хоть у одного
+      // заведения — слать нечем. Молчим: это состояние среды, а не сбой.
+      //
+      // Бота заведения проверяем здесь же: без этого заведение со своим ботом
+      // молча не рассылало бы ничего на сервере, где общий бот не настроен.
       return { sent: 0, failed: 0 }
     }
 
@@ -238,6 +241,11 @@ export class BroadcastSendService {
           : []
       },
     )
+  }
+
+  /** Есть ли хоть одно заведение со своим ботом: иначе слать действительно нечем. */
+  private async anyVenueBot(): Promise<boolean> {
+    return (await this.prisma.venueBot.count({ where: { isActive: true } })) > 0
   }
 
   /** Ключ бота заведения. null — своего бота нет, шлём как раньше. */
