@@ -9,7 +9,7 @@ import { signAccessToken } from '../common/tenant/access-token'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../core/prisma.service'
 
-import { verifyPin } from './pin'
+import { hashPin, verifyPin } from './pin'
 
 /**
  * Вход сотрудников и обновление сессий.
@@ -43,6 +43,8 @@ const hashToken = (token: string): string => createHash('sha256').update(token).
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
+  /** Ленивый холостой хеш для выравнивания времени отказа. */
+  private dummyHash: Promise<string> | null = null
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -178,6 +180,100 @@ export class AuthService {
         },
       })
     })
+  }
+
+  /**
+   * Вход владельца и менеджера по почте и паролю.
+   *
+   * Заведение определяется почтой, а не телом запроса: `auth_tenant_for_email`
+   * — единственный способ узнать tenantId до аутентификации (миграция
+   * 20260918200000), как `auth_tenant_for_device` для кассира.
+   *
+   * Единый отказ и здесь: не важно, нет такой почты, у сотрудника нет пароля
+   * или пароль неверный — наружу один 401. Разница выдала бы, какие адреса
+   * заведены.
+   */
+  async staffEmailLogin(email: string, password: string): Promise<AuthTokens> {
+    const resolved = await this.prisma.$queryRaw<Array<{ tenantId: string | null }>>`
+      SELECT auth_tenant_for_email(${email}) AS "tenantId"
+    `
+    const tenantId = resolved[0]?.tenantId ?? null
+
+    if (tenantId === null) {
+      // Почты нет — но время тратим как на настоящую проверку: без этого
+      // по скорости ответа перебирают, какие адреса заведены.
+      await this.burnPassword(password)
+      throw this.rejected('почта не найдена или у сотрудника нет пароля', {})
+    }
+
+    const attempt = await this.prisma.forTenant(tenantId, async (tx) => {
+      const staff = await tx.staff.findFirst({
+        where: { email, tenantId, isActive: true },
+      })
+
+      if (staff === null || staff.passwordHash === null) {
+        return { outcome: 'NO_STAFF' as const }
+      }
+
+      if (staff.pinLockedUntil !== null && staff.pinLockedUntil > new Date()) {
+        return { outcome: 'LOCKED' as const, staffId: staff.id }
+      }
+
+      const ok = await verifyPin(password, staff.passwordHash)
+
+      if (!ok) {
+        // Штраф пишется отдельной транзакцией — как у PIN: исключение отсюда
+        // откатило бы инкремент вместе с собой, и блокировка не наступила бы.
+        return {
+          outcome: 'MISMATCH' as const,
+          staffId: staff.id,
+          attempts: staff.pinFailedAttempts + 1,
+        }
+      }
+
+      await tx.staff.update({
+        where: { id: staff.id },
+        data: { pinFailedAttempts: 0, pinLockedUntil: null, lastSeenAt: new Date() },
+      })
+
+      const tokens = await this.issueTokens(tx, {
+        tenantId,
+        staffId: staff.id,
+        displayName: staff.displayName,
+        role: staff.role,
+        // Вход по почте не привязан к устройству: сессия без deviceId.
+        deviceId: null,
+        familyId: randomUUID(),
+        parentId: null,
+      })
+
+      return { outcome: 'OK' as const, tokens }
+    })
+
+    if (attempt.outcome === 'OK') {
+      return attempt.tokens
+    }
+
+    if (attempt.outcome === 'MISMATCH') {
+      await this.penalizeFailedPin(tenantId, attempt.staffId, attempt.attempts)
+    }
+
+    // NO_STAFF без пароля scrypt не считал — выравниваем время и здесь.
+    if (attempt.outcome === 'NO_STAFF') {
+      await this.burnPassword(password)
+    }
+
+    throw this.rejected('вход по почте отклонён', { outcome: attempt.outcome })
+  }
+
+  /**
+   * Холостой прогон scrypt, чтобы отказ по несуществующей почте занимал
+   * столько же, сколько настоящая проверка. Хеш считается один раз и от
+   * случайного значения — совпасть с ним нельзя.
+   */
+  private async burnPassword(password: string): Promise<void> {
+    this.dummyHash ??= hashPin(randomBytes(16).toString('hex'))
+    await verifyPin(password, await this.dummyHash)
   }
 
   /**

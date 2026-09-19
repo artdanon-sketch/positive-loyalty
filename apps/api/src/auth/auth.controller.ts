@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger'
-import { RefreshInput, StaffPinLoginInput } from '@positive/contracts'
+import { RefreshInput, StaffEmailLoginInput, StaffPinLoginInput } from '@positive/contracts'
 import type { AuthTokens } from '@positive/contracts'
 
 import { Public } from '../common/tenant/public.decorator'
@@ -43,6 +43,32 @@ export class AuthController {
     }
 
     return this.authService.staffPinLogin(parsed.data.deviceId, parsed.data.pin)
+  }
+
+  @Post('staff/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Вход владельца и менеджера по почте и паролю',
+    description:
+      'Заведение определяется по почте, а не по телу запроса. ' +
+      'Любой отказ отдаёт одинаковый 401 без подробностей.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Почта или пароль не подошли' })
+  async staffEmail(@Body() body: unknown): Promise<AuthTokens> {
+    const parsed = StaffEmailLoginInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          // Только имена полей: значения содержат пароль.
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.authService.staffEmailLogin(parsed.data.email, parsed.data.password)
   }
 
   @Post('refresh')

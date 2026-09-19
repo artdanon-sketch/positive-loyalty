@@ -303,7 +303,10 @@ const stubApi = (
 }
 
 const fillAndSubmitLogin = async (): Promise<void> => {
-  fireEvent.change(await screen.findByLabelText(t('login.device')), {
+  // По умолчанию открыт вход владельца по почте; тесты входят как сотрудник
+  // на планшете — переключаемся на его вкладку.
+  fireEvent.click(await screen.findByRole('tab', { name: t('login.tab.staff') }))
+  fireEvent.change(screen.getByLabelText(t('login.device')), {
     target: { value: 'demo-kata-manager' },
   })
   fireEvent.change(screen.getByLabelText(t('login.pin')), { target: { value: '4207' } })

@@ -124,6 +124,17 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
     [applyTokens],
   )
 
+  const loginByEmail = useCallback(
+    async (email: string, password: string): Promise<void> => {
+      const tokens = await requestJson<AuthTokens>('/auth/staff/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      })
+      applyTokens(tokens)
+    },
+    [applyTokens],
+  )
+
   const authFetch = useCallback(
     async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
       const withToken = (token: string): RequestInit => ({
@@ -209,8 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactElemen
   }, [dropSession])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, session, login, logout, authFetch, authStream }),
-    [authFetch, authStream, login, logout, session, status],
+    () => ({ status, session, login, loginByEmail, logout, authFetch, authStream }),
+    [authFetch, authStream, login, loginByEmail, logout, session, status],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

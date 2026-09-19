@@ -730,6 +730,13 @@ body {
   gap: 6px;
 }
 
+/* Подсказка под полем входа: откуда взять код и что делать, если забыл. */
+.login__fieldHint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--tx-3);
+}
+
 .login__label {
   font-size: 11px;
   font-weight: 750;
@@ -3382,4 +3389,33 @@ body {
   padding-left: 20px;
   color: var(--tx-2);
   font-size: var(--fs-secondary-lg);
+}
+
+/* Переключатель «владелец / кассир» на входе: два разных человека — два входа. */
+.login__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surf-2);
+}
+
+.login__tab {
+  flex: 1;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--tx-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login__tab--on {
+  background: var(--surf);
+  color: var(--tx);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
