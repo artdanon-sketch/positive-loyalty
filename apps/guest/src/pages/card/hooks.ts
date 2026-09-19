@@ -19,12 +19,15 @@ import type {
   GuestReviews,
   GuestWallet,
   JoinVenueResult,
+  ClaimedPromoCertificate,
+  PromoCertificateList,
 } from '@positive/contracts'
 
 import type { PendingInvite } from '../../shared/invite/pending-invite'
 import { useSession } from '../../shared/session/session-context'
 import {
   acceptReferral,
+  claimPromo,
   createMessage,
   createReview,
   fetchMe,
@@ -32,6 +35,7 @@ import {
   fetchGuestCatalog,
   fetchHistory,
   fetchNews,
+  fetchPromos,
   fetchQrToken,
   fetchReferral,
   fetchReviews,
@@ -49,6 +53,7 @@ export const REVIEWS_QUERY_KEY = ['guest', 'reviews'] as const
 export const NEWS_QUERY_KEY = ['guest', 'news'] as const
 export const MESSAGES_QUERY_KEY = ['guest', 'messages'] as const
 export const HISTORY_QUERY_KEY = ['guest', 'history'] as const
+export const PROMO_QUERY_KEY = ['guest', 'promo'] as const
 
 /**
  * Кошелёк. Состояние экрана — производная от состояния запроса:
@@ -267,5 +272,33 @@ export function useGuestCatalog(): UseQueryResult<GuestCatalog, Error> {
     queryKey: ['guest', 'catalog'],
     queryFn: () => fetchGuestCatalog(authGet),
     enabled: session !== null,
+  })
+}
+
+/** Промо-сертификаты, которые можно забрать. Пустой список — блок не показывается. */
+export function usePromos(): UseQueryResult<PromoCertificateList, Error> {
+  const { authGet, session } = useSession()
+
+  return useQuery({
+    queryKey: PROMO_QUERY_KEY,
+    queryFn: () => fetchPromos(authGet),
+    enabled: session !== null,
+  })
+}
+
+/**
+ * Забрать промо-сертификат. После — витрина и кошелёк перечитываются: промо
+ * помечается забранным, а промокод появляется в «Ваших подарках» сразу.
+ */
+export function useClaimPromo(): UseMutationResult<ClaimedPromoCertificate, Error, string> {
+  const { authPost } = useSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (offerId) => claimPromo(authPost, offerId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: PROMO_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
+    },
   })
 }

@@ -43,6 +43,8 @@ export const CertificateTemplate = z
     validityDays: ValidityDays,
     /** Выключенный шаблон не выдаётся, но выданные по нему промокоды живут свой срок. */
     isActive: z.boolean(),
+    /** Промо-сертификат: гость забирает его сам из приложения. */
+    selfClaim: z.boolean(),
     issued: z.number().int().nonnegative(),
     redeemed: z.number().int().nonnegative(),
   })
@@ -55,6 +57,8 @@ export const CreateCertificateInput = z
     title: CertificateTitle,
     value: GiftValue,
     validityDays: ValidityDays,
+    /** Сразу сделать промо-сертификатом (гость забирает сам). По умолчанию нет. */
+    selfClaim: z.boolean().optional(),
   })
   .strict()
 
@@ -64,6 +68,7 @@ export const UpdateCertificateInput = z
   .object({
     title: CertificateTitle.optional(),
     isActive: z.boolean().optional(),
+    selfClaim: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -71,3 +76,40 @@ export const UpdateCertificateInput = z
   })
 
 export type UpdateCertificateInput = z.infer<typeof UpdateCertificateInput>
+
+/**
+ * Промо-сертификат в приложении гостя — то, что он может забрать сам.
+ *
+ * Приезжает списком по всем заведениям, где гость участвует. `claimed` — уже
+ * ли взят этим гостём: кнопка «Забрать» тогда гаснет, а промокод лежит в кошельке.
+ */
+export const PromoCertificate = z
+  .object({
+    offerId: z.uuid(),
+    tenantId: z.string(),
+    venue: z.string(),
+    title: z.string(),
+    value: GiftValue,
+    validityDays: ValidityDays,
+    howTo: z.array(z.string()),
+    claimed: z.boolean(),
+  })
+  .strict()
+
+export type PromoCertificate = z.infer<typeof PromoCertificate>
+
+/** Витрина промо-сертификатов гостя — по всем его заведениям. */
+export const PromoCertificateList = z.array(PromoCertificate)
+
+export type PromoCertificateList = z.infer<typeof PromoCertificateList>
+
+/** Ответ на «Забрать»: выданный промокод. Повторное получение возвращает тот же. */
+export const ClaimedPromoCertificate = z
+  .object({
+    offerId: z.uuid(),
+    code: z.string(),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict()
+
+export type ClaimedPromoCertificate = z.infer<typeof ClaimedPromoCertificate>

@@ -15,6 +15,7 @@ import { ReviewReplies } from './components/review-replies'
 import { HistoryList } from './components/history-list'
 import { InstallCard } from './components/install-card'
 import { ProfileCard } from './components/profile-card'
+import { PromoList } from './components/promo-list'
 import { RewardsList } from './components/rewards-list'
 import { NotifyCard } from './components/notify-card'
 import { VenueMessage } from './components/venue-message'
@@ -109,6 +110,9 @@ export function Page(): ReactElement {
           <ReviewReplies />
           <VenueNews />
           <VenueMessage memberships={wallet.data.memberships} />
+          {/* Промо-сертификаты — сразу над витриной «за баллы»: и то и другое
+              гость получает, но промо бесплатно и в одно нажатие, поэтому выше. */}
+          <PromoList />
           <RewardsList />
           <HistoryList />
           <ProfileCard />

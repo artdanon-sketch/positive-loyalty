@@ -1090,6 +1090,10 @@ model Offer {
 
   visibility Visibility @default(VENUE_ONLY)
 
+  /// Гость забирает сам из приложения (промо-сертификат). Только для GIFT_CARD:
+  /// движок правил и список акций такие не трогают. false — выдаёт персонал.
+  selfClaim Boolean @default(false)
+
   /// {ru:{title,desc}, en:{...}, th:{...}, zh:{...}} — строки в данных, не в коде.
   i18n Json
 

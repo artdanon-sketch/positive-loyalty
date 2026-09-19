@@ -2271,6 +2271,7 @@ const CERTIFICATE = {
   value: { kind: 'FIXED_OFF', amount: 50_000 },
   validityDays: 30,
   isActive: true,
+  selfClaim: false,
   issued: 12,
   redeemed: 7,
 }
@@ -2319,6 +2320,7 @@ describe('Сертификаты', () => {
         title: 'Сертификат на 500 ฿',
         value: { kind: 'FIXED_OFF', amount: 50_000 },
         validityDays: 30,
+        selfClaim: false,
       })
     })
 

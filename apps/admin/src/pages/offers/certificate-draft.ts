@@ -27,6 +27,8 @@ export interface CertificateDraft {
   readonly maxDiscount: string
   readonly itemName: string
   readonly validityDays: string
+  /** Промо-сертификат: гость забирает сам из приложения. */
+  readonly selfClaim: boolean
 }
 
 export type CertificateProblem =
@@ -44,6 +46,7 @@ export const BLANK_CERTIFICATE: CertificateDraft = {
   maxDiscount: '',
   itemName: '',
   validityDays: '30',
+  selfClaim: false,
 }
 
 const wholeIn = (value: string, min: number, max: number): number | null => {
@@ -104,5 +107,5 @@ export const fromCertificateDraft = (draft: CertificateDraft): CertificateCheck 
     return { ok: false, problem: 'validityDays' }
   }
 
-  return { ok: true, input: { title, value, validityDays } }
+  return { ok: true, input: { title, value, validityDays, selfClaim: draft.selfClaim } }
 }

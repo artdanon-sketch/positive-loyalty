@@ -59,6 +59,12 @@ export function CertificatesView(): ReactElement {
                   >
                     <td>
                       {certificate.title}
+                      {certificate.selfClaim ? (
+                        <>
+                          {' '}
+                          <span className="chip">{t('certificates.promo')}</span>
+                        </>
+                      ) : null}
                       {certificate.isActive ? null : (
                         <>
                           {' '}
@@ -73,7 +79,24 @@ export function CertificatesView(): ReactElement {
                     <td className="data-table__num">{certificate.issued}</td>
                     <td className="data-table__num">{certificate.redeemed}</td>
                     {isOwner ? (
-                      <td>
+                      <td className="data-table__actions">
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={update.isPending}
+                          onClick={() => {
+                            update.mutate({
+                              id: certificate.id,
+                              input: { selfClaim: !certificate.selfClaim },
+                            })
+                          }}
+                        >
+                          {t(
+                            certificate.selfClaim
+                              ? 'certificates.promo.off'
+                              : 'certificates.promo.on',
+                          )}
+                        </button>
                         <button
                           className="button"
                           type="button"

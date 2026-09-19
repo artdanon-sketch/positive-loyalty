@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import { BirthdayConfig, BirthdaySettings, GuestBirthdayInput } from './birthday.js'
-import { CreateCertificateInput, UpdateCertificateInput } from './certificate.js'
+import {
+  ClaimedPromoCertificate,
+  CreateCertificateInput,
+  PromoCertificate,
+  UpdateCertificateInput,
+} from './certificate.js'
 
 describe('Сертификаты: контракт', () => {
   it('ШАБЛОН — НАЗВАНИЕ, ЧТО ДАЁТ И СКОЛЬКО ДЕЙСТВУЕТ; НОМИНАЛ — СКИДКОЙ СУММОЙ', () => {
@@ -28,6 +33,40 @@ describe('Сертификаты: контракт', () => {
     ).toBe(false)
     expect(UpdateCertificateInput.safeParse({}).success).toBe(false)
     expect(UpdateCertificateInput.safeParse({ isActive: false }).success).toBe(true)
+  })
+
+  it('ПРОМО: флаг self-claim проходит в создании и правке', () => {
+    expect(
+      CreateCertificateInput.parse({
+        title: 'Промо',
+        value: { kind: 'FIXED_OFF', amount: 50_000 },
+        validityDays: 30,
+        selfClaim: true,
+      }).selfClaim,
+    ).toBe(true)
+    expect(UpdateCertificateInput.safeParse({ selfClaim: true }).success).toBe(true)
+  })
+
+  it('ВИТРИНА ПРОМО И ОТВЕТ «ЗАБРАТЬ» — со всеми полями', () => {
+    expect(
+      PromoCertificate.safeParse({
+        offerId: '11111111-1111-4111-8111-111111111111',
+        tenantId: 't1',
+        venue: 'Kata Beach Kitchen',
+        title: 'Промо на 500 ฿',
+        value: { kind: 'FIXED_OFF', amount: 50_000 },
+        validityDays: 30,
+        howTo: ['Покажите код на кассе'],
+        claimed: false,
+      }).success,
+    ).toBe(true)
+    expect(
+      ClaimedPromoCertificate.safeParse({
+        offerId: '11111111-1111-4111-8111-111111111111',
+        code: 'ABC123DEF456',
+        expiresAt: '2026-10-01T00:00:00.000Z',
+      }).success,
+    ).toBe(true)
   })
 })
 
