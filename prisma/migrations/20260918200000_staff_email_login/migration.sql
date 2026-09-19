@@ -5,7 +5,9 @@
 -- у сотрудника может быть почта и пароль; кассир остаётся на устройстве + PIN.
 --
 -- Колонки nullable — миграция обратимо совместима: у существующих сотрудников
--- почты нет, они входят по-прежнему.
+-- почты нет, они входят по-прежнему. Имена таблиц здесь неквалифицированы
+-- намеренно: Prisma накатывает миграцию с search_path на нашу схему, поэтому
+-- «Staff» разрешается в неё, а не в чужой public на общей базе.
 
 ALTER TABLE "Staff" ADD COLUMN "email" TEXT;
 ALTER TABLE "Staff" ADD COLUMN "passwordHash" TEXT;
@@ -18,25 +20,48 @@ CREATE UNIQUE INDEX "Staff_email_key" ON "Staff"("email");
 -- SECURITY DEFINER: намеренно обходит RLS и отдаёт ровно один идентификатор.
 -- Сравнение по нижнему регистру: почта регистронезависима, и «Ivan@» и «ivan@»
 -- должны вести в одно заведение.
-CREATE OR REPLACE FUNCTION public.auth_tenant_for_email(p_email text)
-RETURNS text
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-  SELECT s."tenantId"
-  FROM public."Staff" s
-  WHERE lower(s."email") = lower(p_email)
-    AND s."isActive"
-    AND s."passwordHash" IS NOT NULL
-  LIMIT 1;
-$$;
+--
+-- Функция создаётся через format() и current_schema(), а не с префиксом public.
+-- База может быть общей с чужим продуктом: у нас своя схема, у соседа своя, и
+-- прибитая к public функция легла бы в схему соседа, читая при этом его «Staff».
+-- Тело остаётся полностью квалифицированным настоящей схемой — при пустом
+-- search_path это единственная защита от подмены таблиц вызывающим.
+-- (см. 20260828100000_schema_agnostic_functions — та же логика для остальных.)
+DO $migration$
+DECLARE
+  target_schema text := current_schema();
+BEGIN
+  EXECUTE format($fmt$
+    CREATE OR REPLACE FUNCTION %I.auth_tenant_for_email(p_email text)
+    RETURNS text
+    LANGUAGE sql
+    STABLE
+    SECURITY DEFINER
+    SET search_path = ''
+    AS $body$
+      SELECT s."tenantId"
+      FROM %I."Staff" s
+      WHERE lower(s."email") = lower(p_email)
+        AND s."isActive"
+        AND s."passwordHash" IS NOT NULL
+      LIMIT 1;
+    $body$
+  $fmt$, target_schema, target_schema);
 
-REVOKE ALL ON FUNCTION public.auth_tenant_for_email(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.auth_tenant_for_email(text) TO positive_app;
+  EXECUTE format(
+    'REVOKE ALL ON FUNCTION %I.auth_tenant_for_email(text) FROM PUBLIC',
+    target_schema
+  );
+  EXECUTE format(
+    'GRANT EXECUTE ON FUNCTION %I.auth_tenant_for_email(text) TO positive_app',
+    target_schema
+  );
 
-COMMENT ON FUNCTION public.auth_tenant_for_email(text) IS
-  'Разрешает почту сотрудника в tenantId до аутентификации. '
-  'SECURITY DEFINER: обходит RLS намеренно и отдаёт только один идентификатор. '
-  'Расширять возвращаемое значение нельзя — это граница изоляции.';
+  EXECUTE format($fmt$
+    COMMENT ON FUNCTION %I.auth_tenant_for_email(text) IS
+      'Разрешает почту сотрудника в tenantId до аутентификации. '
+      'SECURITY DEFINER: обходит RLS намеренно и отдаёт только один идентификатор. '
+      'Расширять возвращаемое значение нельзя — это граница изоляции.'
+  $fmt$, target_schema);
+END
+$migration$;
