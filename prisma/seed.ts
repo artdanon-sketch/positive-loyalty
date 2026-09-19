@@ -356,6 +356,9 @@ const renderTenantSummary = (
 const upsertStaff = async (): Promise<void> => {
   for (const member of STAFF) {
     const pinHash = await runtime.hashPin(member.pin)
+    // Пароль хешируется тем же scrypt, что и PIN: staffEmailLogin проверяет его
+    // через verifyPin. Кассиру пароль не заводим — у него нет почты.
+    const passwordHash = member.password === null ? null : await runtime.hashPin(member.password)
 
     await runtime.prisma.staff.upsert({
       where: { id: member.id },
@@ -365,11 +368,15 @@ const upsertStaff = async (): Promise<void> => {
         role: member.role,
         displayName: member.displayName,
         pinHash,
+        email: member.email,
+        passwordHash,
       },
       update: {
         role: member.role,
         displayName: member.displayName,
         pinHash,
+        email: member.email,
+        passwordHash,
         isActive: true,
         pinFailedAttempts: 0,
         pinLockedUntil: null,
@@ -392,8 +399,8 @@ const upsertStaff = async (): Promise<void> => {
 const STAFF_COLUMNS: readonly TableColumn[] = [
   { title: 'Заведение', align: 'left' },
   { title: 'Роль', align: 'left' },
-  { title: 'Устройство', align: 'left' },
-  { title: 'PIN', align: 'left' },
+  { title: 'Вход (почта / устройство)', align: 'left' },
+  { title: 'Пароль / PIN', align: 'left' },
 ]
 
 const ROLE_LABELS: Readonly<Record<string, string>> = {
@@ -405,11 +412,13 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
 const renderStaffLogins = (): string => {
   const brandById = new Map(TENANTS.map((tenant) => [tenant.id, tenant.brandName]))
 
+  // Владелец и менеджер входят по почте и паролю, кассир — по устройству и PIN.
+  // В одной колонке показываем то, чем человек действительно входит.
   const rows = STAFF.map((member) => [
     brandById.get(member.tenantId) ?? member.tenantId,
     ROLE_LABELS[member.role] ?? member.role,
-    member.deviceId,
-    member.pin,
+    member.email ?? member.deviceId,
+    member.password ?? member.pin,
   ])
 
   return renderTable(STAFF_COLUMNS, rows)

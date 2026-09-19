@@ -699,6 +699,14 @@ export interface StaffSeed {
   /** Код устройства, с которого сотруднику разрешён вход. Глобально уникален. */
   readonly deviceId: string
   readonly deviceLabel: string
+  /**
+   * Почта для входа в бэк-офис. Есть у владельца и менеджера — они входят
+   * с ноутбука по почте и паролю; у кассира null, он остаётся на устройстве
+   * и PIN. Глобально уникальна: по ней вход определяет заведение.
+   */
+  readonly email: string | null
+  /** Демо-пароль владельца/менеджера. Хеш — тот же scrypt, что у PIN. */
+  readonly password: string | null
 }
 
 interface StaffTemplate {
@@ -707,17 +715,34 @@ interface StaffTemplate {
   readonly pin: string
   readonly device: string
   readonly label: string
+  /** Пароль для входа по почте; null у кассира — у него почты нет. */
+  readonly password: string | null
 }
 
 const STAFF_TEMPLATES: readonly StaffTemplate[] = [
-  { role: 'OWNER', name: 'Владелец', pin: '7311', device: 'owner', label: 'Телефон владельца' },
-  { role: 'MANAGER', name: 'Менеджер', pin: '4207', device: 'manager', label: 'Ноутбук менеджера' },
+  {
+    role: 'OWNER',
+    name: 'Владелец',
+    pin: '7311',
+    device: 'owner',
+    label: 'Телефон владельца',
+    password: 'demo-owner',
+  },
+  {
+    role: 'MANAGER',
+    name: 'Менеджер',
+    pin: '4207',
+    device: 'manager',
+    label: 'Ноутбук менеджера',
+    password: 'demo-manager',
+  },
   {
     role: 'CASHIER',
     name: 'Кассир смены А',
     pin: '1984',
     device: 'pos-a',
     label: 'Планшет у кассы',
+    password: null,
   },
   {
     role: 'CASHIER',
@@ -725,6 +750,7 @@ const STAFF_TEMPLATES: readonly StaffTemplate[] = [
     pin: '2648',
     device: 'pos-b',
     label: 'Планшет на террасе',
+    password: null,
   },
 ]
 
@@ -783,5 +809,9 @@ export const STAFF: readonly StaffSeed[] = TENANTS.flatMap((tenant, tenantIndex)
     pin: template.pin,
     deviceId: `demo-${slug}-${template.device}`,
     deviceLabel: template.label,
+    // Почта строится из роли и слага заведения: owner-kata@demo.example.
+    // Уникальна, потому что слаг заведения уникален, а ролей с почтой две.
+    email: template.password === null ? null : `${template.device}-${slug}@demo.example`,
+    password: template.password,
   }))
 })
