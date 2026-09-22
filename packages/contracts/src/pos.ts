@@ -67,6 +67,12 @@ export const PosConfig = z
      * или нельзя: касса не должна догадываться, что именно из двух.
      */
     tags: z.array(PosTag).default([]),
+    /** Показывать ли кассиру вкладку «История» — свои операции за период. */
+    showOwnHistory: z.boolean().default(false),
+    /** Показывать ли кассиру его показатели в «Профиле»: оценку и выручку смены. */
+    showOwnStats: z.boolean().default(false),
+    /** Показывать ли вкладку «Пригласить» — QR заведения для записи гостя. */
+    allowInvite: z.boolean().default(true),
   })
   .strict()
 
@@ -286,3 +292,102 @@ export const PosVoidResult = z
   .strict()
 
 export type PosVoidResult = z.infer<typeof PosVoidResult>
+
+/**
+ * Приложение кассира: вкладки сверх «Счёта». docs/02, раздел 3.6.
+ *
+ * ЧТО ИЗ ЭТОГО ВИДНО — РЕШАЕТ ВЛАДЕЛЕЦ. Флаги приезжают в `PosConfig`, и касса
+ * не рисует вкладку, которой нет: кнопка, ведущая в отказ, хуже отсутствующей.
+ */
+
+/** Что показать гостю, чтобы записать его на месте. `GET /v1/pos/invite`. */
+export const PosInvite = z
+  .object({
+    /**
+     * Код источника и готовая ссылка для QR. null — у заведения нет ни одного
+     * включённого источника, и показывать нечего.
+     */
+    code: z.string().nullable(),
+    url: z.string().nullable(),
+    /**
+     * Название источника. Кассир видит, КУДА запишется гость: иначе заведение
+     * однажды обнаружит, что все гости со стойки числятся пришедшими из Instagram.
+     */
+    source: z.string().nullable(),
+  })
+  .strict()
+
+export type PosInvite = z.infer<typeof PosInvite>
+
+/** Окно истории. `range` — произвольные даты, остальные считаются по часам заведения. */
+export const PosHistoryPeriod = z.enum(['today', 'week', 'month', 'range'])
+
+export type PosHistoryPeriod = z.infer<typeof PosHistoryPeriod>
+
+export const PosHistoryQuery = z
+  .object({
+    period: PosHistoryPeriod.default('today'),
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.period !== 'range' || (value.from !== undefined && value.to !== undefined),
+    {
+      error: 'Для произвольного периода нужны обе даты',
+    },
+  )
+
+export type PosHistoryQuery = z.infer<typeof PosHistoryQuery>
+
+export const PosHistoryItem = z
+  .object({
+    id: z.string(),
+    occurredAt: z.iso.datetime(),
+    /** Имя гостя или «Без имени» — кассир узнаёт свой чек по нему. */
+    guest: z.string(),
+    /** Сумма чека в минорных единицах. */
+    amount: z.number().int().nonnegative(),
+    /** Начислено баллов. */
+    points: z.number().int(),
+  })
+  .strict()
+
+export type PosHistoryItem = z.infer<typeof PosHistoryItem>
+
+/** Свои операции за период. `GET /v1/pos/history`. Только свои — чужие смены не его дело. */
+export const PosHistory = z
+  .object({
+    items: z.array(PosHistoryItem),
+    /** Итог суммой за период — как в подвале у UDS. */
+    total: z.number().int().nonnegative(),
+    count: z.number().int().nonnegative(),
+  })
+  .strict()
+
+export type PosHistory = z.infer<typeof PosHistory>
+
+/** Показатели кассира. null в `PosMe.stats` — владелец их не открывал. */
+export const PosStats = z
+  .object({
+    /** Выручка за сегодняшнюю смену, минорные единицы. */
+    shiftRevenue: z.number().int().nonnegative(),
+    shiftCount: z.number().int().nonnegative(),
+    /** Средняя оценка гостей за 30 дней. null — оценок ещё нет. */
+    rating: z.number().nullable(),
+  })
+  .strict()
+
+export type PosStats = z.infer<typeof PosStats>
+
+/** Кто я и где работаю. `GET /v1/pos/me`. */
+export const PosMe = z
+  .object({
+    displayName: z.string(),
+    role: z.enum(['CASHIER', 'MANAGER', 'OWNER']),
+    venue: z.string(),
+    stats: PosStats.nullable(),
+  })
+  .strict()
+
+export type PosMe = z.infer<typeof PosMe>
