@@ -18,38 +18,72 @@ import { TierSettingsSection } from './components/tier-settings'
 import { useProgramSettings } from './hooks'
 
 /**
- * Экран «Настройки программы»: сколько гость получает и как тратит баллы.
+ * Настройки: витрина карточек, а не один свиток. docs/03, раздел 9.
  *
- * ВКЛАДКАМИ, А НЕ ОДНИМ СВИТКОМ. Разделов двенадцать: проценты, статусы,
- * рефералы, мотивация кассира, день рождения, автоответы, безопасность, теги,
- * источники, бот, связка с кассой, профиль заведения. Сложенные подряд, они
- * превращают экран в километр прокрутки, где владелец ищет нужное глазами
- * вместо того, чтобы открыть. Вкладка отвечает на один вопрос целиком.
+ * Разделов одиннадцать. Сложенные подряд, они превращали экран в километр
+ * прокрутки, где владелец искал нужное глазами. Вкладки эту беду лечат
+ * наполовину: ярлык из одного слова заставляет гадать, что внутри, и разное
+ * приходится сваливать под общим именем.
  *
- * Вкладка живёт в адресе (`?tab=`), как у «Акций»: ссылку на нужный раздел
- * можно дать сотруднику, а возврат «назад» не выбрасывает на первую вкладку.
+ * Поэтому витрина: у карточки есть строка, объясняющая, что за ней, — и
+ * владелец выбирает по смыслу, а не по догадке. Так же устроены настройки
+ * у UDS, откуда владелец к нам приходит.
+ *
+ * Раздел живёт в адресе (`?section=`): ссылку на нужный можно дать сотруднику,
+ * а «назад» в браузере возвращает на витрину, а не выбрасывает с экрана.
  *
  * ТОЛЬКО ТО, ЧТО КАССА УЖЕ СОБЛЮДАЕТ. В конфигурации программы описаны ещё
- * режим «скидка» и срок жизни баллов — но касса их не применяет. Переключатель,
+ * режим «скидка» и срок жизни баллов, но касса их не применяет. Переключатель,
  * который ничего не делает, хуже отсутствующего: владелец включит «сгорание
- * через год» и будет уверен, что баллы сгорают. Такие настройки появляются
- * на экране вместе со своими механиками.
+ * через год» и будет уверен, что баллы сгорают.
  *
- * У каждого блока своя кнопка сохранения: лестница статусов — отдельный вход
- * на сервере, и сохранение процента начисления не должно переписывать статусы.
+ * У каждого раздела свои данные и своя кнопка сохранения: лестница статусов —
+ * отдельный вход на сервере, и сохранение процента начисления не должно
+ * переписывать статусы.
  */
 
-const TABS = ['program', 'rewards', 'guests', 'comms', 'security', 'venue'] as const
+const SECTIONS = [
+  'profile',
+  'program',
+  'referral',
+  'birthday',
+  'staffReward',
+  'sources',
+  'tags',
+  'reviews',
+  'bot',
+  'security',
+  'integration',
+] as const
 
-type SettingsTab = (typeof TABS)[number]
+type SettingsSection = (typeof SECTIONS)[number]
 
-const TAB_LABELS: Readonly<Record<SettingsTab, TranslationKey>> = {
-  program: 'settings.tab.program',
-  rewards: 'settings.tab.rewards',
-  guests: 'settings.tab.guests',
-  comms: 'settings.tab.comms',
-  security: 'settings.tab.security',
-  venue: 'settings.tab.venue',
+const NAME: Readonly<Record<SettingsSection, TranslationKey>> = {
+  profile: 'settings.hub.profile.name',
+  program: 'settings.hub.program.name',
+  referral: 'settings.hub.referral.name',
+  birthday: 'settings.hub.birthday.name',
+  staffReward: 'settings.hub.staffReward.name',
+  sources: 'settings.hub.sources.name',
+  tags: 'settings.hub.tags.name',
+  reviews: 'settings.hub.reviews.name',
+  bot: 'settings.hub.bot.name',
+  security: 'settings.hub.security.name',
+  integration: 'settings.hub.integration.name',
+}
+
+const ABOUT: Readonly<Record<SettingsSection, TranslationKey>> = {
+  profile: 'settings.hub.profile.about',
+  program: 'settings.hub.program.about',
+  referral: 'settings.hub.referral.about',
+  birthday: 'settings.hub.birthday.about',
+  staffReward: 'settings.hub.staffReward.about',
+  sources: 'settings.hub.sources.about',
+  tags: 'settings.hub.tags.about',
+  reviews: 'settings.hub.reviews.about',
+  bot: 'settings.hub.bot.about',
+  security: 'settings.hub.security.about',
+  integration: 'settings.hub.integration.about',
 }
 
 export function SettingsPage(): ReactElement {
@@ -57,26 +91,24 @@ export function SettingsPage(): ReactElement {
   const settings = useProgramSettings()
   const [params, setParams] = useSearchParams()
 
-  const asked = params.get('tab')
-  const tab: SettingsTab = TABS.find((option) => option === asked) ?? 'program'
+  const asked = params.get('section')
+  const section = SECTIONS.find((option) => option === asked) ?? null
 
-  const openTab = (next: SettingsTab): void => {
-    // Первая вкладка — без параметра: адрес экрана настроек остаётся чистым.
-    setParams(next === 'program' ? {} : { tab: next }, { replace: true })
+  const open = (next: SettingsSection | null): void => {
+    setParams(next === null ? {} : { section: next }, { replace: false })
   }
 
-  return (
-    <section className="page">
-      <header className="page__head">
-        <h1 className="page__title">{t('settings.title')}</h1>
-        <p className="page__subtitle">{t('settings.subtitle')}</p>
-      </header>
-
-      {settings.isPending ? (
+  const body = (): ReactElement => {
+    if (settings.isPending) {
+      return (
         <div className="state" role="status">
           <p className="state__title">{t('common.loading')}</p>
         </div>
-      ) : settings.isError ? (
+      )
+    }
+
+    if (settings.isError) {
+      return (
         <div className="state state--error" role="alert">
           <p className="state__title">{t('common.error.title')}</p>
           <p className="state__hint">{settings.error.message}</p>
@@ -90,64 +122,71 @@ export function SettingsPage(): ReactElement {
             {t('common.retry')}
           </button>
         </div>
-      ) : (
-        <>
-          <div className="tabs" role="tablist" aria-label={t('settings.tabs.label')}>
-            {TABS.map((option) => (
-              <button
-                key={option}
-                className={option === tab ? 'tabs__tab tabs__tab--on' : 'tabs__tab'}
-                type="button"
-                role="tab"
-                aria-selected={option === tab}
-                onClick={() => {
-                  openTab(option)
-                }}
-              >
-                {t(TAB_LABELS[option])}
-              </button>
-            ))}
-          </div>
+      )
+    }
 
-          {tab === 'program' ? (
-            <>
-              <SettingsForm initial={settings.data} />
-              <TierSettingsSection />
-            </>
-          ) : null}
+    if (section === null) {
+      return (
+        <div className="hub">
+          {SECTIONS.map((option) => (
+            <button
+              key={option}
+              className="hub__card"
+              type="button"
+              onClick={() => {
+                open(option)
+              }}
+            >
+              <span className="hub__name">{t(NAME[option])}</span>
+              <span className="hub__about">{t(ABOUT[option])}</span>
+            </button>
+          ))}
+        </div>
+      )
+    }
 
-          {tab === 'rewards' ? (
-            <>
-              <BirthdaySettingsSection />
-              <ReferralSettingsSection />
-              <StaffRewardSettingsSection />
-            </>
-          ) : null}
+    return (
+      <>
+        <button
+          className="hub__back"
+          type="button"
+          onClick={() => {
+            open(null)
+          }}
+        >
+          {t('settings.hub.back')}
+        </button>
 
-          {tab === 'guests' ? (
-            <>
-              <ChannelSettingsSection />
-              <TagSettingsSection />
-            </>
-          ) : null}
+        {section === 'profile' ? <ProfileSettingsSection /> : null}
+        {section === 'program' ? (
+          <>
+            <SettingsForm initial={settings.data} />
+            <TierSettingsSection />
+          </>
+        ) : null}
+        {section === 'referral' ? <ReferralSettingsSection /> : null}
+        {section === 'birthday' ? <BirthdaySettingsSection /> : null}
+        {section === 'staffReward' ? <StaffRewardSettingsSection /> : null}
+        {section === 'sources' ? <ChannelSettingsSection /> : null}
+        {section === 'tags' ? <TagSettingsSection /> : null}
+        {section === 'reviews' ? <ReviewRepliesSection /> : null}
+        {section === 'bot' ? <BotSettingsSection /> : null}
+        {section === 'security' ? <SecuritySettingsSection /> : null}
+        {section === 'integration' ? <IntegrationSettingsSection /> : null}
+      </>
+    )
+  }
 
-          {tab === 'comms' ? (
-            <>
-              <ReviewRepliesSection />
-              <BotSettingsSection />
-            </>
-          ) : null}
+  return (
+    <section className="page">
+      <header className="page__head">
+        <h1 className="page__title">{section === null ? t('settings.title') : t(NAME[section])}</h1>
+        <p className="page__subtitle">
+          {section === null ? t('settings.subtitle') : t(ABOUT[section])}
+        </p>
+      </header>
 
-          {tab === 'security' ? <SecuritySettingsSection /> : null}
-
-          {tab === 'venue' ? (
-            <>
-              <ProfileSettingsSection />
-              <IntegrationSettingsSection />
-            </>
-          ) : null}
-        </>
-      )}
+      {body()}
     </section>
   )
 }

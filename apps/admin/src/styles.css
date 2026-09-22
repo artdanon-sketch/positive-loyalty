@@ -3419,3 +3419,63 @@ body {
   color: var(--tx);
   box-shadow: inset 0 0 0 1px var(--line-2);
 }
+
+/* ── Витрина настроек ────────────────────────────────────────────────────────
+   Карточка объясняет себя строкой, поэтому владелец выбирает по смыслу,
+   а не по догадке из одного слова. Сетка та же, что у плиток обзора. */
+
+.hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-4);
+}
+
+.hub__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  text-align: left;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-lg);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.hub__card:hover {
+  border-color: var(--mint);
+}
+
+.hub__card:active {
+  transform: translateY(1px);
+}
+
+.hub__name {
+  font-size: var(--fs-secondary-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hub__about {
+  color: var(--tx-2);
+  font-size: var(--fs-secondary);
+  line-height: 1.45;
+}
+
+.hub__back {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-secondary);
+  color: var(--tx-2);
+  cursor: pointer;
+}
+
+.hub__back:hover {
+  color: var(--tx);
+}

@@ -314,6 +314,18 @@ const fillAndSubmitLogin = async (): Promise<void> => {
   fireEvent.click(screen.getByRole('button', { name: t('login.submit') }))
 }
 
+/**
+ * Открыть раздел настроек с витрины. Имя карточки для чтения с экрана
+ * включает и пояснение под заголовком, поэтому ищем по началу строки.
+ */
+const clickSettingsCard = async (card: TranslationKey): Promise<void> => {
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: (accessible: string) => accessible.startsWith(t(card)),
+    }),
+  )
+}
+
 describe('App', () => {
   it('без сохранённой сессии показывает экран входа', async () => {
     stubApi()
@@ -570,14 +582,14 @@ describe('Безопасность', () => {
     '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
   }
 
-  const openSettingsTab = async (tab: TranslationKey): Promise<void> => {
+  const openSettingsTab = async (card: TranslationKey): Promise<void> => {
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-    fireEvent.click(await screen.findByRole('tab', { name: t(tab) }))
+    await clickSettingsCard(card)
   }
 
   const openReview = async (): Promise<void> => {
     await fillAndSubmitLogin()
-    await openSettingsTab('settings.tab.security')
+    await openSettingsTab('settings.hub.security.name')
     fireEvent.click(await screen.findByRole('link', { name: t('securitySettings.open') }))
   }
 
@@ -686,7 +698,7 @@ describe('Безопасность', () => {
     render(<App />)
 
     await fillAndSubmitLogin()
-    await openSettingsTab('settings.tab.security')
+    await openSettingsTab('settings.hub.security.name')
     const section = await screen.findByRole('region', { name: t('securitySettings.title') })
     const input = await within(section).findByLabelText(t('securitySettings.maxChecks'))
     const save = within(section).getByRole('button', { name: t('securitySettings.save') })
@@ -1623,16 +1635,12 @@ const TAG_VIP = { id: '16161616-1616-4161-8161-161616161616', name: 'VIP', color
 const TAG_BLOGGER = { id: '17171717-1717-4171-8171-171717171717', name: 'Блогер', color: 'violet' }
 
 describe('Настройки программы', () => {
-  const openSettings = async (tab?: TranslationKey): Promise<void> => {
+  const openSettings = async (
+    card: TranslationKey = 'settings.hub.program.name',
+  ): Promise<void> => {
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-
-    if (tab === undefined) {
-      await screen.findByLabelText(t('settings.earn.label'))
-      return
-    }
-
-    fireEvent.click(await screen.findByRole('tab', { name: t(tab) }))
+    await clickSettingsCard(card)
   }
 
   it('менеджеру пункта «Настройки» нет — процент начисления это деньги владельца', async () => {
@@ -1715,7 +1723,7 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings('settings.tab.rewards')
+    await openSettings('settings.hub.staffReward.name')
 
     const section = within(await screen.findByRole('region', { name: t('staffReward.title') }))
     fireEvent.click(
@@ -1850,7 +1858,7 @@ describe('Настройки программы', () => {
       )
     render(<App />)
 
-    await openSettings('settings.tab.guests')
+    await openSettings('settings.hub.tags.name')
     const section = screen.getByRole('region', { name: t('tagSettings.title') })
 
     fireEvent.click(
@@ -1883,7 +1891,7 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings('settings.tab.rewards')
+    await openSettings('settings.hub.referral.name')
     const section = screen.getByRole('region', { name: t('referral.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
@@ -1925,7 +1933,7 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings('settings.tab.rewards')
+    await openSettings('settings.hub.referral.name')
     const section = screen.getByRole('region', { name: t('referral.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
@@ -1956,7 +1964,7 @@ describe('Источники в настройках', () => {
   const openSources = async (): Promise<HTMLElement> => {
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.guests') }))
+    await clickSettingsCard('settings.hub.sources.name')
     return screen.findByRole('region', { name: t('channelSettings.title') })
   }
 
@@ -2430,7 +2438,7 @@ describe('Сертификаты', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.rewards') }))
+    await clickSettingsCard('settings.hub.birthday.name')
     const section = await screen.findByRole('region', { name: t('birthday.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('birthday.enabled')))
@@ -2583,7 +2591,7 @@ describe('Отзывы', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.comms') }))
+    await clickSettingsCard('settings.hub.reviews.name')
     const section = await screen.findByRole('region', { name: t('reviewReplies.title') })
 
     fireEvent.change(
@@ -4086,6 +4094,7 @@ describe('Статусы гостей в настройках', () => {
   const openTiers = async (): Promise<HTMLElement> => {
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    await clickSettingsCard('settings.hub.program.name')
     return screen.findByRole('region', { name: t('tiers.title') })
   }
 
