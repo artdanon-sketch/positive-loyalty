@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fill } from '../shared/format/fill'
 import { formatBaht, formatDate } from '../shared/format/format'
 import { t } from '../shared/i18n'
+import type { TranslationKey } from '../shared/i18n'
 import { GUEST_URL } from '../shared/config/env'
 import { App } from './App'
 
@@ -569,9 +570,14 @@ describe('Безопасность', () => {
     '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
   }
 
+  const openSettingsTab = async (tab: TranslationKey): Promise<void> => {
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t(tab) }))
+  }
+
   const openReview = async (): Promise<void> => {
     await fillAndSubmitLogin()
-    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    await openSettingsTab('settings.tab.security')
     fireEvent.click(await screen.findByRole('link', { name: t('securitySettings.open') }))
   }
 
@@ -680,7 +686,7 @@ describe('Безопасность', () => {
     render(<App />)
 
     await fillAndSubmitLogin()
-    fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    await openSettingsTab('settings.tab.security')
     const section = await screen.findByRole('region', { name: t('securitySettings.title') })
     const input = await within(section).findByLabelText(t('securitySettings.maxChecks'))
     const save = within(section).getByRole('button', { name: t('securitySettings.save') })
@@ -1617,10 +1623,16 @@ const TAG_VIP = { id: '16161616-1616-4161-8161-161616161616', name: 'VIP', color
 const TAG_BLOGGER = { id: '17171717-1717-4171-8171-171717171717', name: 'Блогер', color: 'violet' }
 
 describe('Настройки программы', () => {
-  const openSettings = async (): Promise<void> => {
+  const openSettings = async (tab?: TranslationKey): Promise<void> => {
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
-    await screen.findByLabelText(t('settings.earn.label'))
+
+    if (tab === undefined) {
+      await screen.findByLabelText(t('settings.earn.label'))
+      return
+    }
+
+    fireEvent.click(await screen.findByRole('tab', { name: t(tab) }))
   }
 
   it('менеджеру пункта «Настройки» нет — процент начисления это деньги владельца', async () => {
@@ -1703,10 +1715,12 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings()
+    await openSettings('settings.tab.rewards')
 
     const section = within(await screen.findByRole('region', { name: t('staffReward.title') }))
-    fireEvent.click(section.getByRole('checkbox', { name: new RegExp(t('staffReward.enabled')) }))
+    fireEvent.click(
+      await section.findByRole('checkbox', { name: new RegExp(t('staffReward.enabled')) }),
+    )
 
     fireEvent.change(await section.findByLabelText(t('staffReward.valueFixed')), {
       target: { value: '100' },
@@ -1836,7 +1850,7 @@ describe('Настройки программы', () => {
       )
     render(<App />)
 
-    await openSettings()
+    await openSettings('settings.tab.guests')
     const section = screen.getByRole('region', { name: t('tagSettings.title') })
 
     fireEvent.click(
@@ -1869,7 +1883,7 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings()
+    await openSettings('settings.tab.rewards')
     const section = screen.getByRole('region', { name: t('referral.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
@@ -1911,7 +1925,7 @@ describe('Настройки программы', () => {
     })
     render(<App />)
 
-    await openSettings()
+    await openSettings('settings.tab.rewards')
     const section = screen.getByRole('region', { name: t('referral.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
@@ -1942,6 +1956,7 @@ describe('Источники в настройках', () => {
   const openSources = async (): Promise<HTMLElement> => {
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.guests') }))
     return screen.findByRole('region', { name: t('channelSettings.title') })
   }
 
@@ -2415,6 +2430,7 @@ describe('Сертификаты', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.rewards') }))
     const section = await screen.findByRole('region', { name: t('birthday.title') })
 
     fireEvent.click(await within(section).findByLabelText(t('birthday.enabled')))
@@ -2567,6 +2583,7 @@ describe('Отзывы', () => {
 
     await fillAndSubmitLogin()
     fireEvent.click(await screen.findByRole('link', { name: t('nav.settings') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('settings.tab.comms') }))
     const section = await screen.findByRole('region', { name: t('reviewReplies.title') })
 
     fireEvent.change(
