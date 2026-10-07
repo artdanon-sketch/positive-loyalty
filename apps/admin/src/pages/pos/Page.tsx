@@ -4,7 +4,11 @@ import type { CommitResult, PosGuest, PosTag, PreviewResult } from '@positive/co
 
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
+import type { TranslationKey } from '../../shared/i18n'
+import { HistoryTab } from './components/history-tab'
+import { InviteTab } from './components/invite-tab'
 import { IssuedGrants, OfferLines } from './components/offer-lines'
+import { ProfileTab } from './components/profile-tab'
 import { QrScanner } from './components/qr-scanner'
 import { GuestTags } from './components/guest-tags'
 import { RedeemPanel } from './components/redeem-panel'
@@ -12,6 +16,8 @@ import { StuckQueue } from './components/stuck-queue'
 import { StuckReceipts } from './components/stuck-receipts'
 import { isScannerSupported } from './components/scanner-support'
 import { isNetworkFailure } from './offline-queue'
+import { posTabs } from './pos-tabs'
+import type { PosTab } from './pos-tabs'
 import { useOfflineQueue } from './use-offline-queue'
 import type { OfflineQueueState } from './use-offline-queue'
 import {
@@ -74,10 +80,34 @@ type Stage =
    */
   | { kind: 'AMOUNT_OFFLINE'; phone: string }
 
+const TAB_LABEL: Readonly<Record<PosTab, TranslationKey>> = {
+  sale: 'pos.tabs.sale',
+  invite: 'pos.tabs.invite',
+  history: 'pos.tabs.history',
+  profile: 'pos.tabs.profile',
+}
+
+/**
+ * Вкладки сверх «Счёта» — как в приложении кассира у UDS. docs/02, раздел 3.9.
+ *
+ * Начатый чек переживает переход на другую вкладку: гость найден, кассир
+ * показал ему QR соседа по очереди — и вернулся к тому же чеку. Поэтому этап
+ * чека живёт здесь, а не внутри вкладки.
+ *
+ * Полоса очереди — над вкладками: связь пропадает не только на «Счёте».
+ */
 export function PosPage(): ReactElement {
   const t = useT()
   const [stage, setStage] = useState<Stage>({ kind: 'GUEST' })
+  const [tab, setTab] = useState<PosTab>('sale')
   const queue = useOfflineQueue()
+  const config = usePosConfig()
+
+  // Пока правила не пришли, вкладок не рисуем: иначе «Пригласить» и «История»
+  // появлялись бы через секунду и сдвигали экран под пальцем.
+  const tabs = config.data === undefined ? null : posTabs(config.data)
+  // Владелец выключил вкладку посреди смены — возвращаемся к чеку, а не к отказу.
+  const active: PosTab = tabs?.includes(tab) === true ? tab : 'sale'
 
   return (
     <section className="page pos">
@@ -89,6 +119,51 @@ export function PosPage(): ReactElement {
       </header>
 
       <QueueBanner queue={queue} />
+
+      {tabs === null ? null : (
+        <div className="tabs" role="tablist" aria-label={t('pos.tabs.label')}>
+          {tabs.map((option) => (
+            <button
+              key={option}
+              className={option === active ? 'tabs__tab tabs__tab--on' : 'tabs__tab'}
+              type="button"
+              role="tab"
+              aria-selected={option === active}
+              onClick={() => {
+                setTab(option)
+              }}
+            >
+              {t(TAB_LABEL[option])}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {active === 'invite' ? (
+        <InviteTab />
+      ) : active === 'history' ? (
+        <HistoryTab />
+      ) : active === 'profile' ? (
+        <ProfileTab />
+      ) : (
+        <SaleTab stage={stage} setStage={setStage} queue={queue} />
+      )}
+    </section>
+  )
+}
+
+/** «Счёт»: найти гостя → посчитать → провести. Этап чека хранит экран целиком. */
+function SaleTab({
+  stage,
+  setStage,
+  queue,
+}: {
+  stage: Stage
+  setStage: (stage: Stage) => void
+  queue: OfflineQueueState
+}): ReactElement {
+  return (
+    <>
       <StuckReceipts />
       <StuckQueue queue={queue} />
 
@@ -169,7 +244,7 @@ export function PosPage(): ReactElement {
       )}
 
       <RedeemPanel />
-    </section>
+    </>
   )
 }
 

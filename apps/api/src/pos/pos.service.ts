@@ -951,6 +951,12 @@ export class PosService {
       maxManualAmount: cashierRules.maxManualAmount,
       allowManualEntry: cashierRules.allowManualEntry,
       tags,
+      // Что кассиру открыто на его экране — решает владелец в настройках.
+      // Касса узнаёт это здесь, до того как нарисует вкладки: вкладка, ведущая
+      // в отказ, хуже отсутствующей.
+      showOwnHistory: cashierRules.showOwnHistory,
+      showOwnStats: cashierRules.showOwnStats,
+      allowInvite: cashierRules.allowInvite,
     }
   }
 

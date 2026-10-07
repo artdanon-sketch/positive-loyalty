@@ -53,6 +53,11 @@ const defaults = {
     allowManualEntry: true,
     showGuestTags: false,
     allowTagging: false,
+    // Экран кассира: свою историю и показатели владелец открывает сам,
+    // а пригласить гостя кассир может сразу (docs/02, раздел 3.9).
+    showOwnHistory: false,
+    showOwnStats: false,
+    allowInvite: true,
   },
 }
 

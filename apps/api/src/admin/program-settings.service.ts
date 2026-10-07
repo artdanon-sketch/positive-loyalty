@@ -70,6 +70,11 @@ const pick = (config: ProgramConfig): ProgramSettings => ({
     allowManualEntry: config.cashierRules.allowManualEntry,
     showGuestTags: config.cashierRules.showGuestTags,
     allowTagging: config.cashierRules.allowTagging,
+    // Без них экран настроек не знал бы, что сейчас включено, и владелец не смог бы
+    // открыть кассиру историю смены: запись работала, а показать было нечего.
+    showOwnHistory: config.cashierRules.showOwnHistory,
+    showOwnStats: config.cashierRules.showOwnStats,
+    allowInvite: config.cashierRules.allowInvite,
   },
 })
 

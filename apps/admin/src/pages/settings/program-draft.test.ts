@@ -31,6 +31,15 @@ describe('Настройки программы: изменилось или н�
 
   it('ВКЛЮЧЁННАЯ НАСТРОЙКА ОТЛИЧАЕТСЯ ОТ ОТСУТСТВУЮЩЕЙ', () => {
     expect(sameProgramSettings(settings({ showGuestTags: true }), settings())).toBe(false)
+    expect(sameProgramSettings(settings({ showOwnHistory: true }), settings())).toBe(false)
+    expect(sameProgramSettings(settings({ showOwnStats: true }), settings())).toBe(false)
+  })
+
+  it('«ПРИГЛАСИТЬ ГОСТЯ» ВКЛЮЧЕНО ПО УМОЛЧАНИЮ: ОТСУТСТВИЕ РАВНО ВКЛЮЧЁННОМУ', () => {
+    // Иначе форма у заведения со старыми настройками горела бы «есть изменения»,
+    // хотя владелец ничего не трогал: на экране галочка стоит, в ответе ключа нет.
+    expect(sameProgramSettings(settings({ allowInvite: true }), settings())).toBe(true)
+    expect(sameProgramSettings(settings({ allowInvite: false }), settings())).toBe(false)
   })
 
   it('РАЗНЫЕ ПРОЦЕНТЫ И ПОТОЛОК — ЭТО ИЗМЕНЕНИЕ', () => {

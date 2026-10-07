@@ -266,6 +266,9 @@ export const TENANTS: readonly TenantSeed[] = [
         // видно и включённое состояние, и выключенное по умолчанию у соседей.
         showGuestTags: true,
         allowTagging: true,
+        showOwnHistory: true,
+        showOwnStats: true,
+        allowInvite: true,
       },
       staffReward: {
         enabled: true,
@@ -312,6 +315,9 @@ export const TENANTS: readonly TenantSeed[] = [
         allowManualEntry: true,
         showGuestTags: false,
         allowTagging: false,
+        showOwnHistory: false,
+        showOwnStats: false,
+        allowInvite: true,
       },
       staffReward: {
         enabled: true,
@@ -355,6 +361,9 @@ export const TENANTS: readonly TenantSeed[] = [
         allowManualEntry: true,
         showGuestTags: false,
         allowTagging: false,
+        showOwnHistory: false,
+        showOwnStats: false,
+        allowInvite: true,
       },
       staffReward: {
         enabled: false,
