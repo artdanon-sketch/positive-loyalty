@@ -1194,6 +1194,119 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Вкладок на кассе четыре, и на телефоне кассира они обязаны помещаться целиком:
+   листать вкладки одной рукой, пока гость ждёт у стойки, — лишний жест. */
+.pos .tabs__tab {
+  /* От длины надписи, а не поровну: поровну короткий «Счёт» отнимал место
+     у «Пригласить», и та обрезалась на телефоне. */
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-inline: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Касса, «Пригласить»: QR крупно и по центру — гость наводит камеру через стойку. */
+.pos-invite {
+  align-items: center;
+  text-align: center;
+}
+
+.pos-invite .pos__summary {
+  align-self: stretch;
+  text-align: left;
+}
+
+.pos-invite__lead {
+  margin: 0;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+}
+
+/* Постоянные цвета QR в обеих темах: подложка — «тихая зона», код — currentColor. */
+.pos-invite__qr {
+  padding: 12px;
+  background: var(--qr-paper);
+  color: var(--qr-ink);
+  border-radius: var(--r-card);
+  line-height: 0;
+}
+
+.pos-invite__qr svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Касса, «История»: строка — время, гость, сумма и начисление. */
+.pos-history {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.pos-history__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'when guest amount'
+    'when guest points';
+  column-gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.pos-history__item + .pos-history__item {
+  border-top: 1px solid var(--line);
+}
+
+.pos-history__when {
+  grid-area: when;
+  color: var(--tx-2);
+  font-size: var(--fs-secondary-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-history__guest {
+  grid-area: guest;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-history__amount {
+  grid-area: amount;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pos-history__points,
+.pos-history__item .chip {
+  grid-area: points;
+  justify-self: end;
+}
+
+.pos-history__points {
+  color: var(--mint);
+  font-size: var(--fs-secondary-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Отменённый чек виден, но не спорит с живыми: зачёркнутая сумма, приглушённая строка. */
+.pos-history__item--void .pos-history__guest,
+.pos-history__item--void .pos-history__when {
+  color: var(--tx-3);
+}
+
+.pos-history__item--void .pos-history__amount {
+  color: var(--tx-3);
+  text-decoration: line-through;
+}
+
 /* Акции в чеке: что применилось и почему не применилось остальное. */
 .pos-offers {
   display: flex;
@@ -1884,12 +1997,15 @@ body {
   display: flex;
   gap: 4px;
   margin-bottom: var(--sp-4);
-  border-bottom: 1px solid var(--line);
+  /* Линия под вкладками — внутренняя тень, а не рамка. С рамкой подчёркивание
+     активной вкладки приходилось сдвигать на пиксель вниз, поверх неё, и этот
+     пиксель в Windows рисовал рядом с вкладками лишнюю полосу прокрутки.
+     Тень лежит под вкладками — подчёркивание закрывает её без сдвига. */
+  box-shadow: inset 0 -1px 0 var(--line);
   overflow-x: auto;
 }
 
 .tabs__tab {
-  margin-bottom: -1px;
   padding: 10px 14px;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -3418,4 +3534,64 @@ body {
   background: var(--surf);
   color: var(--tx);
   box-shadow: inset 0 0 0 1px var(--line-2);
+}
+
+/* ── Витрина настроек ────────────────────────────────────────────────────────
+   Карточка объясняет себя строкой, поэтому владелец выбирает по смыслу,
+   а не по догадке из одного слова. Сетка та же, что у плиток обзора. */
+
+.hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--sp-4);
+}
+
+.hub__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  text-align: left;
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card-lg);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.hub__card:hover {
+  border-color: var(--mint);
+}
+
+.hub__card:active {
+  transform: translateY(1px);
+}
+
+.hub__name {
+  font-size: var(--fs-secondary-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.hub__about {
+  color: var(--tx-2);
+  font-size: var(--fs-secondary);
+  line-height: 1.45;
+}
+
+.hub__back {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-secondary);
+  color: var(--tx-2);
+  cursor: pointer;
+}
+
+.hub__back:hover {
+  color: var(--tx);
 }

@@ -25,6 +25,10 @@ import {
   PosVoidInput,
   PreviewInput,
   RedeemGrantInput,
+  PosHistory,
+  PosHistoryQuery,
+  PosInvite,
+  PosMe,
 } from '@positive/contracts'
 import type {
   CommitResult,
@@ -39,6 +43,7 @@ import type {
 
 import { Roles } from '../common/tenant/roles.decorator'
 
+import { PosAppService } from './pos-app.service'
 import { PosService } from './pos.service'
 
 /**
@@ -51,7 +56,10 @@ import { PosService } from './pos.service'
 @Controller('pos')
 @Roles('CASHIER', 'MANAGER', 'OWNER')
 export class PosController {
-  constructor(private readonly posService: PosService) {}
+  constructor(
+    private readonly posService: PosService,
+    private readonly posApp: PosAppService,
+  ) {}
 
   @Get('config')
   @ApiOperation({ summary: 'Правила кассы заведения' })
@@ -251,5 +259,55 @@ export class PosController {
     }
 
     return this.posService.voidTransaction(transactionId, parsed.data.reason, parsed.data.comment)
+  }
+
+  @Get('invite')
+  @ApiOperation({
+    summary: 'Что показать гостю, чтобы записать его у стойки',
+    description:
+      'QR и код первого включённого источника заведения. Название источника едет рядом: ' +
+      'кассир должен видеть, куда запишется гость. Источников нет — поля пустые.',
+  })
+  @ApiOkResponse({ description: 'Код, ссылка и название источника' })
+  @ApiForbiddenResponse({ description: 'Приглашение с кассы выключено владельцем' })
+  async invite(): Promise<PosInvite> {
+    return this.posApp.invite()
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'Свои чеки за период',
+    description:
+      'Только свои: чужая смена кассиру не показывается. Период — сегодня, неделя, месяц ' +
+      'или произвольный диапазон, по часам заведения. Итог суммой приезжает вместе со списком.',
+  })
+  @ApiOkResponse({ description: 'Список операций и итог' })
+  @ApiForbiddenResponse({ description: 'История смены выключена владельцем' })
+  async history(@Query() query: Record<string, unknown>): Promise<PosHistory> {
+    const parsed = PosHistoryQuery.safeParse(query)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Неверный период',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posApp.history(parsed.data)
+  }
+
+  @Get('me')
+  @ApiOperation({
+    summary: 'Кто я и где работаю',
+    description:
+      'Имя, роль и заведение. Показатели смены и средняя оценка — только если владелец ' +
+      'открыл их в настройках; иначе stats приходит пустым.',
+  })
+  @ApiOkResponse({ description: 'Профиль сотрудника на кассе' })
+  async me(): Promise<PosMe> {
+    return this.posApp.me()
   }
 }

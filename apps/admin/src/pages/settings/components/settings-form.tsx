@@ -36,6 +36,10 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   )
   const [showTags, setShowTags] = useState(initial.cashierRules.showGuestTags ?? false)
   const [allowTagging, setAllowTagging] = useState(initial.cashierRules.allowTagging ?? false)
+  const [ownHistory, setOwnHistory] = useState(initial.cashierRules.showOwnHistory ?? false)
+  const [ownStats, setOwnStats] = useState(initial.cashierRules.showOwnStats ?? false)
+  // Пригласить гостя кассир может по умолчанию: это его работа, а не чужие цифры.
+  const [invite, setInvite] = useState(initial.cashierRules.allowInvite ?? true)
   const [cap, setCap] = useState(
     initial.cashierRules.maxManualAmount === null
       ? ''
@@ -70,6 +74,9 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
             showGuestTags: showTags,
             // Вешать теги, не видя их, нельзя: выключенный показ выключает и правку.
             allowTagging: showTags && allowTagging,
+            showOwnHistory: ownHistory,
+            showOwnStats: ownStats,
+            allowInvite: invite,
           },
         }
       : null
@@ -270,6 +277,63 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
             {capOk ? t('settings.cap.hint') : t('settings.invalid.cap')}
           </span>
         </div>
+      </section>
+
+      <section className="panel" aria-labelledby="settings-cashier-title">
+        <h2 className="panel__title" id="settings-cashier-title">
+          {t('settings.cashier.title')}
+        </h2>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={ownHistory}
+            aria-describedby="settings-own-history-hint"
+            onChange={(event) => {
+              setOwnHistory(event.target.checked)
+            }}
+          />
+          <span className="toggle__text">
+            <b>{t('settings.ownHistory.label')}</b>
+          </span>
+        </label>
+        <span className="field__hint toggle__hint" id="settings-own-history-hint">
+          {t('settings.ownHistory.hint')}
+        </span>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={ownStats}
+            aria-describedby="settings-own-stats-hint"
+            onChange={(event) => {
+              setOwnStats(event.target.checked)
+            }}
+          />
+          <span className="toggle__text">
+            <b>{t('settings.ownStats.label')}</b>
+          </span>
+        </label>
+        <span className="field__hint toggle__hint" id="settings-own-stats-hint">
+          {t('settings.ownStats.hint')}
+        </span>
+
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={invite}
+            aria-describedby="settings-invite-hint"
+            onChange={(event) => {
+              setInvite(event.target.checked)
+            }}
+          />
+          <span className="toggle__text">
+            <b>{t('settings.invite.label')}</b>
+          </span>
+        </label>
+        <span className="field__hint toggle__hint" id="settings-invite-hint">
+          {t('settings.invite.hint')}
+        </span>
       </section>
 
       <div className="save-bar">

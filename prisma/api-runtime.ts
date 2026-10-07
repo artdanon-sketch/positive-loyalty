@@ -33,6 +33,7 @@ import { existsSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
+import type { LedgerEventsService } from '../apps/api/src/core/ledger-events.service.ts'
 import type { LedgerService } from '../apps/api/src/core/ledger.service.ts'
 import type { PrismaService } from '../apps/api/src/core/prisma.service.ts'
 
@@ -54,8 +55,22 @@ interface PrismaServiceModule {
   readonly PrismaService: new () => PrismaService
 }
 
+/** Журналу нужна живая лента — но от неё он зовёт ровно одно. */
+type LedgerFeed = Pick<LedgerEventsService, 'publishEarned'>
+
 interface LedgerServiceModule {
-  readonly LedgerService: new (prisma: PrismaService) => LedgerService
+  readonly LedgerService: new (prisma: PrismaService, events: LedgerFeed) => LedgerService
+}
+
+/**
+ * Живая лента бэк-офиса: у seed и демо-продаж её слушать некому.
+ *
+ * Настоящий `LedgerEventsService` на каждый чек ходил бы в базу за именем гостя
+ * ради экрана, которого нет, — тысячи лишних запросов за 90 дней истории. А без
+ * ленты вовсе журнал падал на первом же чеке: `publishEarned` у `undefined`.
+ */
+const SILENT_FEED: LedgerFeed = {
+  publishEarned: () => undefined,
 }
 
 /** Хеширование PIN — та же реализация, что проверяет вход. Второй быть не должно. */
@@ -133,9 +148,9 @@ const quietNestLogger = (): void => {
 /**
  * Поднимает `PrismaService` и `LedgerService` без контейнера Nest.
  *
- * DI здесь не нужен: у обоих классов ровно одна зависимость и та передаётся
- * конструктором. `@Injectable()` — это метаданные для контейнера, созданию объекта
- * руками он не мешает.
+ * DI здесь не нужен: зависимости обоих классов передаются конструктором — базе
+ * и журналу, а журналу ещё и лента (здесь — тихая, см. SILENT_FEED).
+ * `@Injectable()` — это метаданные для контейнера, созданию объекта руками он не мешает.
  *
  * `$connect` не зовём: driver adapter поднимает пул лениво, первым же запросом.
  * Отсутствующий или неверный DATABASE_URL честно упадёт на первом обращении к базе,
@@ -151,7 +166,7 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
   const maskModule = (await import(MASK_MODULE.href)) as MaskModule
 
   const prisma = new prismaModule.PrismaService()
-  const ledger = new ledgerModule.LedgerService(prisma)
+  const ledger = new ledgerModule.LedgerService(prisma, SILENT_FEED)
 
   return {
     prisma,
