@@ -1,5 +1,6 @@
 import type { Server } from 'node:http'
 
+import { NotFoundException } from '@nestjs/common'
 import type { INestApplication } from '@nestjs/common'
 import { Test, type TestingModule } from '@nestjs/testing'
 import request from 'supertest'
@@ -7,10 +8,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AppModule } from '../../src/app.module'
 import { signAccessToken, signGuestToken } from '../../src/common/tenant/access-token'
+import { TenantContext } from '../../src/common/tenant/tenant-context'
+import { OfferGrantService } from '../../src/core/offer-grant.service'
 import { PrismaService } from '../../src/core/prisma.service'
+import { GuestPromoService } from '../../src/identity/guest-promo.service'
 
-import { createMembershipFixture, createTenant } from './ledger-test-context'
-import type { MembershipFixture } from './ledger-test-context'
+import {
+  createLedgerTestContext,
+  createMembershipFixture,
+  createTenant,
+} from './ledger-test-context'
+import type { LedgerTestContext, MembershipFixture } from './ledger-test-context'
 
 /**
  * Промо-сертификаты: гость забирает сертификат сам. docs/02, раздел 5.11.
@@ -164,7 +172,12 @@ describe('Промо-сертификаты: гость забирает сам'
     const first = await claim(guest.guestId, promo.offerId)
     const second = await claim(guest.guestId, promo.offerId)
 
-    expect((first.body as Claimed).code).toBe((second.body as Claimed).code)
+    // Статус — первым делом. Без него два ответа 500 давали «undefined ===
+    // undefined», и тест был зелёным, пока повтор отвечал ошибкой.
+    expect(first.status).toBe(201)
+    expect(second.status).toBe(201)
+    expect((second.body as Claimed).code).toBe((first.body as Claimed).code)
+    expect((first.body as Claimed).code.length).toBeGreaterThan(0)
 
     const templates = (
       await request(server()).get('/v1/admin/certificates').set('Authorization', bearer(ownerToken))
@@ -209,5 +222,80 @@ describe('Промо-сертификаты: гость забирает сам'
       ((await listPromo(guest.guestId)).body as PromoItem[]).map((item) => item.offerId),
     ).not.toContain(promo.id)
     expect((await claim(guest.guestId, promo.id)).status).toBe(404)
+  })
+})
+
+/** Настоящий PrismaService под ролью приложения — приём из ledger-app-role. */
+const createAppRoleContext = async (): Promise<LedgerTestContext> => {
+  const url = process.env['DATABASE_URL_TEST_APP_ROLE']
+
+  if (typeof url !== 'string' || url.trim().length === 0) {
+    throw new Error(
+      'Не задан DATABASE_URL_TEST_APP_ROLE — политику guest_promo_offers не проверить.',
+    )
+  }
+
+  const previous = process.env['DATABASE_URL']
+  process.env['DATABASE_URL'] = url
+
+  try {
+    return await createLedgerTestContext()
+  } finally {
+    if (previous === undefined) {
+      delete process.env['DATABASE_URL']
+    } else {
+      process.env['DATABASE_URL'] = previous
+    }
+  }
+}
+
+describe('Промо-сертификаты под ролью приложения, как на бою', () => {
+  // Тесты выше ходят суперпользователем, а для него политики RLS не действуют:
+  // зелёными они были бы и без guest_promo_offers. На бою API ходит ролью
+  // positive_app — здесь под ней работает тот же код сервиса, что отвечает гостю.
+  let appRole: LedgerTestContext
+  let service: GuestPromoService
+
+  const asGuest = async <T>(guestId: string, run: () => Promise<T>): Promise<T> =>
+    TenantContext.run(
+      { tenantId: '', actorId: null, role: null, guestId, requestId: 'promo-app-role' },
+      run,
+    )
+
+  beforeAll(async () => {
+    appRole = await createAppRoleContext()
+    service = new GuestPromoService(appRole.prisma, new OfferGrantService(appRole.prisma))
+  })
+
+  afterAll(async () => {
+    await appRole?.close()
+  })
+
+  it('ГОСТЬ ВИДИТ И ЗАБИРАЕТ ПРОМО СВОЕГО ЗАВЕДЕНИЯ; СОСЕДСКОЕ И НЕ-ПРОМО ЕМУ НЕ ВИДНЫ', async () => {
+    const promo = await createTemplate(ownerToken, 'Промо под ролью приложения', true)
+    const plain = await createTemplate(ownerToken, 'Обычный под ролью приложения', false)
+    const foreign = await createTemplate(
+      neighbourOwnerToken,
+      'Соседское под ролью приложения',
+      true,
+    )
+
+    const seen = (await asGuest(guest.guestId, () => service.list())).map((item) => item.offerId)
+    expect(seen).toContain(promo.id)
+    expect(seen).not.toContain(plain.id)
+    expect(seen).not.toContain(foreign.id)
+
+    const claimed = await asGuest(guest.guestId, () => service.claim(promo.id))
+    expect(claimed.offerId).toBe(promo.id)
+    expect(claimed.code.length).toBeGreaterThan(0)
+
+    // Гость соседнего заведения нашего промо не видит и забрать не может.
+    const theirs = (await asGuest(neighbour.guestId, () => service.list())).map(
+      (item) => item.offerId,
+    )
+    expect(theirs).not.toContain(promo.id)
+    await expect(asGuest(neighbour.guestId, () => service.claim(promo.id))).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
   })
 })

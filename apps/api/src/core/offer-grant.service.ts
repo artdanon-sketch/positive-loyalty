@@ -150,6 +150,15 @@ export class OfferGrantService {
 
       const nonce = input.idempotencyKey ?? randomUUID()
 
+      // Точка отката вокруг вставки. Упёршись в UNIQUE, Postgres помечает
+      // сломанной ВСЮ транзакцию, и поиск первого промокода ниже падал бы
+      // с 25P02 «current transaction is aborted»: повтор отвечал 500 вместо
+      // первого кода. Проверка «уже выдано?» у вызывающих спасала только от
+      // последовательного повтора, не от гонки, а промо и день рождения
+      // её не делают вовсе. Откат к точке чинит транзакцию и сохраняет
+      // set_config контура — он выставлен до точки.
+      await tx.$executeRaw`SAVEPOINT offer_grant_issue`
+
       try {
         const created = await tx.offerGrant.create({
           data: {
@@ -164,6 +173,8 @@ export class OfferGrantService {
           select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
         })
 
+        await tx.$executeRaw`RELEASE SAVEPOINT offer_grant_issue`
+
         return { ...created, replayed: false }
       } catch (error) {
         // Повтор по ключу — не ошибка, а норма: событие пришло дважды.
@@ -172,6 +183,8 @@ export class OfferGrantService {
         if (input.idempotencyKey === undefined || !isUniqueViolation(error)) {
           throw error
         }
+
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT offer_grant_issue`
 
         const existing = await tx.offerGrant.findUnique({
           where: { nonce },
