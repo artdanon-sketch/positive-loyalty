@@ -294,7 +294,7 @@ export const PosVoidResult = z
 export type PosVoidResult = z.infer<typeof PosVoidResult>
 
 /**
- * Приложение кассира: вкладки сверх «Счёта». docs/02, раздел 3.6.
+ * Приложение кассира: вкладки сверх «Счёта». docs/02, раздел 3.9.
  *
  * ЧТО ИЗ ЭТОГО ВИДНО — РЕШАЕТ ВЛАДЕЛЕЦ. Флаги приезжают в `PosConfig`, и касса
  * не рисует вкладку, которой нет: кнопка, ведущая в отказ, хуже отсутствующей.
@@ -337,6 +337,12 @@ export const PosHistoryQuery = z
       error: 'Для произвольного периода нужны обе даты',
     },
   )
+  // Даты в виде ГГГГ-ММ-ДД сравниваются как строки. Перевёрнутый период — ошибка
+  // ввода, а не «пусто»: пустой список кассир принял бы за пустую смену.
+  .refine((value) => value.from === undefined || value.to === undefined || value.from <= value.to, {
+    error: 'Начало периода позже конца',
+    path: ['to'],
+  })
 
 export type PosHistoryQuery = z.infer<typeof PosHistoryQuery>
 
@@ -344,12 +350,20 @@ export const PosHistoryItem = z
   .object({
     id: z.string(),
     occurredAt: z.iso.datetime(),
-    /** Имя гостя или «Без имени» — кассир узнаёт свой чек по нему. */
-    guest: z.string(),
+    /**
+     * Имя гостя — кассир узнаёт свой чек по нему. null — гость имени не оставил;
+     * подпись «без имени» рисует касса на своём языке, а не сервер на русском.
+     */
+    guest: z.string().nullable(),
     /** Сумма чека в минорных единицах. */
     amount: z.number().int().nonnegative(),
     /** Начислено баллов. */
     points: z.number().int(),
+    /**
+     * Чек отменён. В списке он остаётся — иначе кассир не поймёт, куда делся чек,
+     * который он только что провёл, — но в итог и в число чеков не входит.
+     */
+    reversed: z.boolean(),
   })
   .strict()
 
@@ -358,10 +372,18 @@ export type PosHistoryItem = z.infer<typeof PosHistoryItem>
 /** Свои операции за период. `GET /v1/pos/history`. Только свои — чужие смены не его дело. */
 export const PosHistory = z
   .object({
+    /** Самые свежие чеки, не больше 200. */
     items: z.array(PosHistoryItem),
-    /** Итог суммой за период — как в подвале у UDS. */
+    /**
+     * Итог суммой за ВЕСЬ период — как в подвале у UDS — без отменённых чеков.
+     * Считается отдельно от списка: у занятого кассира за месяц чеков больше,
+     * чем помещается в список, и итог по видимой части был бы враньём.
+     */
     total: z.number().int().nonnegative(),
+    /** Сколько чеков за период, без отменённых. */
     count: z.number().int().nonnegative(),
+    /** В периоде есть чеки старше показанных: касса пишет «показаны последние». */
+    hasMore: z.boolean(),
   })
   .strict()
 
@@ -370,7 +392,7 @@ export type PosHistory = z.infer<typeof PosHistory>
 /** Показатели кассира. null в `PosMe.stats` — владелец их не открывал. */
 export const PosStats = z
   .object({
-    /** Выручка за сегодняшнюю смену, минорные единицы. */
+    /** Выручка за сегодняшнюю смену, минорные единицы. Отменённые чеки не в счёт. */
     shiftRevenue: z.number().int().nonnegative(),
     shiftCount: z.number().int().nonnegative(),
     /** Средняя оценка гостей за 30 дней. null — оценок ещё нет. */
