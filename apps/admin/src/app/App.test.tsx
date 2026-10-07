@@ -1237,6 +1237,177 @@ describe('Правила кассы приезжают с сервера', () =>
   })
 })
 
+describe('Касса: вкладки кассира', () => {
+  // Владелец открыл всё: приглашение, историю и показатели.
+  const OPEN_CONFIG = {
+    ...POS_CONFIG,
+    allowInvite: true,
+    showOwnHistory: true,
+    showOwnStats: true,
+  }
+
+  const INVITE = {
+    code: 'STAND234',
+    source: 'Табличка на стойке',
+    url: `${GUEST_URL}/?venue=tenant&src=STAND234`,
+  }
+
+  const HISTORY = {
+    items: [
+      {
+        id: 'h1',
+        occurredAt: '2026-10-08T07:40:00.000Z',
+        guest: 'Сомчай',
+        amount: 45_000,
+        points: 2_250,
+        reversed: false,
+      },
+      {
+        id: 'h2',
+        occurredAt: '2026-10-08T06:10:00.000Z',
+        guest: 'Мария',
+        amount: 20_000,
+        points: 1_000,
+        reversed: true,
+      },
+      {
+        id: 'h3',
+        occurredAt: '2026-10-08T05:00:00.000Z',
+        guest: null,
+        amount: 30_000,
+        points: 1_500,
+        reversed: false,
+      },
+    ],
+    total: 75_000,
+    count: 2,
+    hasMore: false,
+  }
+
+  const ME = {
+    displayName: 'Кассир смены А',
+    role: 'CASHIER',
+    venue: 'Kata Beach Kitchen',
+    stats: { shiftRevenue: 75_000, shiftCount: 2, rating: 4.3 },
+  }
+
+  const openTill = async (
+    config: object,
+    extra: Parameters<typeof stubApi>[0] = {},
+  ): Promise<ReturnType<typeof vi.fn>> => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/config': () => json(config),
+      '/v1/pos/invite': () => json(INVITE),
+      '/v1/pos/history': () => json(HISTORY),
+      '/v1/pos/me': () => json(ME),
+      ...extra,
+    })
+    render(<App />)
+    await fillAndSubmitLogin()
+    return fetchMock
+  }
+
+  it('ЗАКРЫТЫЕ ВЛАДЕЛЬЦЕМ ВКЛАДКИ КАССИР НЕ ВИДИТ ВОВСЕ — А НЕ ВИДИТ ОТКАЗ', async () => {
+    await openTill({ ...POS_CONFIG, allowInvite: false, showOwnHistory: false })
+
+    expect(await screen.findByRole('tab', { name: t('pos.tabs.sale') })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: t('pos.tabs.profile') })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: t('pos.tabs.invite') })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: t('pos.tabs.history') })).not.toBeInTheDocument()
+  })
+
+  it('«ПРИГЛАСИТЬ»: QR И НАЗВАНИЕ ИСТОЧНИКА, КУДА ЗАПИШЕТСЯ ГОСТЬ', async () => {
+    await openTill(OPEN_CONFIG)
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.invite') }))
+
+    expect(await screen.findByRole('img', { name: t('pos.invite.qr') })).toBeInTheDocument()
+    expect(screen.getByText(INVITE.source)).toBeInTheDocument()
+  })
+
+  it('«ПРИГЛАСИТЬ» БЕЗ ИСТОЧНИКОВ — ПОДСКАЗКА, А НЕ ПУСТОЙ QR', async () => {
+    await openTill(OPEN_CONFIG, {
+      '/v1/pos/invite': () => json({ code: null, url: null, source: null }),
+    })
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.invite') }))
+
+    expect(await screen.findByText(t('pos.invite.empty.title'))).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: t('pos.invite.qr') })).not.toBeInTheDocument()
+  })
+
+  it('«ИСТОРИЯ»: ИТОГ С СЕРВЕРА, ОТМЕНЁННЫЙ ЧЕК С ПОМЕТКОЙ, ГОСТЬ БЕЗ ИМЕНИ ПОДПИСАН', async () => {
+    const fetchMock = await openTill(OPEN_CONFIG)
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.history') }))
+
+    // Итог — тот, что прислал сервер, а не сумма видимых строк (950 ฿ с отменённым).
+    expect(await screen.findByText(formatBaht(HISTORY.total))).toBeInTheDocument()
+    expect(screen.getByText(t('pos.history.voided'))).toBeInTheDocument()
+    expect(screen.getByText(t('pos.history.noName'))).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.history.week') }))
+
+    await waitFor(() => {
+      const asked = fetchMock.mock.calls.some(([input]) =>
+        requestOf(input as RequestInfo | URL).includes('/pos/history?period=week'),
+      )
+      expect(asked).toBe(true)
+    })
+  })
+
+  it('«ИСТОРИЯ» ЗА ПУСТОЙ ПЕРИОД — ТАК И ПИШЕТ', async () => {
+    await openTill(OPEN_CONFIG, {
+      '/v1/pos/history': () => json({ items: [], total: 0, count: 0, hasMore: false }),
+    })
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.history') }))
+
+    expect(await screen.findByText(t('pos.history.empty'))).toBeInTheDocument()
+  })
+
+  it('«ПРОФИЛЬ»: ИМЯ, ЗАВЕДЕНИЕ И ПОКАЗАТЕЛИ СМЕНЫ, ЕСЛИ ВЛАДЕЛЕЦ ИХ ОТКРЫЛ', async () => {
+    await openTill(OPEN_CONFIG)
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.profile') }))
+
+    expect(await screen.findByText(ME.venue)).toBeInTheDocument()
+    expect(screen.getByText(formatBaht(ME.stats.shiftRevenue))).toBeInTheDocument()
+    expect(
+      screen.getByText(fill(t('pos.profile.ratingValue'), { rating: '4.3' })),
+    ).toBeInTheDocument()
+  })
+
+  it('«ПРОФИЛЬ» БЕЗ ОТКРЫТЫХ ПОКАЗАТЕЛЕЙ — БЕЗ ЦИФР И БЕЗ ИЗВИНЕНИЙ', async () => {
+    await openTill(OPEN_CONFIG, { '/v1/pos/me': () => json({ ...ME, stats: null }) })
+
+    fireEvent.click(await screen.findByRole('tab', { name: t('pos.tabs.profile') }))
+
+    expect(await screen.findByText(ME.venue)).toBeInTheDocument()
+    expect(screen.queryByText(t('pos.profile.revenue'))).not.toBeInTheDocument()
+  })
+
+  it('НАЧАТЫЙ ЧЕК ПЕРЕЖИВАЕТ ПЕРЕХОД НА ДРУГУЮ ВКЛАДКУ', async () => {
+    // Гость найден, кассир на минуту открыл QR для соседа по очереди —
+    // и вернулся к тому же гостю, а не к пустому поиску.
+    await openTill(OPEN_CONFIG)
+
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: t('pos.tabs.invite') }))
+    expect(await screen.findByRole('img', { name: t('pos.invite.qr') })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: t('pos.tabs.sale') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+    expect(screen.getByLabelText(t('pos.amount.label'))).toBeInTheDocument()
+  })
+})
+
 describe('Касса при пропавшей сети', () => {
   it('обрыв на проведении принимает чек в очередь, а не отказывает', async () => {
     // Гость стоит у стойки. Отказать ему потому, что на острове моргнул

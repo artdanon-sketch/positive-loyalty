@@ -4,6 +4,10 @@ import type {
   CommitResult,
   PosConfig,
   PosGuest,
+  PosHistory,
+  PosHistoryPeriod,
+  PosInvite,
+  PosMe,
   PosTag,
   PosVoidResult,
   PreviewResult,
@@ -55,6 +59,47 @@ export function usePosSaleKinds(): UseQueryResult<SaleKind[], Error> {
     queryKey: ['pos', 'sale-kinds'],
     queryFn: () => authFetch<SaleKind[]>('/pos/sale-kinds'),
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * QR, по которому гость записывается у стойки. docs/02, раздел 3.9.
+ *
+ * Держится всю смену, как правила кассы: источник владелец заводит в бэк-офисе,
+ * а не посреди очереди.
+ */
+export function usePosInvite(): UseQueryResult<PosInvite, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['pos', 'invite'],
+    queryFn: () => authFetch<PosInvite>('/pos/invite'),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * Свои чеки за период. Без кэша на смену: кассир открывает вкладку, чтобы
+ * увидеть чек, который только что провёл, — вчерашний список здесь хуже пустого.
+ */
+export function usePosHistory(
+  period: Exclude<PosHistoryPeriod, 'range'>,
+): UseQueryResult<PosHistory, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['pos', 'history', period],
+    queryFn: () => authFetch<PosHistory>(`/pos/history?period=${period}`),
+  })
+}
+
+/** Кто я и где работаю, с показателями смены, если владелец их открыл. Свежие по той же причине. */
+export function usePosMe(): UseQueryResult<PosMe, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['pos', 'me'],
+    queryFn: () => authFetch<PosMe>('/pos/me'),
   })
 }
 
