@@ -637,6 +637,67 @@ describe('Оценка визита', () => {
   })
 })
 
+describe('Промо-сертификаты', () => {
+  const PROMO_ID = '5c5c5c5c-5c5c-45c5-85c5-5c5c5c5c5c01'
+
+  const promo = (claimed: boolean) => ({
+    offerId: PROMO_ID,
+    tenantId: KATA_ID,
+    venue: 'Kata Beach Kitchen',
+    title: 'Осенний сертификат',
+    value: { kind: 'FIXED_OFF', amount: 50_000 },
+    validityDays: 30,
+    howTo: [],
+    claimed,
+  })
+
+  it('ГОСТЬ ВИДИТ, ЧТО ПОЛУЧИТ, И ЗАБИРАЕТ В ОДНО НАЖАТИЕ', async () => {
+    let claimed = false
+
+    stubApi({
+      // Сначала «Забрать»: его адрес начинается так же, как адрес списка.
+      [`/v1/guest/promo/${PROMO_ID}/claim`]: () => {
+        claimed = true
+        return json({
+          offerId: PROMO_ID,
+          code: 'PROMO-7K2M',
+          expiresAt: '2026-11-07T00:00:00.000Z',
+        })
+      },
+      '/v1/guest/promo': () => json([promo(claimed)]),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('promo.title') }))
+    // По названию «Осенний сертификат» не понять, скидка это или кофе.
+    expect(section.getByText('Скидка 500,00 ฿')).toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: t('promo.claim') }))
+
+    // Забранное не исчезает, а гаснет: гость видит, что промокод уже у него.
+    expect(await section.findByText(t('promo.claimed'))).toBeInTheDocument()
+    expect(section.queryByRole('button', { name: t('promo.claim') })).not.toBeInTheDocument()
+  })
+
+  it('ПРОМО НЕТ — БЛОКА НА КАРТЕ НЕТ', async () => {
+    stubApi({ '/v1/guest/promo': () => json([]) })
+    render(<App />)
+
+    await signIn()
+    await screen.findByRole('region', { name: t('card.venues.title') })
+    await waitFor(() => {
+      expect(fetchCalls().some(([input]) => pathOf(input).endsWith('/guest/promo'))).toBe(true)
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(screen.queryByRole('region', { name: t('promo.title') })).not.toBeInTheDocument()
+  })
+})
+
 describe('Новости заведений', () => {
   const news = (n: number) => ({
     id: `4b4b4b4b-4b4b-44b4-84b4-4b4b4b4b4b0${String(n)}`,

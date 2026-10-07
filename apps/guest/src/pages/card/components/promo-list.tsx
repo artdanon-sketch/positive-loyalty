@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { useT } from '../../../shared/i18n/i18n-context'
+import { giftValueText } from '../gift-value'
 import { useClaimPromo, usePromos } from '../hooks'
 
 /**
@@ -40,6 +41,8 @@ export function PromoList(): ReactElement | null {
             <li className="promo__item" key={item.offerId}>
               <div className="promo__main">
                 <span className="promo__name">{item.title}</span>
+                {/* Что именно получит гость: по названию это не всегда понятно. */}
+                <span className="promo__value">{giftValueText(item.value, t)}</span>
                 <span className="promo__venue">{item.venue}</span>
                 <span className="promo__validity">
                   {t('promo.validityLead')} {item.validityDays}
