@@ -300,5 +300,10 @@ export function useClaimPromo(): UseMutationResult<ClaimedPromoCertificate, Erro
       void queryClient.invalidateQueries({ queryKey: PROMO_QUERY_KEY })
       void queryClient.invalidateQueries({ queryKey: WALLET_QUERY_KEY })
     },
+    // Отказ — чаще всего «закончились» или «промо кончилось»: витрина устарела,
+    // перечитываем её, чтобы разошедшееся промо не висело с живой кнопкой.
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: PROMO_QUERY_KEY })
+    },
   })
 }

@@ -1,5 +1,12 @@
 import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common'
-import { ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import {
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger'
 import type { ClaimedPromoCertificate, PromoCertificate } from '@positive/contracts'
 
 import { Public } from '../common/tenant/public.decorator'
@@ -31,6 +38,10 @@ export class GuestPromoController {
     description: 'Выдаёт гостю промокод в кошелёк. Повтор возвращает тот же — один на гостя.',
   })
   @ApiCreatedResponse({ description: 'Выданный промокод' })
+  @ApiNotFoundResponse({
+    description: 'Промо нет: чужое, выключено, ещё не началось или кончилось',
+  })
+  @ApiConflictResponse({ description: 'Тираж разошёлся — сертификаты закончились' })
   async claim(@Param('offerId') offerId: string): Promise<ClaimedPromoCertificate> {
     return this.promo.claim(offerId)
   }

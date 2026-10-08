@@ -649,6 +649,8 @@ describe('Промо-сертификаты', () => {
     validityDays: 30,
     howTo: [],
     claimed,
+    endsAt: null as string | null,
+    left: null as number | null,
   })
 
   it('ГОСТЬ ВИДИТ, ЧТО ПОЛУЧИТ, И ЗАБИРАЕТ В ОДНО НАЖАТИЕ', async () => {
@@ -679,6 +681,22 @@ describe('Промо-сертификаты', () => {
     // Забранное не исчезает, а гаснет: гость видит, что промокод уже у него.
     expect(await section.findByText(t('promo.claimed'))).toBeInTheDocument()
     expect(section.queryByRole('button', { name: t('promo.claim') })).not.toBeInTheDocument()
+  })
+
+  it('СРОК И ОСТАТОК ВИДНЫ, ЕСЛИ ОНИ ЕСТЬ: ЧЕСТНАЯ ПРИЧИНА НЕ ОТКЛАДЫВАТЬ', async () => {
+    stubApi({
+      '/v1/guest/promo': () =>
+        json([{ ...promo(false), endsAt: '2026-10-31T16:59:59.999Z', left: 12 }]),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const section = within(await screen.findByRole('region', { name: t('promo.title') }))
+    expect(section.getByText(t('promo.left').replace('{count}', '12'))).toBeInTheDocument()
+    expect(
+      section.getByText(new RegExp(t('promo.endsAt').replace('{date}', '').trim())),
+    ).toBeInTheDocument()
   })
 
   it('ПРОМО НЕТ — БЛОКА НА КАРТЕ НЕТ', async () => {

@@ -39,6 +39,19 @@ import { isUniqueViolation, randomCode } from './random-code'
  * кто обслуживает.
  */
 
+/**
+ * Тираж исчерпан: по шаблону выдано столько, сколько разрешил владелец.
+ * Повтор того же ключа сюда не попадает — он получает свой первый код.
+ */
+export class OfferSoldOutError extends Error {
+  readonly code = 'OFFER_SOLD_OUT'
+
+  constructor(readonly offerId: string) {
+    super(`Тираж акции ${offerId} исчерпан`)
+    this.name = 'OfferSoldOutError'
+  }
+}
+
 /** Отказ в погашении. Код машиночитаемый — по нему касса рисует подсказку. */
 export class GrantRedeemError extends Error {
   constructor(
@@ -74,6 +87,13 @@ export interface IssueGrantInput {
    */
   readonly idempotencyKey?: string
   readonly now: Date
+  /**
+   * Тираж: сколько всего кодов может быть выдано по этой акции. Проверяется
+   * в той же транзакции, что и выдача, под блокировкой строки акции — иначе
+   * два последних нажатия в момент запуска промо выдали бы сто первый код.
+   * Нет — без ограничения (проверку делает вызывающий, как касса).
+   */
+  readonly totalQty?: number | null
 }
 
 export interface RedeemGrantInput {
@@ -149,6 +169,29 @@ export class OfferGrantService {
       const expiresAt = new Date(input.now.getTime() + input.validityDays * 24 * 60 * 60 * 1000)
 
       const nonce = input.idempotencyKey ?? randomUUID()
+
+      if (typeof input.totalQty === 'number') {
+        // Повтор того же гостя — его первый код, даже когда тираж уже разошёлся:
+        // «закончились» в ответ на второе нажатие по своему подарку было бы враньём.
+        const replay = await tx.offerGrant.findUnique({
+          where: { nonce },
+          select: { id: true, code: true, offerId: true, guestId: true, expiresAt: true },
+        })
+
+        if (replay !== null) {
+          return { ...replay, replayed: true }
+        }
+
+        // Очередь за последними кодами — на строке акции: вторая транзакция ждёт
+        // первую и считает уже с её кодом (READ COMMITTED видит закоммиченное).
+        await tx.$queryRaw`SELECT 1 FROM "Offer" WHERE "id" = ${input.offerId} AND "tenantId" = ${input.tenantId} FOR UPDATE`
+
+        const issued = await tx.offerGrant.count({ where: { offerId: input.offerId } })
+
+        if (issued >= input.totalQty) {
+          throw new OfferSoldOutError(input.offerId)
+        }
+      }
 
       // Точка отката вокруг вставки. Упёршись в UNIQUE, Postgres помечает
       // сломанной ВСЮ транзакцию, и поиск первого промокода ниже падал бы

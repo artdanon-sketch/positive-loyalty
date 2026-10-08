@@ -3595,3 +3595,16 @@ body {
 .hub__back:hover {
   color: var(--tx);
 }
+
+/* Сертификаты: условия промо под названием и правка в строке под ним. */
+.certificate-promo {
+  display: block;
+  margin-top: 4px;
+}
+
+.promo-terms-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}

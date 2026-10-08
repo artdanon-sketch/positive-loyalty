@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
-import { CERTIFICATES_MAX, CertificateOfferReward, offerTitle } from '@positive/contracts'
+import {
+  CERTIFICATES_MAX,
+  CertificateOfferReward,
+  NO_PROMO_TERMS,
+  offerTitle,
+} from '@positive/contracts'
 import type {
   CertificateTemplate,
   CreateCertificateInput,
@@ -10,6 +15,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService } from '../core/audit.service'
 import type { AuditActorType } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
+import { limitsWith, scheduleWith, termsOf } from '../core/promo-terms'
 import type { Prisma } from '../generated/prisma/client'
 
 /**
@@ -22,6 +28,9 @@ import type { Prisma } from '../generated/prisma/client'
  *
  * ВЫКЛЮЧИТЬ, А НЕ УДАЛИТЬ. На шаблон ссылаются выданные промокоды: выключенный
  * не выдаётся, а выданные доживают свой срок. Выключение — пауза акции.
+ *
+ * УСЛОВИЯ ПРОМО — В ПОЛЯХ САМОЙ АКЦИИ (core/promo-terms.ts): окно «забрать»
+ * в schedule, тираж в limits.totalQty.
  */
 
 type Tx = Prisma.TransactionClient
@@ -69,8 +78,8 @@ export class CertificatesService {
           status: 'LIVE',
           visibility: 'VENUE_ONLY',
           audience: {},
-          schedule: {},
-          limits: {},
+          schedule: scheduleWith({}, input.promo ?? NO_PROMO_TERMS) as Prisma.InputJsonValue,
+          limits: limitsWith({}, input.promo ?? NO_PROMO_TERMS) as Prisma.InputJsonValue,
           reward,
           selfClaim: input.selfClaim ?? false,
           i18n: { title: { ru: input.title, en: input.title }, howTo: HOW_TO },
@@ -112,9 +121,23 @@ export class CertificatesService {
         })
       }
 
+      const stored =
+        input.promo === undefined
+          ? null
+          : await tx.offer.findFirst({
+              where: { id, tenantId, type: 'GIFT_CARD' },
+              select: { schedule: true, limits: true },
+            })
+
       await tx.offer.updateMany({
         where: { id, tenantId, type: 'GIFT_CARD' },
         data: {
+          ...(input.promo === undefined || stored === null
+            ? {}
+            : {
+                schedule: scheduleWith(stored.schedule, input.promo) as Prisma.InputJsonValue,
+                limits: limitsWith(stored.limits, input.promo) as Prisma.InputJsonValue,
+              }),
           ...(input.isActive === undefined ? {} : { status: input.isActive ? 'LIVE' : 'PAUSED' }),
           ...(input.selfClaim === undefined ? {} : { selfClaim: input.selfClaim }),
           ...(input.title === undefined
@@ -134,8 +157,18 @@ export class CertificatesService {
       tenantId,
       entityType: 'Offer',
       entityId: id,
-      oldValue: { title: before.title, isActive: before.isActive, selfClaim: before.selfClaim },
-      newValue: { title: after.title, isActive: after.isActive, selfClaim: after.selfClaim },
+      oldValue: {
+        title: before.title,
+        isActive: before.isActive,
+        selfClaim: before.selfClaim,
+        promo: before.promo,
+      },
+      newValue: {
+        title: after.title,
+        isActive: after.isActive,
+        selfClaim: after.selfClaim,
+        promo: after.promo,
+      },
     })
 
     return after
@@ -150,7 +183,15 @@ export class CertificatesService {
     const offers = await tx.offer.findMany({
       where: { tenantId, type: 'GIFT_CARD', ...(id === undefined ? {} : { id }) },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, status: true, selfClaim: true, reward: true, i18n: true },
+      select: {
+        id: true,
+        status: true,
+        selfClaim: true,
+        reward: true,
+        i18n: true,
+        schedule: true,
+        limits: true,
+      },
     })
 
     const counts =
@@ -179,6 +220,7 @@ export class CertificatesService {
           validityDays: reward.data.validityDays,
           isActive: offer.status === 'LIVE',
           selfClaim: offer.selfClaim,
+          promo: termsOf(offer.schedule, offer.limits),
           issued: mine.reduce((sum, row) => sum + row._count._all, 0),
           redeemed: mine
             .filter((row) => row.state === 'REDEEMED')
