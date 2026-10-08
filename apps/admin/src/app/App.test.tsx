@@ -4537,3 +4537,126 @@ describe('Гости: фильтры и выгрузка', () => {
     click.mockRestore()
   })
 })
+
+describe('Подарок в рассылке и автосценарии', () => {
+  const RULE = (kind: string, waiting: number, threshold: number) => ({
+    kind,
+    enabled: false,
+    threshold,
+    text: 'Соскучились! Заходите.',
+    gift: null,
+    lastRunAt: null,
+    waiting,
+  })
+
+  const openTab = async (tab: TranslationKey): Promise<void> => {
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reviews') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t(tab) }))
+  }
+
+  const sentBody = (
+    fetchMock: ReturnType<typeof vi.fn>,
+    match: (url: string, init: RequestInit | undefined) => boolean,
+  ): Record<string, unknown> | undefined => {
+    const call = fetchMock.mock.calls.find(([input, init]) =>
+      match(requestOf(input as RequestInfo | URL), init as RequestInit | undefined),
+    )
+    const body = (call?.[1] as RequestInit | undefined)?.body
+    return typeof body === 'string' ? (JSON.parse(body) as Record<string, unknown>) : undefined
+  }
+
+  it('РАССЫЛКА С БАЛЛАМИ: ПОДАРОК ДОСТАНЕТСЯ ВСЕМ НАЙДЕННЫМ, БАЛЛЫ УХОДЯТ В САТАНГАХ', async () => {
+    // Слать некому ни одному из двенадцати — но с подарком рассылка законна:
+    // подарок ждёт на карте.
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/broadcasts/preview': () =>
+        json({ found: 12, willReceive: 0, tired: 0, unreachable: 12 }),
+      '/v1/admin/broadcasts': (init) =>
+        init?.method === 'POST'
+          ? json({ id: '91919191-9191-4919-8919-919191919191' }, 201)
+          : json({ total: 0, items: [] }),
+    })
+    render(<App />)
+
+    await openTab('communication.tab.broadcasts')
+
+    fireEvent.change(await screen.findByLabelText(t('broadcasts.field.title')), {
+      target: { value: 'Подарок спящим' },
+    })
+    fireEvent.change(screen.getByLabelText(t('broadcasts.field.text')), {
+      target: { value: 'Дарим сто батов баллами!' },
+    })
+    fireEvent.change(screen.getByLabelText(t('campaignGift.label')), {
+      target: { value: 'POINTS' },
+    })
+    fireEvent.change(screen.getByLabelText(t('campaignGift.points')), {
+      target: { value: '100' },
+    })
+
+    expect(
+      await screen.findByText(fill(t('broadcasts.gift.hint'), { count: '12' })),
+    ).toBeInTheDocument()
+
+    const send = screen.getByRole('button', { name: t('broadcasts.send') })
+    await waitFor(() => {
+      expect(send).toBeEnabled()
+    })
+    fireEvent.click(send)
+
+    await waitFor(() => {
+      const body = sentBody(
+        fetchMock,
+        (url, init) => url.endsWith('/admin/broadcasts') && init?.method === 'POST',
+      )
+      expect(body?.gift).toEqual({ kind: 'POINTS', amount: 10_000 })
+    })
+  })
+
+  it('СЦЕНАРИЙ: ВИДНО, СКОЛЬКО ГОСТЕЙ ЖДУТ, И СЕРТИФИКАТ УХОДИТ ВМЕСТЕ С ВКЛЮЧЕНИЕМ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/certificates': () => json([CERTIFICATE]),
+      '/v1/admin/automation': (init) =>
+        init?.method === 'PUT'
+          ? json({ ...RULE('SLEEPING', 37, 30), enabled: true })
+          : json({
+              items: [
+                RULE('SLEEPING', 37, 30),
+                RULE('JOINED_NO_PURCHASE', 0, 7),
+                RULE('SPENT_TOTAL', 3, 1_000_000),
+              ],
+            }),
+    })
+    render(<App />)
+
+    await openTab('communication.tab.automation')
+
+    const card = within(
+      await screen.findByRole('article', { name: t('automation.sleeping.title') }),
+    )
+    // Цена решения видна до включения.
+    expect(card.getByText(fill(t('automation.waiting'), { count: '37' }))).toBeInTheDocument()
+    expect(card.getByText(t('automation.once.sleeping'))).toBeInTheDocument()
+
+    fireEvent.change(card.getByLabelText(t('campaignGift.label')), {
+      target: { value: 'CERTIFICATE' },
+    })
+    fireEvent.change(await card.findByLabelText(t('campaignGift.certificate')), {
+      target: { value: CERTIFICATE.id },
+    })
+    fireEvent.click(card.getByRole('button', { name: t('automation.turnOn') }))
+
+    await waitFor(() => {
+      const body = sentBody(
+        fetchMock,
+        (url, init) => url.endsWith('/admin/automation/SLEEPING') && init?.method === 'PUT',
+      )
+      expect(body).toMatchObject({
+        enabled: true,
+        gift: { kind: 'CERTIFICATE', certificateId: CERTIFICATE.id },
+      })
+    })
+  })
+})

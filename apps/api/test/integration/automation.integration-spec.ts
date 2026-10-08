@@ -171,11 +171,70 @@ describe('Автосценарии: запуск', () => {
     expect(await broadcastsOf(tenantId)).toHaveLength(1)
   })
 
-  it('ЗАВТРА СЦЕНАРИЙ СРАБОТАЕТ СНОВА', async () => {
-    const result = await runner.tick(new Date(Date.now() + DAY_MS + 60_000))
+  /**
+   * Проход за проходом, пока сценарий ЭТОГО заведения не отработает в момент
+   * now. Разгребатель берёт за раз несколько заведений, и в общей тестовой базе
+   * чужие сценарии могут занять очередь; счётчик «запущено» считает их тоже,
+   * поэтому смотрим на отметку своего правила и на свои рассылки.
+   */
+  const runAt = async (now: Date): Promise<void> => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await runner.tick(now)
+      const rule = await prisma.automationRule.findFirst({
+        where: { tenantId, kind: 'SLEEPING' },
+        select: { lastRunAt: true },
+      })
 
-    expect(result.started).toBe(1)
-    expect(await broadcastsOf(tenantId)).toHaveLength(2)
+      if (rule?.lastRunAt?.getTime() === now.getTime()) {
+        return
+      }
+    }
+
+    throw new Error('сценарий заведения так и не отработал')
+  }
+
+  it('ЗАВТРА ТОМУ ЖЕ СПЯЩЕМУ ВТОРОЙ РАЗ НЕ ПИШЕМ — ТОЛЬКО НОВОМУ СПЯЩЕМУ', async () => {
+    // Спящий остаётся спящим и завтра. Раньше сценарий писал ему каждый день,
+    // пока не упрётся в усталость, — а с подарком дарил бы каждый день.
+    await runAt(new Date(Date.now() + DAY_MS + 60_000))
+    expect(await broadcastsOf(tenantId)).toHaveLength(1)
+
+    const newcomer = await createMembershipFixture(prisma, { tenantId })
+    await prisma.membership.update({
+      where: { id: newcomer.membershipId },
+      data: { lastVisitAt: new Date(Date.now() - 45 * DAY_MS) },
+    })
+
+    await runAt(new Date(Date.now() + 2 * DAY_MS + 120_000))
+
+    const created = await broadcastsOf(tenantId)
+    expect(created).toHaveLength(2)
+
+    const recipients = await prisma.broadcastRecipient.findMany({
+      where: { broadcastId: { in: created.map((row) => row.id) } },
+      select: { guestId: true },
+    })
+    // Прежний спящий — в первой рассылке и только в ней.
+    expect(recipients.filter((row) => row.guestId === sleeper.guestId)).toHaveLength(1)
+    expect(recipients.filter((row) => row.guestId === newcomer.guestId)).toHaveLength(1)
+  })
+
+  it('ГОСТЬ ПРИШЁЛ И СНОВА УСНУЛ — НОВЫЙ ЭПИЗОД, ЕМУ ПИШЕМ СНОВА', async () => {
+    // Визит месяц с лишним назад — позже прежнего: это новая история гостя.
+    await prisma.membership.update({
+      where: { id: sleeper.membershipId },
+      data: { lastVisitAt: new Date(Date.now() - 35 * DAY_MS) },
+    })
+
+    await runAt(new Date(Date.now() + 3 * DAY_MS + 180_000))
+
+    const created = await broadcastsOf(tenantId)
+    expect(created).toHaveLength(3)
+    expect(
+      await prisma.broadcastRecipient.count({
+        where: { broadcastId: { in: created.map((row) => row.id) }, guestId: sleeper.guestId },
+      }),
+    ).toBe(2)
   })
 
   it('ВЫКЛЮЧЕННЫЙ СЦЕНАРИЙ СОСЕДА МОЛЧИТ, ХОТЯ ГОСТЬ У НЕГО ТОЖЕ СПЯЩИЙ', async () => {

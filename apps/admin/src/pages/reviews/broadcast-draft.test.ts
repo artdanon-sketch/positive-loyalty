@@ -43,6 +43,34 @@ describe('Черновик рассылки: что мешает отправи�
   })
 })
 
+describe('Черновик рассылки: подарок', () => {
+  const withPoints = draft({ gift: { kind: 'POINTS', points: '100', certificateId: '' } })
+
+  it('С ПОДАРКОМ «СООБЩЕНИЕ НИКТО НЕ ПОЛУЧИТ» — НЕ ПОМЕХА: ПОДАРОК ЖДЁТ НА КАРТЕ', () => {
+    expect(draftIssues(withPoints, { found: 4, willReceive: 0, tired: 0, unreachable: 4 })).toEqual(
+      [],
+    )
+  })
+
+  it('С ПОДАРКОМ ПОМЕХА — ТОЛЬКО ПУСТАЯ АУДИТОРИЯ', () => {
+    expect(draftIssues(withPoints, { found: 0, willReceive: 0, tired: 0, unreachable: 0 })).toEqual(
+      ['broadcasts.issue.empty'],
+    )
+  })
+
+  it('НЕГОДНЫЙ ПОДАРОК — СВОЯ ПРИЧИНА, А НЕ ОБЩАЯ СЕРАЯ КНОПКА', () => {
+    expect(
+      draftIssues(draft({ gift: { kind: 'POINTS', points: '0', certificateId: '' } }), undefined),
+    ).toEqual(['campaignGift.problem.points'])
+    expect(
+      draftIssues(
+        draft({ gift: { kind: 'CERTIFICATE', points: '', certificateId: '' } }),
+        undefined,
+      ),
+    ).toEqual(['campaignGift.problem.certificate'])
+  })
+})
+
 describe('Черновик рассылки: сегменты', () => {
   it('«ВСЕ» — ЭТО ОТСУТСТВИЕ ФИЛЬТРОВ, А НЕ ОСОБЫЙ ФИЛЬТР', () => {
     expect(audienceOfSegment('all')).toEqual({})

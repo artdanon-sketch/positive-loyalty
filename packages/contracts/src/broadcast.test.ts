@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { SaveAutomationInput } from './automation.js'
 import { BROADCAST_TEXT_MAX, BroadcastAudience, CreateBroadcastInput } from './broadcast.js'
 
 describe('Рассылки', () => {
@@ -40,5 +41,32 @@ describe('Рассылки', () => {
       CreateBroadcastInput.safeParse({ title: 'Осень', text: 'Скучаем!', sendAt: 'завтра' })
         .success,
     ).toBe(false)
+  })
+})
+
+describe('Подарок в рассылке и сценарии', () => {
+  const base = { title: 'Осень', text: 'Дарим!' }
+
+  it('БАЛЛЫ — ЦЕЛЫЕ ПОЛОЖИТЕЛЬНЫЕ В МИНОРНЫХ ЕДИНИЦАХ, СЕРТИФИКАТ — ПО ШАБЛОНУ', () => {
+    expect(
+      CreateBroadcastInput.safeParse({ ...base, gift: { kind: 'POINTS', amount: 10_000 } }).success,
+    ).toBe(true)
+    expect(
+      CreateBroadcastInput.safeParse({ ...base, gift: { kind: 'POINTS', amount: 99.5 } }).success,
+    ).toBe(false)
+    expect(
+      CreateBroadcastInput.safeParse({ ...base, gift: { kind: 'POINTS', amount: 0 } }).success,
+    ).toBe(false)
+    expect(
+      CreateBroadcastInput.safeParse({ ...base, gift: { kind: 'CERTIFICATE', certificateId: 'x' } })
+        .success,
+    ).toBe(false)
+  })
+
+  it('В СЦЕНАРИИ «НЕТ КЛЮЧА» И «NULL» — РАЗНОЕ: НЕ ТРОГАТЬ И СНЯТЬ', () => {
+    const rule = { enabled: true, threshold: 30, text: 'Соскучились!' }
+
+    expect(SaveAutomationInput.parse(rule)).not.toHaveProperty('gift')
+    expect(SaveAutomationInput.parse({ ...rule, gift: null })).toMatchObject({ gift: null })
   })
 })

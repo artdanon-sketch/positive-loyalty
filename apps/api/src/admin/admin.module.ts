@@ -39,6 +39,7 @@ import { AutomationRunService } from './automation-run.service'
 import { AutomationController } from './automation.controller'
 import { AutomationService } from './automation.service'
 import { AutomationSweeper } from './automation.sweeper'
+import { BroadcastGiftService } from './broadcast-gift.service'
 import { BroadcastSendService } from './broadcast-send.service'
 import { BroadcastSweeper } from './broadcast.sweeper'
 import { BroadcastsController } from './broadcasts.controller'
@@ -117,6 +118,7 @@ import { StaffService } from './staff.service'
     MessagesService,
     BroadcastsService,
     BroadcastSendService,
+    BroadcastGiftService,
     BroadcastSweeper,
     AutomationService,
     AutomationRunService,

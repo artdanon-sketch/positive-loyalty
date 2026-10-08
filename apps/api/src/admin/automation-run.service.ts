@@ -2,8 +2,10 @@ import { Injectable, Logger } from '@nestjs/common'
 import type { AutomationKind } from '@positive/contracts'
 
 import { PrismaService } from '../core/prisma.service'
-import { audienceOf } from './automation.service'
+import { audienceOf, newcomers } from './automation.service'
+import { parseGift } from './broadcast-gift.service'
 import { BroadcastsService } from './broadcasts.service'
+import { GuestAudienceService } from './guest-audience.service'
 
 /**
  * Запуск автоматических сценариев. docs/02, раздел 5.4.1.
@@ -17,8 +19,14 @@ import { BroadcastsService } from './broadcasts.service'
  * заходил тридцать дней» верно и завтра, и послезавтра. Без этого правила гость
  * получал бы письмо каждые пятнадцать секунд — по проходу разгребателя.
  *
- * ПУСТАЯ АУДИТОРИЯ — ТОЖЕ РАБОТА. Рассылка создаётся и закрывается сама, а день
- * отмечается: иначе сценарий с пустым результатом перезапускался бы бесконечно.
+ * ОДИН РАЗ НА ГОСТЯ ЗА ЭПИЗОД (automation-episode.ts). Сценарий пишет только
+ * тем, кто подошёл под условие и ещё не получал этот эпизод, и отмечает их
+ * в той же транзакции, что и рассылку: рассылка без отметок повторилась бы
+ * завтра — вместе с подарком.
+ *
+ * НЕКОМУ ПИСАТЬ — РАССЫЛКИ НЕТ. День отмечается, а пустая рассылка в архив не
+ * пишется: при эпизодах «некому» — обычный день, и архив не должен зарастать
+ * пустыми строками.
  */
 
 /** Сколько сценариев берём за проход: их по три на заведение, спешить некуда. */
@@ -43,6 +51,7 @@ export class AutomationRunService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly broadcasts: BroadcastsService,
+    private readonly audience: GuestAudienceService,
   ) {}
 
   async tick(now: Date = new Date()): Promise<AutomationTickResult> {
@@ -56,7 +65,7 @@ export class AutomationRunService {
       },
       orderBy: { lastRunAt: 'asc' },
       take: BATCH,
-      select: { id: true, tenantId: true, kind: true, threshold: true, text: true },
+      select: { id: true, tenantId: true, kind: true, threshold: true, text: true, gift: true },
     })
 
     let started = 0
@@ -70,7 +79,14 @@ export class AutomationRunService {
   }
 
   private async start(
-    rule: { id: string; tenantId: string; kind: AutomationKind; threshold: number; text: string },
+    rule: {
+      id: string
+      tenantId: string
+      kind: AutomationKind
+      threshold: number
+      text: string
+      gift: unknown
+    },
     now: Date,
   ): Promise<boolean> {
     try {
@@ -95,14 +111,45 @@ export class AutomationRunService {
         return false
       }
 
+      const fresh = await this.prisma.forTenant(rule.tenantId, async (tx) =>
+        newcomers(tx, this.audience, rule.tenantId, rule.kind, rule.threshold),
+      )
+
+      if (fresh.length === 0) {
+        return false
+      }
+
+      const gift = parseGift(rule.gift)
+
       // Рассылку создаёт тот же сервис, что и владелец в бэк-офисе: снимок
       // аудитории, усталость и учёт доставки должны работать одинаково.
       // Автор — сам сценарий: сотрудника за этой рассылкой нет.
-      await this.broadcasts.createFor(rule.tenantId, null, 'SYSTEM', {
-        title: TITLES[rule.kind],
-        text: rule.text,
-        audience: audienceOf(rule.kind, rule.threshold),
-      })
+      await this.broadcasts.createFor(
+        rule.tenantId,
+        null,
+        'SYSTEM',
+        {
+          title: TITLES[rule.kind],
+          text: rule.text,
+          audience: audienceOf(rule.kind, rule.threshold),
+          ...(gift === null ? {} : { gift }),
+        },
+        {
+          onlyGuestIds: fresh.map((row) => row.guestId),
+          afterCreate: async (tx, broadcastId) => {
+            await tx.automationHit.createMany({
+              data: fresh.map((row) => ({
+                tenantId: rule.tenantId,
+                kind: rule.kind,
+                guestId: row.guestId,
+                episode: row.episode,
+                broadcastId,
+              })),
+              skipDuplicates: true,
+            })
+          },
+        },
+      )
 
       return true
     } catch (error) {
