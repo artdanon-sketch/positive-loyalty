@@ -342,14 +342,41 @@ describe('Касса: пригласить гостя', () => {
     })
   })
 
-  it('ИСТОЧНИКОВ НЕТ — ПОЛЯ ПУСТЫЕ, А НЕ ВЫДУМАННЫЙ КОД', async () => {
-    // По выдуманному коду гость получил бы отказ прямо у стойки.
+  it('ИСТОЧНИКОВ НЕТ ВОВСЕ — ПЕРВЫЙ QR САМ ЗАВОДИТ «СТОЙКУ КАССЫ», ОДНУ НА ДВЕ КАССЫ', async () => {
+    // У только что подключённого заведения: как у UDS, QR есть с первого дня.
     const tenantId = await createTenant(prisma)
     const token = signAccessToken({ tenantId, actorId: null, role: 'CASHIER' }, SECRET)
+
+    // Две кассы открыли вкладку одновременно — источник один.
+    const [first, second] = await Promise.all([
+      get('/v1/pos/invite', token).expect(200),
+      get('/v1/pos/invite', token).expect(200),
+    ])
+    const invite = first.body as PosInvite
+
+    expect(invite.source).toBe('Стойка кассы')
+    expect(invite.code).toMatch(/^[A-Z0-9]{8}$/)
+    expect(invite.url).toBe(`${GUEST_URL}/?venue=${tenantId}&src=${invite.code ?? ''}`)
+    expect(second.body as PosInvite).toEqual(invite)
+
+    const channels = await prisma.acquisitionChannel.count({ where: { tenantId } })
+    expect(channels).toBe(1)
+
+    // И дальше — тот же QR, а не новый на каждое открытие.
+    expect((await get('/v1/pos/invite', token).expect(200)).body as PosInvite).toEqual(invite)
+  })
+
+  it('ВЛАДЕЛЕЦ ВЫКЛЮЧИЛ ВСЕ ИСТОЧНИКИ — ПОЛЯ ПУСТЫЕ, КАССА ЕГО РЕШЕНИЕ НЕ ОБХОДИТ', async () => {
+    const tenantId = await createTenant(prisma)
+    const token = signAccessToken({ tenantId, actorId: null, role: 'CASHIER' }, SECRET)
+    await prisma.acquisitionChannel.create({
+      data: { tenantId, name: 'Старая листовка', code: 'OLDFLY23', isActive: false },
+    })
 
     const response = await get('/v1/pos/invite', token).expect(200)
 
     expect(response.body as PosInvite).toEqual({ code: null, url: null, source: null })
+    expect(await prisma.acquisitionChannel.count({ where: { tenantId } })).toBe(1)
   })
 
   it('ВЛАДЕЛЕЦ ЗАПРЕТИЛ — ОТКАЗ, И КАССА ЗНАЕТ ОБ ЭТОМ ЗАРАНЕЕ', async () => {

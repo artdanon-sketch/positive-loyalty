@@ -712,6 +712,8 @@ function ConfirmStep({
   // обновившаяся раньше сервера, не должна терять строку начисления.
   const discounted = preview.discount > 0
   const paidWithPoints = preview.redeem > 0
+  // Сравнение, а не само поле: сервер до подарка в предрасчёте его не присылал.
+  const welcome = preview.welcomeBonus > 0 ? preview.welcomeBonus : 0
 
   // Справочник ведут не все заведения. Где его нет — выбора нет вовсе,
   // и чек проводится ровно как раньше: лишний пустой список посреди кассы
@@ -757,10 +759,22 @@ function ConfirmStep({
             <dd>{formatBaht(preview.pointsToEarn)}</dd>
           </div>
         ) : null}
-        {!discounted || preview.pointsToEarn > 0 || paidWithPoints ? (
+        {/* Подарок за первую покупку — кассир называет его вслух. Раньше он молча
+            приходил сверху, и «станет на карте» расходилось с картой. */}
+        {welcome > 0 ? (
+          <div className="pos__row pos__row--accent">
+            <dt>{t('pos.confirm.welcome')}</dt>
+            <dd>+{formatBaht(welcome)}</dd>
+          </div>
+        ) : null}
+        {!discounted || preview.pointsToEarn > 0 || paidWithPoints || welcome > 0 ? (
           <div className="pos__row">
             <dt>{t('pos.confirm.balanceAfter')}</dt>
-            <dd>{formatBaht(preview.balanceAtPreview - preview.redeem + preview.pointsToEarn)}</dd>
+            <dd>
+              {formatBaht(
+                preview.balanceAtPreview - preview.redeem + preview.pointsToEarn + welcome,
+              )}
+            </dd>
           </div>
         ) : null}
       </dl>
@@ -947,6 +961,12 @@ function DoneStep({
             <div className="pos__row">
               <dt>{t('pos.done.redeemed')}</dt>
               <dd>−{formatBaht(result.redeemed)}</dd>
+            </div>
+          ) : null}
+          {result.welcomeBonus > 0 ? (
+            <div className="pos__row">
+              <dt>{t('pos.confirm.welcome')}</dt>
+              <dd>+{formatBaht(result.welcomeBonus)}</dd>
             </div>
           ) : null}
           <div className="pos__row">

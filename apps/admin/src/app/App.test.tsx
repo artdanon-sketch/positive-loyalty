@@ -4168,6 +4168,40 @@ describe('Касса: акции в чеке', () => {
     expect(within(issued).getByText('•••• K2QP')).toBeInTheDocument()
   })
 
+  it('ПОДАРОК ЗА ПЕРВУЮ ПОКУПКУ: КАССИР ВИДИТ ЕГО ДО ПРОВЕДЕНИЯ, «СТАНЕТ НА КАРТЕ» СХОДИТСЯ', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/preview': () =>
+        json({
+          ...POS_PREVIEW,
+          amount: 90_000,
+          amountToPay: 90_000,
+          pointsToEarn: 4_500,
+          welcomeBonus: 5_000,
+          balanceAtPreview: 0,
+          maxRedeemable: 0,
+        }),
+      '/v1/pos/transactions/commit': () =>
+        json({ ...POS_COMMIT, earned: 4_500, welcomeBonus: 5_000, newBalance: 9_500 }),
+    })
+    render(<App />)
+
+    await reachConfirm()
+
+    const gift = await screen.findAllByText(t('pos.confirm.welcome'))
+    expect(gift[0]?.nextElementSibling).toHaveTextContent(`+${formatBaht(5_000)}`)
+    expect(screen.getByText(t('pos.confirm.balanceAfter')).nextElementSibling).toHaveTextContent(
+      formatBaht(9_500),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    expect(await screen.findByText(t('pos.done.balance'))).toBeInTheDocument()
+    expect(screen.getByText(t('pos.confirm.welcome')).nextElementSibling).toHaveTextContent(
+      `+${formatBaht(5_000)}`,
+    )
+  })
+
   it('НАГРАДА ЗА БАЛЛЫ: КАССИР ВИДИТ, НА ЧТО ХВАТАЕТ, ВЫДАЁТ — И БАЛАНС ГОСТЯ СРАЗУ МЕНЬШЕ', async () => {
     const COFFEE = '63636363-6363-4636-8636-636363636363'
     const fetchMock = stubApi({

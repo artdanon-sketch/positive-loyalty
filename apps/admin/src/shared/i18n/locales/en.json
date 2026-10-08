@@ -128,8 +128,8 @@
   "pos.invite.qr": "Sign-up QR for the guest",
   "pos.invite.source": "Source",
   "pos.invite.sourceHint": "This is how the guest will show up in the Sources report.",
-  "pos.invite.empty.title": "No sources yet",
-  "pos.invite.empty.hint": "The QR appears once the owner adds a source in settings — for example, “Counter sign”.",
+  "pos.invite.empty.title": "All sources are switched off",
+  "pos.invite.empty.hint": "The owner switched the sources off in settings — the QR appears once at least one is back on, e.g. “Cashier desk”.",
   "pos.invite.noUrl.title": "QR not available yet",
   "pos.invite.noUrl.hint": "The guest card address is not set on the server — support needs to fix it.",
   "pos.history.period": "Period",
@@ -1410,5 +1410,6 @@
   "pos.rewards.empty": "No items priced in points yet — the owner adds them under “Products”.",
   "pos.rewards.done": "Given: {name}. Spent {spent}, balance {balance}.",
   "pos.rewards.offline": "No connection — the reward was not given. Retry when you're back online: it won't be charged twice.",
-  "pos.rewards.close": "Hide rewards"
+  "pos.rewards.close": "Hide rewards",
+  "pos.confirm.welcome": "First-purchase gift"
 }

@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable } from '@nestjs/common'
-import { parseProgramConfig } from '@positive/contracts'
+import { HUMAN_CODE_LENGTH, parseProgramConfig } from '@positive/contracts'
 import type {
   PosHistory,
   PosHistoryQuery,
@@ -12,6 +12,7 @@ import type {
 import { getEnv } from '../common/config/env'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
+import { randomCode } from '../core/random-code'
 import { Prisma } from '../generated/prisma/client'
 
 /**
@@ -148,6 +149,9 @@ const checkTotals = async (
   }
 }
 
+/** Источник, который касса заводит сама, если у заведения нет ни одного. */
+const DEFAULT_CHANNEL_NAME = 'Стойка кассы'
+
 @Injectable()
 export class PosAppService {
   constructor(private readonly prisma: PrismaService) {}
@@ -169,17 +173,45 @@ export class PosAppService {
       })
     }
 
-    const channel = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.acquisitionChannel.findFirst({
+    const channel = await this.prisma.forTenant(tenantId, async (tx) => {
+      const active = await tx.acquisitionChannel.findFirst({
         where: { tenantId, isActive: true },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         select: { code: true, name: true },
-      }),
-    )
+      })
+
+      if (active !== null) {
+        return active
+      }
+
+      // Источников нет вовсе — у только что подключённого заведения. Раньше касса
+      // показывала «QR появится, когда владелец заведёт источник», и пригласить
+      // первого гостя со стойки было нельзя: у UDS QR заведения есть с первого дня.
+      // Теперь первый QR сам заводит источник «Стойка кассы» — гость со стойки так
+      // и запишется. Если же источники есть, но владелец все выключил, — это его
+      // решение, и касса его не обходит.
+      //
+      // Блокировка — на случай двух касс, открывших вкладку одновременно: второй
+      // источник с тем же названием спутал бы отчёт.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`default-channel:${tenantId}`}))`
+
+      if ((await tx.acquisitionChannel.count({ where: { tenantId } })) > 0) {
+        return tx.acquisitionChannel.findFirst({
+          where: { tenantId, isActive: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { code: true, name: true },
+        })
+      }
+
+      return tx.acquisitionChannel.create({
+        data: { tenantId, name: DEFAULT_CHANNEL_NAME, code: randomCode(HUMAN_CODE_LENGTH) },
+        select: { code: true, name: true },
+      })
+    })
 
     if (channel === null) {
-      // Источников нет — показывать нечего. Пустой ответ честнее выдуманного
-      // кода: по такому QR гость получил бы отказ у стойки.
+      // Источники есть, но все выключены владельцем — показывать нечего. Пустой
+      // ответ честнее выдуманного кода: по такому QR гость получил бы отказ.
       return { code: null, url: null, source: null }
     }
 
