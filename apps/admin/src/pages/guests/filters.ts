@@ -1,4 +1,4 @@
-import { RfmSegment } from '@positive/contracts'
+import { GuestBirthdayWindow, GuestSort, RfmSegment } from '@positive/contracts'
 import type { AdminGuestsQuery } from '@positive/contracts'
 
 /**
@@ -10,11 +10,28 @@ import type { AdminGuestsQuery } from '@positive/contracts'
  * НЕИЗВЕСТНОЕ ИЗ АДРЕСА ОТБРАСЫВАЕТСЯ МОЛЧА. Ссылку с опечаткой сервер отверг бы
  * целиком, и человек увидел бы ошибку вместо списка — лучше список без одного
  * фильтра, чем пустой экран.
+ *
+ * ПОРЯДОК (`sort`) ЖИВЁТ ЗДЕСЬ ЖЕ, НО ФИЛЬТРОМ НЕ СЧИТАЕТСЯ: он не сужает список,
+ * поэтому не включает «ничего не нашлось, снимите фильтры» и не сбрасывается
+ * кнопкой «Сбросить».
  */
 
 export type GuestFilters = Pick<
   AdminGuestsQuery,
-  'mode' | 'tier' | 'source' | 'sleeping' | 'buyers' | 'tag' | 'segment'
+  | 'mode'
+  | 'tier'
+  | 'source'
+  | 'sleeping'
+  | 'buyers'
+  | 'tag'
+  | 'segment'
+  | 'birthday'
+  | 'visitsFrom'
+  | 'visitsTo'
+  | 'pointsFrom'
+  | 'pointsTo'
+  | 'spentFrom'
+  | 'sort'
 >
 
 export type GuestSourceValue = NonNullable<GuestFilters['source']>
@@ -32,7 +49,34 @@ export const SOURCES: readonly GuestSourceValue[] = [
 /** Сколько дней без визита предлагает экран. Из адреса принимается любое от недели до года. */
 export const SLEEPING_OPTIONS: readonly number[] = [30, 60, 90]
 
-const KEYS = ['mode', 'tier', 'source', 'sleeping', 'buyers', 'tag', 'segment'] as const
+/** Числовые фильтры: целое в адресе, иначе отбрасывается. */
+const NUMBER_KEYS = ['visitsFrom', 'visitsTo', 'pointsFrom', 'pointsTo', 'spentFrom'] as const
+
+/** Нижняя граница каждого числового фильтра — та же, что у сервера. */
+const NUMBER_MIN: Readonly<Record<(typeof NUMBER_KEYS)[number], number>> = {
+  visitsFrom: 1,
+  visitsTo: 1,
+  pointsFrom: 0,
+  pointsTo: 0,
+  spentFrom: 0,
+}
+
+const NUMBER_MAX = 2_147_483_647
+
+/** Что сужает список. Порядок — отдельно: он ничего не отсеивает. */
+const FILTER_KEYS = [
+  'mode',
+  'tier',
+  'source',
+  'sleeping',
+  'buyers',
+  'tag',
+  'segment',
+  'birthday',
+  ...NUMBER_KEYS,
+] as const
+
+const KEYS = [...FILTER_KEYS, 'sort'] as const
 
 const TIER_ID = /^[a-z0-9-]{1,40}$/
 
@@ -47,6 +91,23 @@ export const filtersFromParams = (params: URLSearchParams): GuestFilters => {
   // Сегмент приходит из отчёта «RFM» ссылкой — и только из известных.
   const segment = RfmSegment.options.find((value) => value === params.get('segment'))
   const sleeping = Number(params.get('sleeping'))
+  const birthday = GuestBirthdayWindow.options.find((value) => value === params.get('birthday'))
+  // `recent` — порядок по умолчанию: в адрес его не пишем, из адреса не берём.
+  const sort = GuestSort.options.find((value) => value === params.get('sort') && value !== 'recent')
+  const numbers = Object.fromEntries(
+    NUMBER_KEYS.flatMap((key) => {
+      const raw = params.get(key)
+      const value = Number(raw)
+
+      return raw !== null &&
+        raw.trim() !== '' &&
+        Number.isInteger(value) &&
+        value >= NUMBER_MIN[key] &&
+        value <= NUMBER_MAX
+        ? [[key, value]]
+        : []
+    }),
+  ) as Pick<GuestFilters, (typeof NUMBER_KEYS)[number]>
 
   return {
     ...(mode === undefined ? {} : { mode }),
@@ -56,6 +117,9 @@ export const filtersFromParams = (params: URLSearchParams): GuestFilters => {
     ...(params.get('buyers') === 'none' ? { buyers: 'none' as const } : {}),
     ...(tag === null || !TAG_ID.test(tag) ? {} : { tag }),
     ...(segment === undefined ? {} : { segment }),
+    ...(birthday === undefined ? {} : { birthday }),
+    ...numbers,
+    ...(sort === undefined ? {} : { sort }),
   }
 }
 
@@ -73,7 +137,7 @@ export const writeFilters = (params: URLSearchParams, filters: GuestFilters): vo
 }
 
 export const hasFilters = (filters: GuestFilters): boolean =>
-  KEYS.some((key) => filters[key] !== undefined)
+  FILTER_KEYS.some((key) => filters[key] !== undefined)
 
 /** Пары для запроса — в постоянном порядке: ключ кэша не должен зависеть от порядка кликов. */
 export const filterParams = (filters: GuestFilters): Array<[string, string]> =>

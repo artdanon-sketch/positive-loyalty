@@ -52,6 +52,31 @@ describe('Фильтры гостей в адресе', () => {
     expect(hasFilters({ segment: 'CHAMPIONS' })).toBe(true)
   })
 
+  it('ДЕНЬ РОЖДЕНИЯ, ПОКУПКИ, БАЛЛЫ И ТРАТЫ ЧИТАЮТСЯ ИЗ АДРЕСА, КРИВЫЕ ЧИСЛА — НЕТ', () => {
+    expect(
+      filtersFromParams(
+        new URLSearchParams('birthday=week&visitsFrom=2&visitsTo=4&pointsTo=0&spentFrom=500000'),
+      ),
+    ).toEqual({ birthday: 'week', visitsFrom: 2, visitsTo: 4, pointsTo: 0, spentFrom: 500000 })
+
+    // Ноль покупок — это «ни разу не покупали», отдельный фильтр; дробь и минус — мусор.
+    expect(
+      filtersFromParams(
+        new URLSearchParams('birthday=year&visitsFrom=0&pointsFrom=-1&spentFrom=1.5&visitsTo='),
+      ),
+    ).toEqual({})
+  })
+
+  it('ПОРЯДОК В АДРЕСЕ ЖИВЁТ, НО ФИЛЬТРОМ НЕ СЧИТАЕТСЯ', () => {
+    const filters = filtersFromParams(new URLSearchParams('sort=spent'))
+
+    expect(filters).toEqual({ sort: 'spent' })
+    expect(hasFilters(filters)).toBe(false)
+    expect(filterParams(filters)).toEqual([['sort', 'spent']])
+    // «Недавние» — порядок по умолчанию: из адреса не берётся, в запрос не идёт.
+    expect(filtersFromParams(new URLSearchParams('sort=recent'))).toEqual({})
+  })
+
   it('запрос к серверу — в постоянном порядке, как бы ни кликали', () => {
     expect(filterParams({ buyers: 'none', mode: 'TOURIST' })).toEqual([
       ['mode', 'TOURIST'],

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { RfmSegment } from '@positive/contracts'
+import { ProgramConfig, RfmSegment, TOP_GUESTS_LIMIT } from '@positive/contracts'
 import type {
   CustomersReport,
   DashboardPeriod,
@@ -9,8 +9,10 @@ import type {
   StaffReport,
   StaffReportCounts,
   StaffReportRow,
+  TopGuestsReport,
 } from '@positive/contracts'
 
+import { maskPhone } from '../common/pii/mask-phone'
 import { TenantContext } from '../common/tenant/tenant-context'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
@@ -18,7 +20,8 @@ import { PERIOD_DAYS, toNumber } from './dashboard.service'
 import { segmentOf } from './rfm'
 
 /**
- * Отчёты заведения: клиенты, операции, RFM, сотрудники. docs/02, раздел 5.10 · docs/11, У8.
+ * Отчёты заведения: клиенты, операции, RFM, сотрудники, лучшие гости.
+ * docs/02, раздел 5.10 · docs/11, У8.
  *
  * Правила — те же, что в дашборде и отчёте по источникам (dashboard.service.ts):
  * сырой SQL для агрегатов по журналу, границы суток по часам заведения, время чека
@@ -61,6 +64,12 @@ interface OperationsDayRow {
   date: string
   turnover: unknown
   purchases: unknown
+}
+
+interface TopGuestRow {
+  membershipId: string
+  purchases: unknown
+  turnover: unknown
 }
 
 interface StaffCountsRow {
@@ -309,6 +318,104 @@ export class ReportsService {
         purchases: toNumber(row.purchases),
       })),
     }
+  }
+
+  /**
+   * Лучшие гости за период: кто принёс больше денег. docs/02, раздел 5.10.
+   *
+   * Выручка — как в «Операциях»: база начисления по чеку, отменённые не в счёт.
+   * При равной выручке выше тот, кто чаще приходил, при равенстве во всём —
+   * порядок по id: место в рейтинге не прыгает от обновления страницы.
+   *
+   * Телефон — по роли, как в списке гостей (docs/05, раздел 3).
+   */
+  async topGuests(period: DashboardPeriod): Promise<TopGuestsReport> {
+    const { tenantId, role } = TenantContext.getOrThrow()
+    const days = PERIOD_DAYS[period]
+    const showFullPhone = role === 'OWNER'
+
+    const { ranked, memberships, tierNames } = await this.prisma.forTenant(tenantId, async (tx) => {
+      const zone = await this.zone(tx, tenantId)
+
+      const ranked = await tx.$queryRaw<TopGuestRow[]>`
+          WITH bounds AS (
+            SELECT
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                - make_interval(days => ${days}::int - 1) AS cur_start,
+              date_trunc('day', now() AT TIME ZONE ${zone})
+                + interval '1 day'                        AS cur_end
+          )
+          SELECT
+            l."membershipId"                     AS "membershipId",
+            count(*)                             AS "purchases",
+            coalesce(sum(l."basisAmount"), 0)    AS "turnover"
+          FROM "LedgerEntry" l, bounds b
+          WHERE l."tenantId" = ${tenantId}::text
+            AND l."refType" = 'receipt'
+            AND l.type = 'EARN'
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) >= b.cur_start
+            AND (coalesce(l."occurredAt", l."createdAt") AT TIME ZONE 'UTC' AT TIME ZONE ${zone}) < b.cur_end
+            AND NOT EXISTS (
+              SELECT 1 FROM "LedgerEntry" r
+              WHERE r."tenantId" = ${tenantId}::text AND r."reversalOfId" = l.id
+            )
+          GROUP BY l."membershipId"
+          ORDER BY coalesce(sum(l."basisAmount"), 0) DESC, count(*) DESC, l."membershipId" ASC
+          LIMIT ${TOP_GUESTS_LIMIT}
+        `
+
+      const memberships = await tx.membership.findMany({
+        where: { tenantId, id: { in: ranked.map((row) => row.membershipId) } },
+        select: {
+          id: true,
+          guestId: true,
+          tierId: true,
+          pointsBalance: true,
+          lastVisitAt: true,
+          guest: { select: { displayName: true, phoneE164: true } },
+        },
+      })
+
+      const tenant = await tx.tenant.findFirst({
+        where: { id: tenantId },
+        select: { settings: true },
+      })
+      const program = ProgramConfig.safeParse(tenant?.settings ?? {})
+      const tierNames = new Map(
+        program.success ? program.data.tiers.map((tier) => [tier.id, tier.name]) : [],
+      )
+
+      return { ranked, memberships: new Map(memberships.map((row) => [row.id, row])), tierNames }
+    })
+
+    const guests = ranked.flatMap((row) => {
+      const membership = memberships.get(row.membershipId)
+
+      if (membership === undefined) {
+        return []
+      }
+
+      const tierName = membership.tierId === null ? undefined : tierNames.get(membership.tierId)
+
+      return [
+        {
+          membershipId: membership.id,
+          guestId: membership.guestId,
+          displayName: membership.guest.displayName,
+          phone: showFullPhone ? membership.guest.phoneE164 : maskPhone(membership.guest.phoneE164),
+          tier:
+            membership.tierId === null || tierName === undefined
+              ? null
+              : { id: membership.tierId, name: tierName },
+          purchases: toNumber(row.purchases),
+          turnover: toNumber(row.turnover),
+          pointsBalance: membership.pointsBalance,
+          lastVisitAt: membership.lastVisitAt?.toISOString() ?? null,
+        },
+      ]
+    })
+
+    return { period, guests: guests.map((guest, index) => ({ rank: index + 1, ...guest })) }
   }
 
   /** RFM: десять сегментов покупателей на сегодня. Без периода — сегмент и есть срез «сейчас». */

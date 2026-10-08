@@ -7,6 +7,7 @@ import type {
   OperationsReport,
   RfmReport,
   StaffReport,
+  TopGuestsReport,
 } from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
@@ -52,3 +53,8 @@ export const useRfmReport = (): UseQueryResult<RfmReport, Error> =>
 
 export const useStaffReport = (period: DashboardPeriod): UseQueryResult<StaffReport, Error> =>
   useReport<StaffReport>('staff', '/admin/reports/staff', period)
+
+export const useTopGuestsReport = (
+  period: DashboardPeriod,
+): UseQueryResult<TopGuestsReport, Error> =>
+  useReport<TopGuestsReport>('top-guests', '/admin/reports/top-guests', period)

@@ -106,6 +106,24 @@ export const guestFilterWhere = (
     and.push({ spentTotal: { gte: filters.spentFrom } })
   }
 
+  // Покупки и баллы — диапазоны «от и до», включительно. Каждая граница
+  // своим условием: «от пяти» без верхней — обычный запрос «постоянные гости».
+  if (filters.visitsFrom !== undefined) {
+    and.push({ visitsTotal: { gte: filters.visitsFrom } })
+  }
+
+  if (filters.visitsTo !== undefined) {
+    and.push({ visitsTotal: { lte: filters.visitsTo } })
+  }
+
+  if (filters.pointsFrom !== undefined) {
+    and.push({ pointsBalance: { gte: filters.pointsFrom } })
+  }
+
+  if (filters.pointsTo !== undefined) {
+    and.push({ pointsBalance: { lte: filters.pointsTo } })
+  }
+
   if (filters.joinedBefore !== undefined) {
     // «Вступил не позже чем N дней назад»: для сценария «вступил и не купил»
     // важно дать человеку время дойти, а не писать ему на следующее утро.

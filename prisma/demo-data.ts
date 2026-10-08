@@ -391,6 +391,8 @@ export interface GuestSeed {
   readonly mode: 'TOURIST' | 'RESIDENT'
   readonly createdAt: Date
   readonly lastSeenAt: Date
+  /** День рождения. null — гость его не указал, как бывает у каждого третьего. */
+  readonly birthday: Date | null
 }
 
 /** Имена придуманы. Совпадение с реальным человеком было бы случайностью. */
@@ -441,6 +443,25 @@ const phoneFromIndex = (index: number): string => `+669${String(10_000_000 + ind
 
 const daysBefore = (base: Date, days: number): Date => new Date(base.getTime() - days * MS_PER_DAY)
 
+/**
+ * День рождения гостя — из номера, а не из генератора случайных чисел: лишний
+ * вызов генератора сдвинул бы все даты и суммы после него, и полигон поплыл бы.
+ *
+ * Семеро из десяти указали дату; дни разбросаны по году шагом 37 — взаимно
+ * простым с 365, поэтому за любую неделю найдётся пара именинников, и фильтр
+ * «день рождения на этой неделе» есть на ком показать.
+ */
+const birthdayFromIndex = (index: number): Date | null => {
+  if (index % 10 >= 7) {
+    return null
+  }
+
+  const dayOfYear = (index * 37 + 11) % 365
+  const year = 1970 + ((index * 7) % 35)
+
+  return new Date(Date.UTC(year, 0, 1) + dayOfYear * MS_PER_DAY)
+}
+
 export const buildGuests = (): readonly GuestSeed[] => {
   const random = createRandom(RANDOM_SEED)
   const touristCount = Math.round(GUEST_COUNT * TOURIST_SHARE)
@@ -465,6 +486,7 @@ export const buildGuests = (): readonly GuestSeed[] => {
       mode: isTourist ? 'TOURIST' : 'RESIDENT',
       createdAt: daysBefore(BASE_DATE, ageDays),
       lastSeenAt: daysBefore(BASE_DATE, Math.min(idleDays, ageDays)),
+      birthday: birthdayFromIndex(index),
     })
   }
 

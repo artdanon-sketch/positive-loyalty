@@ -10,6 +10,10 @@ describe('Рассылки', () => {
       sleeping: 30,
     })
     expect(BroadcastAudience.safeParse({ segment: 'AT_RISK' }).success).toBe(true)
+    // Именинники недели и постоянные гости — тем же языком, что и в списке гостей.
+    expect(BroadcastAudience.safeParse({ birthday: 'week', visitsFrom: 5 }).success).toBe(true)
+    // Порядок списка рассылке не нужен: она уходит всем выбранным разом.
+    expect(BroadcastAudience.safeParse({ sort: 'spent' }).success).toBe(false)
     expect(BroadcastAudience.safeParse({ q: 'Анна' }).success).toBe(false)
     expect(BroadcastAudience.safeParse({ limit: 10 }).success).toBe(false)
     expect(BroadcastAudience.safeParse({ sleeping: 3 }).success).toBe(false)

@@ -200,6 +200,7 @@ const upsertGuests = async (guests: readonly GuestSeed[]): Promise<void> => {
         modeLockedBy: 'auto',
         createdAt: guest.createdAt,
         lastSeenAt: guest.lastSeenAt,
+        birthday: guest.birthday,
       },
       // createdAt не обновляем: дата появления гостя в системе не переписывается
       // повторным прогоном seed.
@@ -208,6 +209,7 @@ const upsertGuests = async (guests: readonly GuestSeed[]): Promise<void> => {
         locale: guest.locale,
         mode: guest.mode,
         lastSeenAt: guest.lastSeenAt,
+        birthday: guest.birthday,
       },
     })
   }

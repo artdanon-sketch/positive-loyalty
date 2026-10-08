@@ -11,6 +11,7 @@ import { CustomersReportView } from './components/customers-report'
 import { OperationsReportView } from './components/operations-report'
 import { RfmReportView } from './components/rfm-report'
 import { StaffReportView } from './components/staff-report'
+import { TopGuestsReportView } from './components/top-guests-report'
 import { DEFAULT_REPORT_TAB, REPORT_TABS, TAB_LABELS, tabFromParams } from './tabs'
 import type { ReportTab } from './tabs'
 
@@ -103,6 +104,8 @@ export function ReportsPage(): ReactElement {
 
       {tab === 'customers' ? (
         <CustomersReportView period={period} />
+      ) : tab === 'top' ? (
+        <TopGuestsReportView period={period} />
       ) : tab === 'operations' ? (
         <OperationsReportView period={period} />
       ) : tab === 'rfm' ? (

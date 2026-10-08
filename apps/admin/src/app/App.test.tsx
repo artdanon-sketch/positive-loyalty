@@ -2506,6 +2506,62 @@ describe('Отчёты: вкладки', () => {
   })
 })
 
+describe('Отчёты: лучшие гости', () => {
+  it('ДВАДЦАТКА ЗА ПЕРИОД: МЕСТО, ВЫРУЧКА, ИМЯ ВЕДЁТ В КАРТОЧКУ ГОСТЯ', async () => {
+    stubApi({
+      '/v1/admin/reports/top-guests': () =>
+        json({
+          period: '30d',
+          guests: [
+            {
+              rank: 1,
+              membershipId: '61616161-6161-4616-8616-616161616161',
+              guestId: '62626262-6262-4626-8626-626262626262',
+              displayName: 'Ким Постоянный',
+              phone: '+66 •• •• 1001',
+              tier: { id: 'gold', name: 'Золото' },
+              purchases: 14,
+              turnover: 2_450_000,
+              pointsBalance: 180_000,
+              lastVisitAt: '2026-10-07T12:00:00.000Z',
+            },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('reports.tab.top') }))
+
+    const table = await screen.findByRole('table', { name: t('reports.tab.top') })
+    const row = within(table).getByRole('row', { name: /Ким Постоянный/ })
+    expect(within(row).getByText('14')).toBeInTheDocument()
+    // Разряды печатаются неразрывным пробелом — поэтому образцом, а не строкой.
+    expect(within(row).getByText(/^24.500,00 ฿$/)).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: 'Ким Постоянный' })).toHaveAttribute(
+      'href',
+      '/guests?guest=62626262-6262-4626-8626-626262626262',
+    )
+    expect(screen.getByRole('link', { name: t('reports.top.allTime') })).toHaveAttribute(
+      'href',
+      '/guests?sort=spent',
+    )
+  })
+
+  it('ПОКУПОК ЗА ПЕРИОД НЕ БЫЛО — ТАК И ГОВОРИМ, БЕЗ ПУСТОЙ ТАБЛИЦЫ', async () => {
+    stubApi({ '/v1/admin/reports/top-guests': () => json({ period: '30d', guests: [] }) })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.click(await screen.findByRole('link', { name: t('nav.reports') }))
+    fireEvent.click(await screen.findByRole('tab', { name: t('reports.tab.top') }))
+
+    expect(await screen.findByText(t('reports.top.empty'))).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: t('reports.tab.top') })).toBeNull()
+  })
+})
+
 const CERTIFICATE = {
   id: '81818181-8181-4818-8818-818181818181',
   title: 'Сертификат на 500 ฿',
@@ -4614,6 +4670,40 @@ describe('Гости: фильтры и выгрузка', () => {
     // Статус и выгрузка — у владельца: менеджер фильтрует по остальному.
     expect(screen.queryByLabelText(t('guests.filter.tier'))).toBeNull()
     expect(screen.queryByRole('button', { name: t('guests.export.open') })).toBeNull()
+  })
+
+  it('РЕЙТИНГ И НОВЫЕ ФИЛЬТРЫ: ПОРЯДОК, ДЕНЬ РОЖДЕНИЯ, ПОКУПКИ, БАЛЛЫ — НА СЕРВЕР И В АДРЕС', async () => {
+    const fetchMock = stubApi({ '/v1/admin/guests': () => json(GUEST_ROWS) })
+    render(<App />)
+
+    await openGuests()
+
+    fireEvent.change(screen.getByLabelText(t('guests.sort.label')), {
+      target: { value: 'spent' },
+    })
+    fireEvent.change(screen.getByLabelText(t('guests.filter.birthday')), {
+      target: { value: 'week' },
+    })
+    fireEvent.change(screen.getByLabelText(t('guests.filter.visits')), {
+      target: { value: '5:' },
+    })
+    fireEvent.change(screen.getByLabelText(t('guests.filter.points')), {
+      target: { value: ':0' },
+    })
+
+    await waitFor(() => {
+      expect(requested(fetchMock, 'birthday=week&visitsFrom=5&pointsTo=0&sort=spent')).toBe(true)
+    })
+    expect(window.location.search).toContain('sort=spent')
+
+    // «Сбросить фильтры» снимает фильтры, но рейтинг оставляет: порядок — не фильтр.
+    fireEvent.click(screen.getByRole('button', { name: t('guests.filter.reset') }))
+
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('birthday')
+    })
+    expect(window.location.search).toContain('sort=spent')
+    expect(screen.getByLabelText(t('guests.sort.label'))).toHaveValue('spent')
   })
 
   it('ВЛАДЕЛЕЦ ВЫГРУЖАЕТ ТО, ЧТО НА ЭКРАНЕ, — ТОЛЬКО С ПРИЧИНОЙ; ФАЙЛ СОХРАНЯЕТСЯ', async () => {
