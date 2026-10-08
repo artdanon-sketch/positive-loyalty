@@ -2517,6 +2517,17 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+/* Проценты по кругам — группа полей без браузерной рамки, как .choice. */
+.referral-levels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .referral-form,
 .birthday-form,
 .profile-form,
