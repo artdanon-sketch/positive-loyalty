@@ -4,6 +4,8 @@ import type { AutomationKind, AutomationRule } from '@positive/contracts'
 
 import { fill } from '../../../shared/format/fill'
 import { formatDate } from '../../../shared/format/format'
+import { fromGiftDraft, toGiftDraft } from '../../../shared/gift/gift-draft'
+import { GiftPicker } from '../../../shared/gift/gift-picker'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
 import { useAutomation, useSaveAutomation } from '../automation-hooks'
@@ -16,6 +18,10 @@ import { useAutomation, useSaveAutomation } from '../automation-hooks'
  *
  * ПОРОГ У КАЖДОГО СВОЙ ПО СМЫСЛУ — дни или баты, — поэтому подпись к полю
  * меняется вместе со сценарием, а не остаётся общим словом «порог».
+ *
+ * «ЖДУТ» — ЦЕНА РЕШЕНИЯ. Сколько гостей подходят прямо сейчас и получат письмо
+ * и подарок при следующем запуске. Видно до включения: «сертификат всем
+ * спящим» при сорока спящих и при четырёхстах — разные решения.
  */
 
 const TITLES: Readonly<Record<AutomationKind, TranslationKey>> = {
@@ -28,6 +34,13 @@ const HINTS: Readonly<Record<AutomationKind, TranslationKey>> = {
   SLEEPING: 'automation.sleeping.hint',
   JOINED_NO_PURCHASE: 'automation.joined.hint',
   SPENT_TOTAL: 'automation.spent.hint',
+}
+
+/** Когда сценарий снова напишет тому же гостю. */
+const ONCE: Readonly<Record<AutomationKind, TranslationKey>> = {
+  SLEEPING: 'automation.once.sleeping',
+  JOINED_NO_PURCHASE: 'automation.once.joined',
+  SPENT_TOTAL: 'automation.once.spent',
 }
 
 const THRESHOLDS: Readonly<Record<AutomationKind, TranslationKey>> = {
@@ -52,11 +65,22 @@ function RuleCard({ rule }: { rule: AutomationRule }): ReactElement {
   const save = useSaveAutomation()
   const [threshold, setThreshold] = useState(() => toField(rule))
   const [text, setText] = useState(rule.text)
+  const [giftDraft, setGiftDraft] = useState(() => toGiftDraft(rule.gift))
+  const gift = fromGiftDraft(giftDraft)
 
   const submit = (enabled: boolean): void => {
+    if (!gift.ok) {
+      return
+    }
+
     save.mutate({
       kind: rule.kind,
-      input: { enabled, threshold: fromField(rule.kind, threshold), text: text.trim() },
+      input: {
+        enabled,
+        threshold: fromField(rule.kind, threshold),
+        text: text.trim(),
+        gift: gift.gift,
+      },
     })
   }
 
@@ -104,6 +128,18 @@ function RuleCard({ rule }: { rule: AutomationRule }): ReactElement {
         />
       </div>
 
+      <GiftPicker
+        id={`automation-gift-${rule.kind}`}
+        draft={giftDraft}
+        problem={gift.ok ? null : gift.problem}
+        onChange={setGiftDraft}
+      />
+
+      <p className="field__hint">{t(ONCE[rule.kind])}</p>
+      <p className="field__hint">
+        {fill(t('automation.waiting'), { count: String(rule.waiting) })}
+      </p>
+
       <p className="field__hint">
         {rule.lastRunAt === null
           ? t('automation.never')
@@ -119,7 +155,7 @@ function RuleCard({ rule }: { rule: AutomationRule }): ReactElement {
       <div className="panel__actions">
         <button
           className="button"
-          disabled={save.isPending}
+          disabled={save.isPending || !gift.ok}
           type="button"
           onClick={() => {
             submit(rule.enabled)
@@ -129,7 +165,7 @@ function RuleCard({ rule }: { rule: AutomationRule }): ReactElement {
         </button>
         <button
           className={rule.enabled ? 'button' : 'button button--primary'}
-          disabled={save.isPending}
+          disabled={save.isPending || !gift.ok}
           type="button"
           onClick={() => {
             submit(!rule.enabled)

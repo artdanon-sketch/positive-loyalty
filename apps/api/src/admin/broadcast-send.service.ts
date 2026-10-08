@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
+import type { BroadcastGift } from '@positive/contracts'
 
 import { getEnv } from '../common/config/env'
 import { PrismaService } from '../core/prisma.service'
-import type { Prisma } from '../generated/prisma/client'
+import { Prisma } from '../generated/prisma/client'
 import { PushService } from '../identity/push.service'
 import { TelegramApiFactory } from '../identity/telegram-api.factory'
 import { TelegramBotService } from '../identity/telegram-bot.service'
+import { BroadcastGiftService, parseGift } from './broadcast-gift.service'
 
 /**
  * Отправка рассылок. docs/02, раздел 5.4.
@@ -33,6 +35,10 @@ import { TelegramBotService } from '../identity/telegram-bot.service'
  * Текст ошибки сохраняется — владельцу в архиве видно, почему не дошло.
  *
  * ЖИВЁТ В API, А НЕ В ВОРКЕРЕ, как и остальные разгребатели (docs/09, Э3).
+ *
+ * ПОДАРКИ — В ТОМ ЖЕ ПРОХОДЕ, НО ОТДЕЛЬНО ОТ ДОСТАВКИ (broadcast-gift.service.ts).
+ * Подарок получает и тот, кому слать некуда, поэтому выдаётся даже там, где нет
+ * ни одного канала, а рассылка закрывается, когда закончены и сообщения, и подарки.
  */
 
 /** Сколько сообщений отправляем за один проход: у Telegram предел около 30 в секунду. */
@@ -55,6 +61,7 @@ export class BroadcastSendService {
     private readonly telegram: TelegramBotService,
     private readonly push: PushService,
     private readonly venueApi: TelegramApiFactory,
+    private readonly gifts: BroadcastGiftService,
   ) {}
 
   /**
@@ -64,29 +71,40 @@ export class BroadcastSendService {
    * рассылок не должно стоить ни одного запроса.
    */
   async tick(now: Date = new Date()): Promise<BroadcastTickResult> {
-    if (!this.telegram.enabled && !this.push.enabled && !(await this.anyVenueBot())) {
-      // Ни общего бота, ни ключей уведомлений, ни своего бота хоть у одного
-      // заведения — слать нечем. Молчим: это состояние среды, а не сбой.
-      //
-      // Бота заведения проверяем здесь же: без этого заведение со своим ботом
-      // молча не рассылало бы ничего на сервере, где общий бот не настроен.
-      return { sent: 0, failed: 0 }
-    }
+    // Ни общего бота, ни ключей уведомлений, ни своего бота хоть у одного
+    // заведения — слать нечем. Это состояние среды, а не сбой: сообщения ждут
+    // канала. Подарки при этом выдаются — они от канала не зависят.
+    //
+    // Бота заведения проверяем здесь же: без этого заведение со своим ботом
+    // молча не рассылало бы ничего на сервере, где общий бот не настроен.
+    const canDeliver = this.telegram.enabled || this.push.enabled || (await this.anyVenueBot())
 
     // Владельцем базы, без tenant-контекста: разгребатель работает за все заведения
     // сразу. Дальше каждая рассылка обрабатывается внутри forTenant своего заведения.
     const due = await this.prisma.broadcast.findMany({
-      where: { status: { in: ['SCHEDULED', 'SENDING'] }, sendAt: { lte: now } },
+      where: {
+        status: { in: ['SCHEDULED', 'SENDING'] },
+        sendAt: { lte: now },
+        // Без канала браться стоит только за рассылки с подарком.
+        ...(canDeliver ? {} : { NOT: { gift: { equals: Prisma.AnyNull } } }),
+      },
       orderBy: [{ sendAt: 'asc' }, { id: 'asc' }],
       take: BROADCASTS_PER_TICK,
-      select: { id: true, tenantId: true, text: true },
+      select: { id: true, tenantId: true, text: true, gift: true },
     })
 
     let sent = 0
     let failed = 0
 
     for (const broadcast of due) {
-      const result = await this.send(broadcast.tenantId, broadcast.id, broadcast.text, now)
+      const result = await this.send(
+        broadcast.tenantId,
+        broadcast.id,
+        broadcast.text,
+        parseGift(broadcast.gift),
+        now,
+        canDeliver,
+      )
       sent += result.sent
       failed += result.failed
     }
@@ -98,19 +116,34 @@ export class BroadcastSendService {
     tenantId: string,
     broadcastId: string,
     text: string,
+    gift: BroadcastGift | null,
     now: Date,
+    canDeliver: boolean,
   ): Promise<BroadcastTickResult> {
-    const pending = await this.prisma.forTenant(tenantId, async (tx) => {
-      await tx.broadcast.updateMany({
+    await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.broadcast.updateMany({
         where: { id: broadcastId, tenantId, status: 'SCHEDULED' },
         data: { status: 'SENDING', startedAt: now },
-      })
+      }),
+    )
 
-      return this.batch(tx, tenantId, broadcastId)
-    })
+    // Подарки — первыми: они не ждут Telegram, и упавшая доставка не должна
+    // оставить гостя без обещанного.
+    const giftsDone =
+      gift === null ? true : (await this.gifts.give(tenantId, broadcastId, gift, now)).done
+
+    if (!canDeliver) {
+      return { sent: 0, failed: 0 }
+    }
+
+    const pending = await this.prisma.forTenant(tenantId, async (tx) =>
+      this.batch(tx, tenantId, broadcastId),
+    )
 
     if (pending.length === 0) {
-      await this.finish(tenantId, broadcastId, now)
+      if (giftsDone) {
+        await this.finish(tenantId, broadcastId, now, gift !== null)
+      }
       return { sent: 0, failed: 0 }
     }
 
@@ -319,11 +352,20 @@ export class BroadcastSendService {
     }
   }
 
-  /** Рассылка закрывается, когда не осталось никого в ожидании. */
-  private async finish(tenantId: string, broadcastId: string, now: Date): Promise<void> {
+  /** Рассылка закрывается, когда не осталось никого в ожидании — ни сообщения, ни подарка. */
+  private async finish(
+    tenantId: string,
+    broadcastId: string,
+    now: Date,
+    hasGift: boolean,
+  ): Promise<void> {
     await this.prisma.forTenant(tenantId, async (tx) => {
       const left = await tx.broadcastRecipient.count({
-        where: { tenantId, broadcastId, delivery: 'PENDING' },
+        where: {
+          tenantId,
+          broadcastId,
+          OR: [{ delivery: 'PENDING' }, ...(hasGift ? [{ giftAt: null }] : [])],
+        },
       })
 
       if (left > 0) {

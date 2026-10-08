@@ -1,6 +1,8 @@
 import { BROADCAST_TEXT_MAX, BROADCAST_TITLE_MAX } from '@positive/contracts'
 import type { BroadcastAudience, BroadcastPreview } from '@positive/contracts'
 
+import { NO_GIFT, fromGiftDraft } from '../../shared/gift/gift-draft'
+import type { GiftDraft } from '../../shared/gift/gift-draft'
 import type { TranslationKey } from '../../shared/i18n'
 
 /**
@@ -12,12 +14,17 @@ import type { TranslationKey } from '../../shared/i18n'
  *
  * ПРИЧИНА ЗАПРЕТА ВАЖНЕЕ САМОГО ЗАПРЕТА. Серая кнопка без объяснения выглядит
  * как поломка, поэтому каждая помеха — это строка, которую видно рядом.
+ *
+ * С ПОДАРКОМ «НИКТО НЕ ПОЛУЧИТ СООБЩЕНИЕ» — НЕ ПОМЕХА. Подарок получает каждый
+ * из найденных, даже тот, до кого сообщение не дойдёт: он ждёт на карте.
+ * Помеха — только пустая аудитория.
  */
 
 export interface BroadcastDraft {
   readonly title: string
   readonly text: string
   readonly segment: AudienceSegment
+  readonly gift: GiftDraft
 }
 
 export type AudienceSegment = 'all' | 'sleeping' | 'no-purchase' | 'tourists' | 'residents'
@@ -37,7 +44,12 @@ export const AUDIENCE_SEGMENTS: ReadonlyArray<{
 export const audienceOfSegment = (segment: AudienceSegment): BroadcastAudience =>
   AUDIENCE_SEGMENTS.find((item) => item.id === segment)?.audience ?? {}
 
-export const emptyDraft = (): BroadcastDraft => ({ title: '', text: '', segment: 'all' })
+export const emptyDraft = (): BroadcastDraft => ({
+  title: '',
+  text: '',
+  segment: 'all',
+  gift: NO_GIFT,
+})
 
 /** Что мешает отправить. Пустой список — можно. */
 export const draftIssues = (
@@ -62,9 +74,23 @@ export const draftIssues = (
     issues.push('broadcasts.issue.titleLong')
   }
 
+  const gift = fromGiftDraft(draft.gift)
+
+  if (!gift.ok) {
+    issues.push(
+      gift.problem === 'points'
+        ? 'campaignGift.problem.points'
+        : 'campaignGift.problem.certificate',
+    )
+  }
+
   // Предпросмотр ещё не пришёл — это не помеха, а ожидание: кнопка ждёт молча.
-  if (preview !== undefined && preview.willReceive === 0) {
-    issues.push('broadcasts.issue.nobody')
+  if (preview !== undefined) {
+    const withGift = gift.ok && gift.gift !== null
+
+    if (withGift ? preview.found === 0 : preview.willReceive === 0) {
+      issues.push(withGift ? 'broadcasts.issue.empty' : 'broadcasts.issue.nobody')
+    }
   }
 
   return issues

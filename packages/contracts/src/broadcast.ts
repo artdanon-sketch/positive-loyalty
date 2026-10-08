@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { AdminGuestsQuery } from './admin.js'
+import { BirthdayReward } from './birthday.js'
 
 /**
  * Рассылки заведения. docs/02, раздел 5.4 · docs/03, раздел 5.
@@ -61,6 +62,21 @@ export const BroadcastPreview = z
 
 export type BroadcastPreview = z.infer<typeof BroadcastPreview>
 
+/**
+ * Подарок к рассылке: баллы или сертификат из шаблона.
+ *
+ * ТА ЖЕ ФОРМА, ЧТО У ПОДАРКА КО ДНЮ РОЖДЕНИЯ. Третьего способа дарить не заводим:
+ * баллы идут через журнал, сертификат — через общую выдачу промокодов.
+ *
+ * ПОЛУЧАЕТ КАЖДЫЙ ИЗ СНИМКА АУДИТОРИИ, ОДИН РАЗ — даже тот, до кого сообщение
+ * не дошло: подарок лежит на карте и ждёт, а «устал» и «некуда слать» говорят
+ * о сообщении, а не о госте. Контрольной группе подарок не выдаётся, как и баллы
+ * за покупки: иначе сравнивать программу будет не с чем.
+ */
+export const BroadcastGift = BirthdayReward
+
+export type BroadcastGift = z.infer<typeof BroadcastGift>
+
 export const CreateBroadcastInput = z
   .object({
     /** Имя для списка рассылок. Гость его не видит. */
@@ -73,6 +89,8 @@ export const CreateBroadcastInput = z
     audience: BroadcastAudience.default({}),
     /** Момент отправки. Пусто — отправляем сразу. */
     sendAt: z.iso.datetime().optional(),
+    /** Подарок каждому из аудитории. Пусто — только сообщение. */
+    gift: BroadcastGift.optional(),
   })
   .strict()
 
@@ -103,6 +121,10 @@ export const AdminBroadcast = z
     tired: z.number().int().nonnegative(),
     /** Пропущено: некуда слать. */
     unreachable: z.number().int().nonnegative(),
+    /** Подарок к рассылке. null — только сообщение. */
+    gift: BroadcastGift.nullable(),
+    /** Сколько подарков уже выдано. Контрольная группа подарков не получает. */
+    gifted: z.number().int().nonnegative(),
   })
   .strict()
 

@@ -68,10 +68,13 @@ export class AutomationController {
 
     // Порог зависит от вида сценария (дни или сумма), а вид приходит адресом —
     // поэтому проверяем их вместе, целым правилом, а не телом запроса отдельно.
+    // Подарок и «ждут» в проверке порога не участвуют — подставляем нейтральные.
     const whole = AutomationRule.safeParse({
       ...parsed.data,
       kind: parsedKind.data,
+      gift: parsed.data.gift ?? null,
       lastRunAt: null,
+      waiting: 0,
     })
 
     if (!whole.success) {

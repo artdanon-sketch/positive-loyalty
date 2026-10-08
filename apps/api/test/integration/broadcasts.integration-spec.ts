@@ -89,6 +89,22 @@ const listBroadcasts = async (token: string): Promise<BroadcastsListBody> => {
   return response.body as BroadcastsListBody
 }
 
+/**
+ * Проходы разгребателя, пока рассылка не закроется. Он берёт за раз несколько
+ * рассылок, самые старые первыми, и чужие рассылки в общей базе могут занять
+ * очередь: «ровно два прохода» проверяли бы соседей, а не эту рассылку.
+ */
+const sendUntilDone = async (id: string): Promise<void> => {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await sender.tick()
+    const item = (await listBroadcasts(ownerToken)).items.find((row) => row.id === id)
+
+    if (item?.status === 'SENT') {
+      return
+    }
+  }
+}
+
 /** Связать гостю Telegram: рассылка ходит по этому идентификатору. */
 const linkTelegram = async (guestId: string, chatId: string): Promise<void> => {
   await prisma.guestIdentity.create({
@@ -251,9 +267,8 @@ describe('Рассылки: создание и отправка', () => {
   it('ПРОХОД ОТПРАВЛЯЕТ ТОЛЬКО ЖИВЫМ И ЗАКРЫВАЕТ РАССЫЛКУ', async () => {
     sentMessages.length = 0
 
-    await sender.tick()
-    // Второй проход закрывает рассылку: получателей в ожидании не осталось.
-    await sender.tick()
+    // Проход отправляет, следующий закрывает рассылку: в ожидании никого не осталось.
+    await sendUntilDone(broadcastId)
 
     expect(sentMessages).toHaveLength(1)
     expect(sentMessages[0]?.text).toBe('Скучаем! Заходите на кофе.')
@@ -284,8 +299,7 @@ describe('Рассылки: создание и отправка', () => {
     })
     const id = (created.body as BroadcastBody).id
 
-    await sender.tick()
-    await sender.tick()
+    await sendUntilDone(id)
 
     const failed = (await listBroadcasts(ownerToken)).items.find((item) => item.id === id)
     expect(failed).toMatchObject({ status: 'SENT', sent: 0, failed: 1 })

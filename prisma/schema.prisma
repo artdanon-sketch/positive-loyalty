@@ -160,6 +160,7 @@ model Tenant {
   broadcastRecipients    BroadcastRecipient[]
   staffRewards           StaffReward[]
   automations            AutomationRule[]
+  automationHits         AutomationHit[]
 
   partnershipsInitiated Partnership[]  @relation("PartnershipInitiator")
   partnershipsReceived  Partnership[]  @relation("PartnershipPartner")
@@ -199,18 +200,19 @@ model Guest {
   createdAt    DateTime  @default(now())
   lastSeenAt   DateTime?
 
-  memberships   Membership[]
-  guestSessions GuestSession[]
-  identities    GuestIdentity[]
-  pushSubscriptions      PushSubscription[]
-  venueBotChats          VenueBotChat[]
-  venueBotLinks          VenueBotLink[]
-  ledgerEntries LedgerEntry[]
-  offerGrants   OfferGrant[]
-  reviews       Review[]
-  newsViews     NewsView[]
-  messages      GuestMessage[]
-  broadcasts    BroadcastRecipient[]
+  memberships       Membership[]
+  guestSessions     GuestSession[]
+  identities        GuestIdentity[]
+  pushSubscriptions PushSubscription[]
+  venueBotChats     VenueBotChat[]
+  venueBotLinks     VenueBotLink[]
+  ledgerEntries     LedgerEntry[]
+  offerGrants       OfferGrant[]
+  reviews           Review[]
+  newsViews         NewsView[]
+  messages          GuestMessage[]
+  broadcasts        BroadcastRecipient[]
+  automationHits    AutomationHit[]
 }
 
 /// Участие гостя в программе конкретного тенанта.
@@ -1790,6 +1792,8 @@ model AutomationRule {
   threshold Int
   /// Что уходит гостю.
   text      String
+  /// Подарок вместе с сообщением — та же форма, что BroadcastGift. null — без подарка.
+  gift      Json?
 
   /// Когда сценарий отработал в последний раз: чаще раза в сутки не повторяем.
   lastRunAt DateTime?
@@ -1803,6 +1807,29 @@ model AutomationRule {
   /// порогами — это два письма одному гостю в один день.
   @@unique([tenantId, kind])
   @@index([enabled, lastRunAt])
+}
+
+/// Кому сценарий уже сработал — один раз на гостя за эпизод.
+///
+/// Эпизод — то, что делает повторное срабатывание законным: для «давно не
+/// заходил» — дата последнего визита (гость пришёл и снова уснул — новый эпизод),
+/// для «вступил, но не купил» — один на всю жизнь, для «суммы покупок» — порог.
+/// UNIQUE — последний рубеж: второй раз того же эпизода не пустит база.
+model AutomationHit {
+  id          String         @id @default(uuid())
+  tenantId    String
+  kind        AutomationKind
+  guestId     String
+  episode     String
+  /// Рассылка, которой ушли сообщение и подарок.
+  broadcastId String?
+  createdAt   DateTime       @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, kind, guestId, episode])
+  @@index([tenantId, kind])
 }
 
 enum BroadcastStatus {
@@ -1832,6 +1859,8 @@ model Broadcast {
   text       String
   /// Фильтры аудитории как их выбрали: чтобы показать в архиве, кому слали.
   audience   Json
+  /// Подарок каждому из снимка аудитории: баллы или сертификат. null — только сообщение.
+  gift       Json?
   /// Когда отправить. Прошедшее время означает «сейчас».
   sendAt     DateTime
   status     BroadcastStatus @default(SCHEDULED)
@@ -1861,6 +1890,11 @@ model BroadcastRecipient {
   /// Почему не ушло — текстом, для архива. Гостю не показывается.
   error       String?
   sentAt      DateTime?
+  /// Подарок обработан: выдан или пропущен. null — ещё ждёт. Учёт отдельно от доставки:
+  /// подарок получает и тот, до кого сообщение не дошло.
+  giftAt      DateTime?
+  /// Подарок не выдан намеренно: гость в контрольной группе или шаблон сертификата выключен.
+  giftSkipped Boolean           @default(false)
   createdAt   DateTime          @default(now())
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -1871,6 +1905,7 @@ model BroadcastRecipient {
   @@unique([broadcastId, guestId])
   @@index([tenantId, guestId, sentAt])
   @@index([broadcastId, delivery])
+  @@index([broadcastId, giftAt])
 }
 
 /// Подписка на уведомления в приложении гостя (Web Push).

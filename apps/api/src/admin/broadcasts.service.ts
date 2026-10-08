@@ -14,6 +14,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AuditService, type AuditActorType } from '../core/audit.service'
 import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
+import { assertGiftUsable, parseGift } from './broadcast-gift.service'
 import { GuestAudienceService } from './guest-audience.service'
 
 /**
@@ -48,6 +49,18 @@ interface Reach {
   readonly reachable: ReadonlySet<string>
   /** Кто уже получил свои четыре сообщения за окно. */
   readonly tired: ReadonlySet<string>
+}
+
+/**
+ * Что нужно сценарию сверх обычного создания.
+ *
+ * `onlyGuestIds` сужает аудиторию до тех, кому этот эпизод ещё не писали;
+ * `afterCreate` пишет отметки эпизода в ТОЙ ЖЕ транзакции, что и рассылку:
+ * рассылка без отметок повторилась бы завтра — вместе с подарком.
+ */
+export interface CreateOptions {
+  readonly onlyGuestIds?: readonly string[]
+  readonly afterCreate?: (tx: Prisma.TransactionClient, broadcastId: string) => Promise<void>
 }
 
 @Injectable()
@@ -87,12 +100,15 @@ export class BroadcastsService {
     actorId: string | null,
     actorType: AuditActorType,
     input: CreateBroadcastInput,
+    options: CreateOptions = {},
   ): Promise<AdminBroadcast> {
     // Прошедшее время означает «сейчас»: владелец нажал «отправить», а не «ждать».
     const sendAt = input.sendAt === undefined ? new Date() : new Date(input.sendAt)
 
     const row = await this.prisma.forTenant(tenantId, async (tx) => {
-      const reach = await this.reach(tx, tenantId, input.audience)
+      await assertGiftUsable(tx, tenantId, input.gift)
+
+      const reach = narrow(await this.reach(tx, tenantId, input.audience), options.onlyGuestIds)
 
       const broadcast = await tx.broadcast.create({
         data: {
@@ -100,6 +116,7 @@ export class BroadcastsService {
           title: input.title,
           text: input.text,
           audience: input.audience,
+          ...(input.gift === undefined ? {} : { gift: input.gift }),
           sendAt,
           createdBy: actorId,
         },
@@ -122,6 +139,8 @@ export class BroadcastsService {
         })
       }
 
+      await options.afterCreate?.(tx, broadcast.id)
+
       return this.readOne(tx, tenantId, broadcast.id)
     })
 
@@ -132,7 +151,7 @@ export class BroadcastsService {
       tenantId,
       entityType: 'Broadcast',
       entityId: row.id,
-      newValue: { title: row.title, total: row.total, sendAt: row.sendAt },
+      newValue: { title: row.title, total: row.total, sendAt: row.sendAt, gift: row.gift },
     })
 
     return row
@@ -243,6 +262,7 @@ export class BroadcastsService {
         title: true,
         text: true,
         audience: true,
+        gift: true,
         status: true,
         sendAt: true,
         createdAt: true,
@@ -256,6 +276,14 @@ export class BroadcastsService {
       where: { tenantId, broadcastId: id },
       _count: { _all: true },
     })
+
+    const gift = parseGift(row.gift)
+    const gifted =
+      gift === null
+        ? 0
+        : await tx.broadcastRecipient.count({
+            where: { tenantId, broadcastId: id, giftAt: { not: null }, giftSkipped: false },
+          })
 
     const of = (delivery: string): number =>
       counts.find((row) => row.delivery === delivery)?._count._all ?? 0
@@ -285,7 +313,23 @@ export class BroadcastsService {
       failed: of('FAILED'),
       tired: of('SKIPPED_FATIGUE'),
       unreachable: of('SKIPPED_NO_CHANNEL'),
+      gift,
+      gifted,
     }
+  }
+}
+
+/** Сузить охват до заданных гостей — для сценария, которому важен эпизод. */
+const narrow = (reach: Reach, onlyGuestIds: readonly string[] | undefined): Reach => {
+  if (onlyGuestIds === undefined) {
+    return reach
+  }
+
+  const allowed = new Set(onlyGuestIds)
+
+  return {
+    ...reach,
+    memberships: reach.memberships.filter((membership) => allowed.has(membership.guestId)),
   }
 }
 

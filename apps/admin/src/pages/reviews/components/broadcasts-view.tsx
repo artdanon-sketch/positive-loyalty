@@ -1,8 +1,12 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
+import type { BroadcastGift } from '@positive/contracts'
 
+import { useCertificates } from '../../../shared/certificates/hooks'
 import { fill } from '../../../shared/format/fill'
-import { formatDate } from '../../../shared/format/format'
+import { formatBaht, formatDate } from '../../../shared/format/format'
+import { fromGiftDraft } from '../../../shared/gift/gift-draft'
+import { GiftPicker } from '../../../shared/gift/gift-picker'
 import { useT } from '../../../shared/i18n'
 import {
   AUDIENCE_SEGMENTS,
@@ -25,6 +29,10 @@ import { useBroadcastPreview, useBroadcasts, useCreateBroadcast } from '../broad
  *
  * АРХИВ РЯДОМ, А НЕ НА ОТДЕЛЬНОМ ЭКРАНЕ: перед новой рассылкой полезно увидеть,
  * что ушло в прошлый раз и чем кончилось.
+ *
+ * ПОДАРОК — ПОСЛЕ ТЕКСТА. Сначала владелец решает, что сказать, потом — чем
+ * подкрепить. И сразу видит, кому достанется подарок: всем найденным, а не
+ * только тем, кому дойдёт сообщение.
  */
 export function BroadcastsView(): ReactElement {
   const t = useT()
@@ -36,6 +44,15 @@ export function BroadcastsView(): ReactElement {
 
   const issues = draftIssues(draft, preview.data)
   const left = charsLeft(draft.text)
+  const gift = fromGiftDraft(draft.gift)
+  const certificates = useCertificates()
+
+  /** Подарок одной строкой — для архива. */
+  const describeGift = (value: BroadcastGift): string =>
+    value.kind === 'POINTS'
+      ? fill(t('campaignGift.describe.points'), { amount: formatBaht(value.amount) })
+      : ((certificates.data ?? []).find((item) => item.id === value.certificateId)?.title ??
+        t('campaignGift.kind.CERTIFICATE'))
 
   const send = (): void => {
     if (issues.length > 0 || create.isPending) {
@@ -43,7 +60,12 @@ export function BroadcastsView(): ReactElement {
     }
 
     create.mutate(
-      { title: draft.title.trim(), text: draft.text.trim(), audience },
+      {
+        title: draft.title.trim(),
+        text: draft.text.trim(),
+        audience,
+        ...(gift.ok && gift.gift !== null ? { gift: gift.gift } : {}),
+      },
       {
         onSuccess: () => {
           setDraft(emptyDraft())
@@ -147,6 +169,20 @@ export function BroadcastsView(): ReactElement {
           </p>
         </div>
 
+        <GiftPicker
+          id="broadcast-gift"
+          draft={draft.gift}
+          problem={gift.ok ? null : gift.problem}
+          onChange={(next) => {
+            setDraft({ ...draft, gift: next })
+          }}
+        />
+        {gift.ok && gift.gift !== null ? (
+          <p className="field__hint">
+            {fill(t('broadcasts.gift.hint'), { count: String(preview.data?.found ?? 0) })}
+          </p>
+        ) : null}
+
         {issues.length > 0 && draft.text.length > 0 ? (
           <ul className="state__hint">
             {issues.map((issue) => (
@@ -203,6 +239,14 @@ export function BroadcastsView(): ReactElement {
                     unreachable: String(item.unreachable),
                   })}
                 </p>
+                {item.gift === null ? null : (
+                  <p className="field__hint">
+                    {fill(t('broadcasts.archive.gift'), {
+                      gift: describeGift(item.gift),
+                      gifted: String(item.gifted),
+                    })}
+                  </p>
+                )}
               </article>
             ))}
           </div>
