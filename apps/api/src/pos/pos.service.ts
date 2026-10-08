@@ -43,6 +43,7 @@ import { PrismaService } from '../core/prisma.service'
 import type { Prisma } from '../generated/prisma/client'
 import { evaluateOffers } from '../rules/rules-engine'
 import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
+import { checkout } from './checkout-math'
 
 /**
  * Касса: найти гостя, посчитать, провести.
@@ -52,8 +53,9 @@ import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
  * ставки и промокод за чек. Предрасчёт запоминает применённые акции, проведение
  * выдаёт по ним промокоды, отмена чека аннулирует невостребованные.
  *
- * ГРАНИЦА ЭТОГО КУСКА. Скидки в самом чеке, штампы и награда сотруднику
- * в расчёт не входят — их механик ещё нет (Э1, Срез 5). Отложенный чек из
+ * СКИДКА В САМОМ ЧЕКЕ — ТОЛЬКО РЕЖИМ ПРОГРАММЫ «СКИДКА ВМЕСТО БАЛЛОВ»
+ * (checkout-math.ts). Скидочных акций и штампов в расчёте нет — их механик
+ * ещё нет (Э1, Срез 5). Отложенный чек из
  * очереди планшета считается на момент отправки, а не продажи: акция «до 17:00»
  * для чека, пробитого в 16:50 и дошедшего в 17:10, не применится.
  */
@@ -157,6 +159,14 @@ const guestMode = async (tx: Tx, guestId: string): Promise<'TOURIST' | 'RESIDENT
   const guest = await tx.guest.findFirst({ where: { id: guestId }, select: { mode: true } })
   return guest?.mode ?? 'TOURIST'
 }
+
+/**
+ * Скидка проведённого чека. Отдельной колонки у предрасчёта нет, и она не нужна:
+ * «к оплате» — это чек минус скидка минус баллы, значит скидка выводится обратно
+ * без остатка. У чеков до режима скидки выходит ровно ноль.
+ */
+const discountOf = (preview: { amount: number; redeem: number; amountToPay: number }): number =>
+  preview.amount - preview.redeem - preview.amountToPay
 
 /** Статус на кассе: название и ставки, по которым считается этот чек. */
 const tierBadge = (tier: Tier | null): PosGuest['tier'] =>
@@ -419,6 +429,7 @@ export class PosService {
     redeemRequested: number
     receiptNumber?: string | undefined
     locationId?: string | undefined
+    withoutDiscount?: boolean | undefined
   }): Promise<PreviewResult> {
     const { tenantId, actorId } = TenantContext.getOrThrow()
     const config = await this.loadConfig(tenantId)
@@ -453,14 +464,19 @@ export class PosService {
         })
       }
 
-      // Потолок списания: доля чека из настроек, но не больше того, что есть.
-      // Округление вниз: в пользу заведения, потому что баллы — обязательство.
-      // Статус гостя заменяет базовые ставки — и в потолке оплаты баллами, и в начислении.
+      // Статус гостя заменяет базовые ставки — и в скидке, и в потолке оплаты
+      // баллами, и в начислении. Сама арифметика — в checkout-math.ts.
       const { rates } = await this.rules.tierFor(tx, tenantId, config, membership)
-      const rateCap = Math.floor((input.amount * rates.redeemRate) / 100)
-      const maxRedeemable = Math.max(0, Math.min(rateCap, membership.pointsBalance))
-      const redeem = Math.min(input.redeemRequested, maxRedeemable)
-      const amountToPay = input.amount - redeem
+      const { discount, maxRedeemable, redeem, amountToPay, basePoints } = checkout({
+        amount: input.amount,
+        redeemRequested: input.redeemRequested,
+        balance: membership.pointsBalance,
+        earnRate: rates.earnRate,
+        redeemRate: rates.redeemRate,
+        mode: config.mode,
+        isControlGroup: membership.isControlGroup,
+        withoutDiscount: input.withoutDiscount === true,
+      })
 
       const now = new Date()
       const candidates = await loadOfferCandidates(tx, tenantId, membership.guestId)
@@ -482,12 +498,10 @@ export class PosService {
 
       // Контрольная группа не получает баллы — на этом держится доказательство
       // эффекта программы (docs/01, раздел 4.2). Списывать ей тоже нечего.
-      const pointsToEarn = membership.isControlGroup
-        ? 0
-        : // Начисляем от суммы, реально уплаченной деньгами: начислять на часть,
-          // оплаченную баллами, значит платить проценты на собственный долг.
-          // Кэшбэк акций — сверху, от той же суммы.
-          Math.floor((amountToPay * rates.earnRate) / 100) + outcome.earnDelta
+      //
+      // Кэшбэк акций — сверху и в режиме скидки тоже: акцию «+5 % баллами»
+      // владелец заводит нарочно, и режим её не отменяет.
+      const pointsToEarn = membership.isControlGroup ? 0 : basePoints + outcome.earnDelta
 
       const expiresAt = new Date(now.getTime() + PREVIEW_TTL_MINUTES * 60_000)
 
@@ -519,6 +533,7 @@ export class PosService {
         previewId: created.id,
         expiresAt: expiresAt.toISOString(),
         amount: input.amount,
+        discount,
         maxRedeemable,
         redeem,
         amountToPay,
@@ -734,6 +749,7 @@ export class PosService {
       transactionId,
       redeemed,
       earned: preview.pointsToEarn,
+      discount: discountOf(preview),
       newBalance: earnOutcome.entry.balanceAfter,
       replayed,
       grantsIssued,
@@ -1235,7 +1251,7 @@ export class PosService {
       tx.transactionPreview.findFirst({
         where: { tenantId, committedReceiptId: receiptId },
         orderBy: [{ committedAt: 'desc' }, { id: 'asc' }],
-        select: { guestId: true, offers: true },
+        select: { guestId: true, offers: true, amount: true, redeem: true, amountToPay: true },
       }),
     )
     const grantsIssued =
@@ -1248,6 +1264,7 @@ export class PosService {
       // В журнале списание хранится со знаком минус, наружу отдаётся модуль.
       redeemed: redeem === undefined ? 0 : Math.abs(redeem.amount),
       earned: earn.amount,
+      discount: committed === null ? 0 : discountOf(committed),
       newBalance: earn.balanceAfter,
       replayed: true,
       grantsIssued,

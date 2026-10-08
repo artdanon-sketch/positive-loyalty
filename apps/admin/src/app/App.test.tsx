@@ -49,6 +49,7 @@ const POS_PREVIEW = {
   previewId: '77777777-7777-4777-8777-777777777777',
   expiresAt: '2026-08-27T12:00:00.000Z',
   amount: 125_000,
+  discount: 0,
   maxRedeemable: 30_175,
   redeem: 0,
   amountToPay: 125_000,
@@ -62,6 +63,7 @@ const POS_COMMIT = {
   transactionId: '88888888-8888-4888-8888-888888888888',
   redeemed: 0,
   earned: 6_250,
+  discount: 0,
   newBalance: 36_425,
   replayed: false,
   grantsIssued: [],
@@ -1966,6 +1968,51 @@ describe('Настройки программы', () => {
     })
 
     expect(await screen.findByText(t('settings.saved'))).toBeInTheDocument()
+  })
+
+  it('СКИДКОЙ СРАЗУ: ПРИМЕР СЧИТАЕТ СКИДКУ И К ОПЛАТЕ, НА СЕРВЕР УХОДИТ РЕЖИМ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
+      '/v1/admin/settings/program/referral': () => json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/staff-reward': () => json(STAFF_REWARD_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': (init) =>
+        init?.method === 'PUT'
+          ? json({ ...PROGRAM_SETTINGS, mode: 'DISCOUNT' })
+          : json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings()
+
+    // Лестница статусов пока говорит о начислении: режим ещё не сохранён.
+    expect((await screen.findAllByText(t('tiers.earn'))).length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(t('settings.mode.discount')) }))
+
+    // Та же ставка — уже скидкой: 5 % от 1 000 ฿ = 50 ฿, к оплате 950 ฿,
+    // баллами — до 20 % от того, что осталось после скидки: 190 ฿.
+    expect(screen.getByLabelText(t('settings.discount.label'))).toBeInTheDocument()
+    expect(screen.getByText(t('settings.example.discount'))).toBeInTheDocument()
+    expect(screen.getByText('950,00 ฿')).toBeInTheDocument()
+    expect(screen.getByText('190,00 ฿')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('settings.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      const body = JSON.parse((put?.[1] as RequestInit).body as string) as { mode?: string }
+      expect(body.mode).toBe('DISCOUNT')
+    })
+
+    // Сохранили — и ставка в лестнице статусов называется скидкой.
+    expect((await screen.findAllByText(t('tiers.discount'))).length).toBeGreaterThan(0)
   })
 
   it('невозможный процент не отправляется и объясняется рядом с полем', async () => {
@@ -4063,6 +4110,37 @@ describe('Касса: акции в чеке', () => {
       within(issued).getByText(fill(t('pos.offers.issuedLine'), { title: 'Вернём 200 ฿' })),
     ).toBeInTheDocument()
     expect(within(issued).getByText('•••• K2QP')).toBeInTheDocument()
+  })
+
+  it('СКИДКА ВМЕСТО БАЛЛОВ: КАССИР ВИДИТ СКИДКУ И СУММУ К ОПЛАТЕ, А НЕ «НАЧИСЛИМ 0»', async () => {
+    stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/preview': () =>
+        json({
+          ...POS_PREVIEW,
+          amount: 90_000,
+          discount: 4_500,
+          amountToPay: 85_500,
+          pointsToEarn: 0,
+        }),
+      '/v1/pos/transactions/commit': () => json({ ...POS_COMMIT, earned: 0, discount: 4_500 }),
+    })
+    render(<App />)
+
+    await reachConfirm()
+
+    const summary = await screen.findByText(t('pos.confirm.discount'))
+    expect(summary.nextElementSibling).toHaveTextContent(`−${formatBaht(4_500)}`)
+    expect(screen.getByText(t('pos.confirm.toPay')).nextElementSibling).toHaveTextContent(
+      formatBaht(85_500),
+    )
+    expect(screen.queryByText(t('pos.confirm.earn'))).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    expect(
+      await screen.findByText(fill(t('pos.done.discount'), { amount: formatBaht(4_500) })),
+    ).toBeInTheDocument()
   })
 
   it('акций нет — на кассе нет и пустых блоков про акции', async () => {

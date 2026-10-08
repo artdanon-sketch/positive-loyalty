@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import type { CommitResult, PosGuest, PosTag, PreviewResult } from '@positive/contracts'
 
+import { fill } from '../../shared/format/fill'
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
 import type { TranslationKey } from '../../shared/i18n'
@@ -679,6 +680,10 @@ function ConfirmStep({
   const saleKinds = usePosSaleKinds()
   const [saleKindId, setSaleKindId] = useState('')
 
+  // Сравнение, а не `=== 0`: сервер до режима скидки поля не присылал, и касса,
+  // обновившаяся раньше сервера, не должна терять строку начисления.
+  const discounted = preview.discount > 0
+
   // Справочник ведут не все заведения. Где его нет — выбора нет вовсе,
   // и чек проводится ровно как раньше: лишний пустой список посреди кассы
   // был бы вопросом без ответов.
@@ -693,14 +698,34 @@ function ConfirmStep({
           <dt>{t('pos.confirm.amount')}</dt>
           <dd>{formatBaht(preview.amount)}</dd>
         </div>
-        <div className="pos__row pos__row--accent">
-          <dt>{t('pos.confirm.earn')}</dt>
-          <dd>{formatBaht(preview.pointsToEarn)}</dd>
-        </div>
-        <div className="pos__row">
-          <dt>{t('pos.confirm.balanceAfter')}</dt>
-          <dd>{formatBaht(preview.balanceAtPreview + preview.pointsToEarn)}</dd>
-        </div>
+        {/* Режим «скидкой сразу»: кассир обязан увидеть, сколько взять с гостя,
+            до того как пробьёт оплату, — иначе гость заплатит полную цену. */}
+        {discounted ? (
+          <>
+            <div className="pos__row pos__row--accent">
+              <dt>{t('pos.confirm.discount')}</dt>
+              <dd>−{formatBaht(preview.discount)}</dd>
+            </div>
+            <div className="pos__row pos__row--total">
+              <dt>{t('pos.confirm.toPay')}</dt>
+              <dd>{formatBaht(preview.amountToPay)}</dd>
+            </div>
+          </>
+        ) : null}
+        {/* Баллы — если они есть или скидки нет: «Начислим 0» под скидкой только
+            сбивал бы кассира. Без скидки ноль показываем — это контрольная группа. */}
+        {!discounted || preview.pointsToEarn > 0 ? (
+          <>
+            <div className={discounted ? 'pos__row' : 'pos__row pos__row--accent'}>
+              <dt>{t('pos.confirm.earn')}</dt>
+              <dd>{formatBaht(preview.pointsToEarn)}</dd>
+            </div>
+            <div className="pos__row">
+              <dt>{t('pos.confirm.balanceAfter')}</dt>
+              <dd>{formatBaht(preview.balanceAtPreview + preview.pointsToEarn)}</dd>
+            </div>
+          </>
+        ) : null}
       </dl>
 
       <OfferLines applied={preview.appliedOffers} skipped={preview.skippedOffers} />
@@ -765,6 +790,10 @@ function ConfirmStep({
                       receiptId,
                       target: { kind: 'MEMBERSHIP', membershipId: guest.membershipId },
                       amount: preview.amount,
+                      // Скидку кассир видел и дал — повтор посчитает её снова.
+                      // У чеков, отложенных без предрасчёта, флага нет: скидки там
+                      // не было, и сервер начислит вместо неё баллы.
+                      discountGiven: true,
                       // ВИД ПРОДАЖИ В ОЧЕРЕДЬ НЕ КЛАДЁТСЯ, И ЭТО НАРОЧНО.
                       // Пока чек лежит в очереди, владелец может выключить
                       // этот вид в бэк-офисе — и повтор получил бы отказ
@@ -838,13 +867,26 @@ function DoneStep({
   return (
     <div className="pos__step pos__step--done">
       <p className="pos__done" aria-live="polite">
-        {/* Не галочка, а сумма: её кассир зачитывает вслух. */}
+        {/* Не галочка, а сумма: её кассир зачитывает вслух. В режиме скидки —
+            скидку: «+0» прозвучало бы так, будто гость ничего не получил. */}
         {isVoided ? t('pos.done.voided') : `${guest.displayName ?? t('pos.guest.noName')} — `}
-        {isVoided ? null : <b className="pos__earned">+{formatBaht(result.earned)}</b>}
+        {isVoided ? null : result.discount > 0 ? (
+          <b className="pos__earned">
+            {fill(t('pos.done.discount'), { amount: formatBaht(result.discount) })}
+          </b>
+        ) : (
+          <b className="pos__earned">+{formatBaht(result.earned)}</b>
+        )}
       </p>
 
       {isVoided ? null : (
         <dl className="pos__summary">
+          {result.discount > 0 && result.earned > 0 ? (
+            <div className="pos__row">
+              <dt>{t('pos.confirm.earn')}</dt>
+              <dd>+{formatBaht(result.earned)}</dd>
+            </div>
+          ) : null}
           <div className="pos__row">
             <dt>{t('pos.done.balance')}</dt>
             <dd>{formatBaht(result.newBalance)}</dd>

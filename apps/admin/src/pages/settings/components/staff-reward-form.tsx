@@ -7,7 +7,7 @@ import { fill } from '../../../shared/format/fill'
 import { formatBaht } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
-import { useSaveStaffRewardSettings } from '../hooks'
+import { useProgramSettings, useSaveStaffRewardSettings } from '../hooks'
 import { forecastReward, fromStaffRewardDraft, toStaffRewardDraft } from '../staff-reward-draft'
 import type {
   RewardForecastFacts,
@@ -53,6 +53,7 @@ export function StaffRewardForm({
   facts: RewardForecastFacts | null
 }): ReactElement {
   const t = useT()
+  const programMode = useProgramSettings().data?.mode
   const save = useSaveStaffRewardSettings()
   const [draft, setDraft] = useState<StaffRewardDraft>(() => toStaffRewardDraft(initial))
 
@@ -110,6 +111,13 @@ export function StaffRewardForm({
                 </button>
               ))}
             </div>
+            {/* В режиме «скидкой сразу» баллов с покупки нет: «% от баллов» тихо
+                превратился бы в ноль, и кассиры решили бы, что их обманули. */}
+            {draft.basis === 'PCT_OF_POINTS' && programMode === 'DISCOUNT' ? (
+              <span className="field__hint field__hint--error" role="status">
+                {t('staffReward.basis.discountMode')}
+              </span>
+            ) : null}
           </div>
 
           <div className="form-row">

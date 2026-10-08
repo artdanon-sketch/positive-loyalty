@@ -57,6 +57,13 @@ export interface QueuedSale {
   /** Сумма чека в минорных единицах. */
   readonly amount: number
   readonly receiptNumber?: string
+  /**
+   * Кассир видел предрасчёт со скидкой и дал её. Нет флага — чек отложен до
+   * предрасчёта, гость заплатил полную цену, и в режиме «скидкой сразу» сервер
+   * начислит вместо скидки баллы (docs/02, раздел 3.2). Отсутствие флага —
+   * безопасная сторона: гость не останется ни без скидки, ни без баллов.
+   */
+  readonly discountGiven?: true
   readonly queuedAt: number
   readonly attempts: number
   /** Последняя причина неудачи — её видит кассир в списке застрявших. */
@@ -183,6 +190,7 @@ export interface SaleSender {
     membershipId: string
     amount: number
     receiptNumber?: string
+    withoutDiscount?: true
   }) => Promise<{ previewId: string }>
   commit: (input: { previewId: string; receiptId: string }) => Promise<unknown>
 }
@@ -230,6 +238,7 @@ export async function flushQueue(
         membershipId: target.membershipId,
         amount: sale.amount,
         ...(sale.receiptNumber === undefined ? {} : { receiptNumber: sale.receiptNumber }),
+        ...(sale.discountGiven === true ? {} : { withoutDiscount: true }),
       })
 
       await sender.commit({ previewId: preview.previewId, receiptId: sale.receiptId })

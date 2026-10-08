@@ -1167,6 +1167,11 @@ body {
   font-size: 22px;
 }
 
+/* «К оплате» в режиме скидки — столько кассир берёт с гостя. */
+.pos__row--total dd {
+  font-size: 22px;
+}
+
 .pos__notice {
   margin: 0;
   padding: var(--sp-3) var(--sp-4);

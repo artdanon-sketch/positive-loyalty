@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { useT } from '../../../shared/i18n'
-import { useTierSettings } from '../hooks'
+import { useProgramSettings, useTierSettings } from '../hooks'
 import { TierLadderForm } from './tier-ladder-form'
 
 /**
@@ -13,6 +13,9 @@ import { TierLadderForm } from './tier-ladder-form'
 export function TierSettingsSection(): ReactElement {
   const t = useT()
   const settings = useTierSettings()
+  // Режим — сохранённый: подпись ставки меняется, когда режим включён, а не когда
+  // владелец лишь щёлкнул переключатель выше и ещё не сохранил.
+  const programMode = useProgramSettings().data?.mode ?? 'CASHBACK'
 
   return (
     <section className="panel" aria-labelledby="tiers-title">
@@ -39,7 +42,7 @@ export function TierSettingsSection(): ReactElement {
           </button>
         </div>
       ) : (
-        <TierLadderForm initial={settings.data} />
+        <TierLadderForm initial={settings.data} programMode={programMode} />
       )}
     </section>
   )

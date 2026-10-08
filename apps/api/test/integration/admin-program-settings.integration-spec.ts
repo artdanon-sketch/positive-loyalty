@@ -41,6 +41,8 @@ const token = (tenantId: string, role: string): string =>
   signAccessToken({ tenantId, actorId: null, role }, SECRET, HOUR)
 
 const defaults = {
+  // Баллами на следующий визит — пока владелец не выбрал скидку (docs/02, раздел 3.2).
+  mode: 'CASHBACK',
   baseEarnRate: 5,
   baseRedeemRate: 20,
   // Баллы не сгорают, пока владелец не поставил срок (docs/02, раздел 5.6.8).

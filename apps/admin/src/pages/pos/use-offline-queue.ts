@@ -63,6 +63,7 @@ export interface OfflineQueueState {
     target: QueuedTarget
     amount: number
     receiptNumber?: string
+    discountGiven?: true
   }) => boolean
   readonly flush: () => void
   /** Вернуть застрявший чек в работу, при желании вписав номер чека. */
@@ -209,6 +210,7 @@ export function useOfflineQueue(): OfflineQueueState {
           target: input.target,
           amount: input.amount,
           ...(input.receiptNumber === undefined ? {} : { receiptNumber: input.receiptNumber }),
+          ...(input.discountGiven === true ? { discountGiven: true } : {}),
           queuedAt: Date.now(),
           attempts: 0,
         }),

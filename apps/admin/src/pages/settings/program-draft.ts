@@ -18,6 +18,7 @@ const flag = (value: boolean | undefined): boolean => value ?? false
 const flagOn = (value: boolean | undefined): boolean => value ?? true
 
 export const sameProgramSettings = (left: ProgramSettings, right: ProgramSettings): boolean =>
+  (left.mode ?? 'CASHBACK') === (right.mode ?? 'CASHBACK') &&
   left.baseEarnRate === right.baseEarnRate &&
   left.baseRedeemRate === right.baseRedeemRate &&
   (left.pointsExpireDays ?? null) === (right.pointsExpireDays ?? null) &&

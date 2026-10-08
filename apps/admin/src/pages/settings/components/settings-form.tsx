@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import type { ProgramSettings } from '@positive/contracts'
+import type { ProgramMode, ProgramSettings } from '@positive/contracts'
 
 import { useT } from '../../../shared/i18n'
 import { sameProgramSettings } from '../program-draft'
@@ -14,6 +14,10 @@ import { EarnExample } from './earn-example'
  * бывает «5,» — как число это NaN, и форма, хранящая числа, стирала бы запятую
  * под пальцем. В число строка превращается при проверке и при отправке.
  *
+ * РЕЖИМ МЕНЯЕТ СМЫСЛ ПЕРВОГО ПОЛЯ, А НЕ НАБОР ПОЛЕЙ. «Скидкой сразу» — та же
+ * ставка, только вычитается из чека: процент начисления становится процентом
+ * скидки, и пример под полями считает уже скидку и сумму к оплате.
+ *
  * ПОТОЛОК ЧЕКА ВВОДИТСЯ В БАТАХ, А УХОДИТ В САТАНГАХ. Владелец думает батами,
  * касса считает сатангами (железное правило 4). Перевод — ровно в одном месте,
  * на отправке; тест проверяет, что «3000» уезжает как 300000, а не как 3000.
@@ -21,10 +25,13 @@ import { EarnExample } from './earn-example'
 
 const toNumber = (value: string): number => Number(value.replace(',', '.').trim())
 
+const MODES: readonly ProgramMode[] = ['CASHBACK', 'DISCOUNT']
+
 export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactElement {
   const t = useT()
   const save = useSaveProgramSettings()
 
+  const [mode, setMode] = useState<ProgramMode>(initial.mode ?? 'CASHBACK')
   const [earn, setEarn] = useState(String(initial.baseEarnRate))
   const [redeem, setRedeem] = useState(String(initial.baseRedeemRate))
   const [requireReceipt, setRequireReceipt] = useState(initial.cashierRules.requireReceiptNumber)
@@ -63,6 +70,7 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
   const draft: ProgramSettings | null =
     earnOk && redeemOk && capOk && expireOk
       ? {
+          mode,
           baseEarnRate: earnRate,
           baseRedeemRate: redeemRate,
           pointsExpireDays: expireDays,
@@ -101,10 +109,42 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
           {t('settings.points.title')}
         </h2>
 
+        <fieldset className="choice">
+          <legend className="field__label">{t('settings.mode.label')}</legend>
+          {MODES.map((option) => (
+            <label
+              className={`choice__option${mode === option ? ' choice__option--on' : ''}`}
+              key={option}
+            >
+              <input
+                type="radio"
+                name="settings-mode"
+                value={option}
+                checked={mode === option}
+                onChange={() => {
+                  setMode(option)
+                }}
+              />
+              <span className="choice__text">
+                <b>
+                  {t(option === 'CASHBACK' ? 'settings.mode.cashback' : 'settings.mode.discount')}
+                </b>
+                <span>
+                  {t(
+                    option === 'CASHBACK'
+                      ? 'settings.mode.cashback.hint'
+                      : 'settings.mode.discount.hint',
+                  )}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
         <div className="panel__grid">
           <div className="field">
             <label className="field__label" htmlFor="settings-earn">
-              {t('settings.earn.label')}
+              {t(mode === 'DISCOUNT' ? 'settings.discount.label' : 'settings.earn.label')}
             </label>
             <input
               id="settings-earn"
@@ -151,7 +191,9 @@ export function SettingsForm({ initial }: { initial: ProgramSettings }): ReactEl
           </div>
         </div>
 
-        {earnOk && redeemOk ? <EarnExample earnRate={earnRate} redeemRate={redeemRate} /> : null}
+        {earnOk && redeemOk ? (
+          <EarnExample mode={mode} earnRate={earnRate} redeemRate={redeemRate} />
+        ) : null}
       </section>
 
       <section className="panel" aria-labelledby="settings-till-title">
