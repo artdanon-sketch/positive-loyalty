@@ -2522,6 +2522,71 @@ describe('Сертификаты', () => {
     expect(within(table).getByText('Сертификат на 500 ฿')).toBeInTheDocument()
   })
 
+  it('ПРОМО С ТИРАЖОМ И СРОКОМ: УСЛОВИЯ УХОДЯТ НА СЕРВЕР, В СПИСКЕ — «ОСТАЛОСЬ»', async () => {
+    const PROMO = {
+      ...CERTIFICATE,
+      id: '82828282-8282-4828-8828-828282828282',
+      title: 'Осенний промо',
+      selfClaim: true,
+      issued: 12,
+      promo: { startsAt: null, endsAt: '2026-10-31T16:59:59.999Z', limit: 100 },
+    }
+    let certificates: unknown[] = []
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/certificates': (init) => {
+        if (init?.method === 'POST') {
+          certificates = [PROMO]
+          return json(PROMO, 201)
+        }
+        return json(certificates)
+      },
+    })
+    render(<App />)
+
+    await openCertificates()
+
+    const form = await screen.findByRole('form', { name: t('certificates.form.title') })
+    fireEvent.change(within(form).getByLabelText(t('certificates.field.title')), {
+      target: { value: 'Осенний промо' },
+    })
+    fireEvent.change(within(form).getByLabelText(t('certificates.field.amount')), {
+      target: { value: '500' },
+    })
+    fireEvent.click(within(form).getByLabelText(new RegExp(t('certificates.field.selfClaim'))))
+    fireEvent.change(within(form).getByLabelText(t('certificates.promoTerms.endsOn')), {
+      target: { value: '2026-10-31' },
+    })
+    fireEvent.change(within(form).getByLabelText(t('certificates.promoTerms.limit')), {
+      target: { value: '100' },
+    })
+    fireEvent.click(within(form).getByRole('button', { name: t('certificates.create') }))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/admin/certificates') &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      )
+      const body = JSON.parse(((post?.[1] as RequestInit | undefined)?.body as string) ?? '{}') as {
+        selfClaim?: boolean
+        promo?: { startsAt: string | null; endsAt: string | null; limit: number | null }
+      }
+      expect(body.selfClaim).toBe(true)
+      expect(body.promo?.limit).toBe(100)
+      expect(body.promo?.startsAt).toBeNull()
+      // Конец — последний миг выбранного дня по часам владельца.
+      expect(new Date(body.promo?.endsAt ?? '').getDate()).toBe(31)
+    })
+
+    const table = await screen.findByRole('table', { name: t('certificates.title') })
+    expect(
+      within(table).getByText(
+        new RegExp(fill(t('certificates.promoTerms.left'), { left: '88', limit: '100' })),
+      ),
+    ).toBeInTheDocument()
+  })
+
   it('СЧЁТЧИКИ «ВЫДАНО / ИСПОЛЬЗОВАНО» ВИДНЫ, СЕРТИФИКАТ ВЫКЛЮЧАЕТСЯ, А НЕ УДАЛЯЕТСЯ', async () => {
     const fetchMock = stubApi({
       '/v1/auth/staff/pin': () => json(OWNER_TOKENS),

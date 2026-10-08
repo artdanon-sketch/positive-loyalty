@@ -1,6 +1,8 @@
 import { CERTIFICATE_VALIDITY_MAX_DAYS } from '@positive/contracts'
 import type { CreateCertificateInput, GiftValue } from '@positive/contracts'
 
+import { BLANK_PROMO_TERMS, fromPromoTermsDraft } from '../../shared/certificates/promo-terms-draft'
+import type { PromoTermsDraft } from '../../shared/certificates/promo-terms-draft'
 import { bahtToMinor } from '../../shared/format/baht-input'
 
 /**
@@ -29,10 +31,19 @@ export interface CertificateDraft {
   readonly validityDays: string
   /** Промо-сертификат: гость забирает сам из приложения. */
   readonly selfClaim: boolean
+  /** Окно «забрать» и тираж — только у промо. */
+  readonly promo: PromoTermsDraft
 }
 
 export type CertificateProblem =
-  'title' | 'amount' | 'percent' | 'maxDiscount' | 'itemName' | 'validityDays'
+  | 'title'
+  | 'amount'
+  | 'percent'
+  | 'maxDiscount'
+  | 'itemName'
+  | 'validityDays'
+  | 'promoDates'
+  | 'promoLimit'
 
 export type CertificateCheck =
   | { readonly ok: true; readonly input: CreateCertificateInput }
@@ -47,6 +58,7 @@ export const BLANK_CERTIFICATE: CertificateDraft = {
   itemName: '',
   validityDays: '30',
   selfClaim: false,
+  promo: BLANK_PROMO_TERMS,
 }
 
 const wholeIn = (value: string, min: number, max: number): number | null => {
@@ -107,5 +119,15 @@ export const fromCertificateDraft = (draft: CertificateDraft): CertificateCheck 
     return { ok: false, problem: 'validityDays' }
   }
 
-  return { ok: true, input: { title, value, validityDays, selfClaim: draft.selfClaim } }
+  if (!draft.selfClaim) {
+    return { ok: true, input: { title, value, validityDays, selfClaim: false } }
+  }
+
+  // Условия промо проверяются, только когда это промо: у обычного сертификата
+  // полей не видно, и ошибка в невидимом поле заперла бы кнопку.
+  const promo = fromPromoTermsDraft(draft.promo)
+
+  return promo.ok
+    ? { ok: true, input: { title, value, validityDays, selfClaim: true, promo: promo.terms } }
+    : { ok: false, problem: promo.problem }
 }

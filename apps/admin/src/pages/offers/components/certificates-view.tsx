@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { useAuth } from '../../../shared/auth/auth-context'
 import { useCertificates, useUpdateCertificate } from '../../../shared/certificates/hooks'
+import { describePromoTerms } from '../../../shared/certificates/promo-terms-draft'
 import { certificateValueText } from '../../../shared/certificates/value-text'
 import { fill } from '../../../shared/format/fill'
 import { useT } from '../../../shared/i18n'
 import { CertificateForm } from './certificate-form'
+import { PromoTermsEditor } from './promo-terms-editor'
 
 /**
  * Вкладка «Сертификаты» в «Акциях». docs/03, раздел 4 · docs/11, У9.
@@ -13,12 +16,17 @@ import { CertificateForm } from './certificate-form'
  * Список шаблонов со счётчиками «выдано / использовано»: по ним видно, какой подарок
  * гостям действительно нужен. Менеджер видит список — дарит он из карточки гостя;
  * заводит и выключает владелец.
+ *
+ * У ПРОМО — ЕГО УСЛОВИЯ ПРЯМО В СТРОКЕ: «до 31.10 · осталось 88 из 100».
+ * Продлить или поменять тираж — кнопкой «Условия», без нового шаблона.
  */
 export function CertificatesView(): ReactElement {
   const t = useT()
   const isOwner = useAuth().session?.subject.role === 'OWNER'
   const certificates = useCertificates()
   const update = useUpdateCertificate()
+  const [editing, setEditing] = useState<string | null>(null)
+  const editingCertificate = (certificates.data ?? []).find((item) => item.id === editing)
 
   return (
     <>
@@ -71,6 +79,11 @@ export function CertificatesView(): ReactElement {
                           <span className="chip chip--muted">{t('certificates.off')}</span>
                         </>
                       )}
+                      {certificate.selfClaim ? (
+                        <span className="field__hint certificate-promo">
+                          {describePromoTerms(certificate.promo, certificate.issued, t)}
+                        </span>
+                      ) : null}
                     </td>
                     <td>{certificateValueText(certificate.value, t)}</td>
                     <td className="data-table__num">
@@ -80,6 +93,18 @@ export function CertificatesView(): ReactElement {
                     <td className="data-table__num">{certificate.redeemed}</td>
                     {isOwner ? (
                       <td className="data-table__actions">
+                        {certificate.selfClaim ? (
+                          <button
+                            className="button"
+                            type="button"
+                            aria-expanded={editing === certificate.id}
+                            onClick={() => {
+                              setEditing(editing === certificate.id ? null : certificate.id)
+                            }}
+                          >
+                            {t('certificates.promoTerms.edit')}
+                          </button>
+                        ) : null}
                         <button
                           className="button"
                           type="button"
@@ -124,6 +149,23 @@ export function CertificatesView(): ReactElement {
             {update.error.message}
           </p>
         ) : null}
+
+        {/* Под таблицей, а не строкой в ней: таблица шире экрана телефона, и поля
+            в её строке уезжали бы за прокрутку. */}
+        {editingCertificate === undefined ? null : (
+          <section className="promo-terms-panel" aria-labelledby="promo-terms-title">
+            <h3 className="panel__title" id="promo-terms-title">
+              {fill(t('certificates.promoTerms.title'), { title: editingCertificate.title })}
+            </h3>
+            <PromoTermsEditor
+              key={editingCertificate.id}
+              certificate={editingCertificate}
+              onDone={() => {
+                setEditing(null)
+              }}
+            />
+          </section>
+        )}
       </section>
 
       {isOwner ? <CertificateForm /> : null}

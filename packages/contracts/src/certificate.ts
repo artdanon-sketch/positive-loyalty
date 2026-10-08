@@ -33,6 +33,42 @@ export const CertificateOfferReward = z
 
 export type CertificateOfferReward = z.infer<typeof CertificateOfferReward>
 
+/** Тираж промо — до миллиона штук: больше не раздаёт ни одно заведение. */
+export const PROMO_LIMIT_MAX = 1_000_000
+
+/**
+ * Условия промо-сертификата: когда его можно забрать и сколько всего штук.
+ *
+ * ДАТЫ — ЭТО ОКНО «ЗАБРАТЬ», А НЕ СРОК КОДА. Код, взятый в последний день
+ * промо, живёт свои validityDays: гость не должен потерять подарок потому, что
+ * акция кончилась назавтра после того, как он его взял.
+ *
+ * ТИРАЖ — ВСЕГО ВЫДАННЫХ ПО ШАБЛОНУ, как totalQty у любой акции: шаблон,
+ * которым дарят и ко дню рождения, тратит тот же тираж. Пусто — без ограничения.
+ *
+ * Хранится в полях самой акции — schedule.startsAt/endsAt и limits.totalQty:
+ * промо — надстройка над Offer, а не новая сущность.
+ */
+export const PromoTerms = z
+  .object({
+    startsAt: z.iso.datetime({ offset: true }).nullable(),
+    endsAt: z.iso.datetime({ offset: true }).nullable(),
+    limit: z.number().int().positive().max(PROMO_LIMIT_MAX).nullable(),
+  })
+  .strict()
+  .refine(
+    (terms) =>
+      terms.startsAt === null ||
+      terms.endsAt === null ||
+      Date.parse(terms.startsAt) < Date.parse(terms.endsAt),
+    { error: 'Промо не может кончиться раньше, чем начнётся', path: ['endsAt'] },
+  )
+
+export type PromoTerms = z.infer<typeof PromoTerms>
+
+/** Без окна и без тиража. */
+export const NO_PROMO_TERMS: PromoTerms = { startsAt: null, endsAt: null, limit: null }
+
 export const CertificateTemplate = z
   .object({
     id: z.uuid(),
@@ -45,6 +81,8 @@ export const CertificateTemplate = z
     isActive: z.boolean(),
     /** Промо-сертификат: гость забирает его сам из приложения. */
     selfClaim: z.boolean(),
+    /** Когда промо можно забрать и сколько всего штук. Без промо — пустые. */
+    promo: PromoTerms,
     issued: z.number().int().nonnegative(),
     redeemed: z.number().int().nonnegative(),
   })
@@ -59,6 +97,8 @@ export const CreateCertificateInput = z
     validityDays: ValidityDays,
     /** Сразу сделать промо-сертификатом (гость забирает сам). По умолчанию нет. */
     selfClaim: z.boolean().optional(),
+    /** Окно и тираж промо. Нет — без ограничений. */
+    promo: PromoTerms.optional(),
   })
   .strict()
 
@@ -69,6 +109,8 @@ export const UpdateCertificateInput = z
     title: CertificateTitle.optional(),
     isActive: z.boolean().optional(),
     selfClaim: z.boolean().optional(),
+    /** Заменить окно и тираж промо целиком. */
+    promo: PromoTerms.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -93,6 +135,10 @@ export const PromoCertificate = z
     validityDays: ValidityDays,
     howTo: z.array(z.string()),
     claimed: z.boolean(),
+    /** До какого момента можно забрать. null — без срока. */
+    endsAt: z.iso.datetime({ offset: true }).nullable(),
+    /** Сколько осталось. null — тиража нет. */
+    left: z.number().int().nonnegative().nullable(),
   })
   .strict()
 

@@ -55,6 +55,14 @@ interface PromoItem {
   title: string
   validityDays: number
   claimed: boolean
+  endsAt: string | null
+  left: number | null
+}
+
+interface PromoTermsBody {
+  startsAt: string | null
+  endsAt: string | null
+  limit: number | null
 }
 
 interface Claimed {
@@ -225,6 +233,122 @@ describe('Промо-сертификаты: гость забирает сам'
   })
 })
 
+const HOUR_MS = 60 * 60 * 1000
+const at = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString()
+
+/** Промо с условиями: окно «забрать» и тираж. */
+const createPromo = async (title: string, promo: PromoTermsBody): Promise<Template> => {
+  const response = await request(server())
+    .post('/v1/admin/certificates')
+    .set('Authorization', bearer(ownerToken))
+    .send({
+      title,
+      value: { kind: 'FIXED_OFF', amount: 50_000 },
+      validityDays: 30,
+      selfClaim: true,
+      promo,
+    })
+
+  expect(response.status).toBe(201)
+  return response.body as Template
+}
+
+const promoOf = async (guestId: string, offerId: string): Promise<PromoItem | undefined> =>
+  ((await listPromo(guestId)).body as PromoItem[]).find((item) => item.offerId === offerId)
+
+describe('Промо-сертификаты: тираж и даты', () => {
+  it('ТИРАЖ: ДВА КОДА — ДВОИМ, ТРЕТЬЕМУ «ЗАКОНЧИЛИСЬ»; ВЗЯВШИЙ ПОЛУЧАЕТ СВОЙ КОД И ПОСЛЕ', async () => {
+    const promo = await createPromo('Тираж два', { startsAt: null, endsAt: null, limit: 2 })
+    const second = await createMembershipFixture(prisma, { tenantId })
+    const third = await createMembershipFixture(prisma, { tenantId })
+
+    expect((await promoOf(third.guestId, promo.id))?.left).toBe(2)
+
+    const first = await claim(guest.guestId, promo.id)
+    expect(first.status).toBe(201)
+    expect((await claim(second.guestId, promo.id)).status).toBe(201)
+
+    const late = await claim(third.guestId, promo.id)
+    expect(late.status).toBe(409)
+    expect((late.body as { error: { code: string } }).error.code).toBe('PROMO_SOLD_OUT')
+
+    // Разошедшееся промо с витрины опоздавшего исчезает, а у взявшего — «Уже у вас».
+    expect(await promoOf(third.guestId, promo.id)).toBeUndefined()
+    expect(await promoOf(guest.guestId, promo.id)).toMatchObject({ claimed: true, left: 0 })
+
+    // Второе нажатие по своему подарку — его код, а не «закончились».
+    const again = await claim(guest.guestId, promo.id)
+    expect(again.status).toBe(201)
+    expect((again.body as Claimed).code).toBe((first.body as Claimed).code)
+  })
+
+  it('ГОНКА: ПЯТЬ ГОСТЕЙ ОДНОВРЕМЕННО ЗА ДВУМЯ КОДАМИ — ВЫДАНО РОВНО ДВА', async () => {
+    // В момент запуска промо гости жмут одновременно. Проверка «до» выдачи
+    // пропустила бы всех пятерых.
+    const promo = await createPromo('Гонка за двумя', { startsAt: null, endsAt: null, limit: 2 })
+    const guests = await Promise.all(
+      Array.from({ length: 5 }, async () => createMembershipFixture(prisma, { tenantId })),
+    )
+
+    const results = await Promise.all(guests.map(async (one) => claim(one.guestId, promo.id)))
+
+    expect(results.filter((result) => result.status === 201)).toHaveLength(2)
+    expect(results.filter((result) => result.status === 409)).toHaveLength(3)
+    expect(await prisma.offerGrant.count({ where: { offerId: promo.id } })).toBe(2)
+  })
+
+  it('ОКНО: ДО НАЧАЛА И ПОСЛЕ КОНЦА ПРОМО НЕ ВИДНО И НЕ БЕРЁТСЯ; ВНУТРИ — СО СРОКОМ И ОСТАТКОМ', async () => {
+    const soon = await createPromo('Начнётся завтра', {
+      startsAt: at(24 * HOUR_MS),
+      endsAt: null,
+      limit: null,
+    })
+    const over = await createPromo('Уже кончилось', {
+      startsAt: null,
+      endsAt: at(-HOUR_MS),
+      limit: null,
+    })
+    const ends = at(48 * HOUR_MS)
+    const live = await createPromo('Идёт сейчас', {
+      startsAt: at(-HOUR_MS),
+      endsAt: ends,
+      limit: 10,
+    })
+
+    for (const hidden of [soon, over]) {
+      expect(await promoOf(guest.guestId, hidden.id)).toBeUndefined()
+      expect((await claim(guest.guestId, hidden.id)).status).toBe(404)
+    }
+
+    expect(await promoOf(guest.guestId, live.id)).toMatchObject({ left: 10, endsAt: ends })
+  })
+
+  it('ВЛАДЕЛЕЦ ПРОДЛЕВАЕТ ПРОМО И МЕНЯЕТ ТИРАЖ; КОНЕЦ РАНЬШЕ НАЧАЛА — ОТКАЗ', async () => {
+    const promo = await createPromo('Продлим', { startsAt: null, endsAt: at(-HOUR_MS), limit: 5 })
+    expect(await promoOf(guest.guestId, promo.id)).toBeUndefined()
+
+    const later = at(72 * HOUR_MS)
+    const updated = await request(server())
+      .patch(`/v1/admin/certificates/${promo.id}`)
+      .set('Authorization', bearer(ownerToken))
+      .send({ promo: { startsAt: null, endsAt: later, limit: 50 } })
+
+    expect(updated.status).toBe(200)
+    expect((updated.body as { promo: PromoTermsBody }).promo).toEqual({
+      startsAt: null,
+      endsAt: later,
+      limit: 50,
+    })
+    expect(await promoOf(guest.guestId, promo.id)).toMatchObject({ left: 50 })
+
+    const backwards = await request(server())
+      .patch(`/v1/admin/certificates/${promo.id}`)
+      .set('Authorization', bearer(ownerToken))
+      .send({ promo: { startsAt: at(5 * HOUR_MS), endsAt: at(HOUR_MS), limit: null } })
+    expect(backwards.status).toBe(400)
+  })
+})
+
 /** Настоящий PrismaService под ролью приложения — приём из ledger-app-role. */
 const createAppRoleContext = async (): Promise<LedgerTestContext> => {
   const url = process.env['DATABASE_URL_TEST_APP_ROLE']
@@ -297,5 +421,18 @@ describe('Промо-сертификаты под ролью приложени
     await expect(asGuest(neighbour.guestId, () => service.claim(promo.id))).rejects.toBeInstanceOf(
       NotFoundException,
     )
+  })
+
+  it('ОСТАТОК ТИРАЖА СЧИТАЕТСЯ ПО ВСЕМ ГОСТЯМ, ХОТЯ ГОСТЮ БАЗА ПОКАЗЫВАЕТ ТОЛЬКО СВОИ КОДЫ', async () => {
+    const promo = await createPromo('Тираж под ролью', { startsAt: null, endsAt: null, limit: 5 })
+    const other = await createMembershipFixture(prisma, { tenantId })
+
+    await asGuest(other.guestId, () => service.claim(promo.id))
+
+    const mine = (await asGuest(guest.guestId, () => service.list())).find(
+      (item) => item.offerId === promo.id,
+    )
+    // Чужой код гость не видит, но в остатке он учтён.
+    expect(mine?.left).toBe(4)
   })
 })

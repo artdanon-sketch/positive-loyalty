@@ -16,6 +16,9 @@ import { useClaimPromo, usePromos } from '../hooks'
  *
  * ЗАБРАННОЕ НЕ ИСЧЕЗАЕТ, А ГАСНЕТ. Кнопка становится «Уже у вас»: гость видит,
  * что взял, и ищет промокод в «Ваших подарках», а не жмёт «Забрать» второй раз.
+ *
+ * СРОК И ОСТАТОК — ЕСЛИ ОНИ ЕСТЬ. «Забрать до 31.10» и «осталось 12» — честная
+ * причина не откладывать; без срока и тиража этих строк нет.
  */
 export function PromoList(): ReactElement | null {
   const t = useT()
@@ -47,6 +50,19 @@ export function PromoList(): ReactElement | null {
                 <span className="promo__validity">
                   {t('promo.validityLead')} {item.validityDays}
                 </span>
+                {item.endsAt === null ? null : (
+                  <span className="promo__validity">
+                    {t('promo.endsAt').replace(
+                      '{date}',
+                      new Date(item.endsAt).toLocaleDateString(),
+                    )}
+                  </span>
+                )}
+                {item.left === null || item.claimed ? null : (
+                  <span className="promo__validity">
+                    {t('promo.left').replace('{count}', String(item.left))}
+                  </span>
+                )}
               </div>
 
               {item.claimed ? (

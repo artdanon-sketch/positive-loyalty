@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
 
 import { useCreateCertificate } from '../../../shared/certificates/hooks'
+import { PromoTermsFields } from '../../../shared/certificates/promo-terms-fields'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
 import { BLANK_CERTIFICATE, CERTIFICATE_KINDS, fromCertificateDraft } from '../certificate-draft'
@@ -27,9 +28,11 @@ const PROBLEMS: Readonly<Record<CertificateProblem, TranslationKey>> = {
   maxDiscount: 'certificates.problem.maxDiscount',
   itemName: 'certificates.problem.itemName',
   validityDays: 'certificates.problem.validityDays',
+  promoDates: 'certificates.promoTerms.problem.dates',
+  promoLimit: 'certificates.promoTerms.problem.limit',
 }
 
-type TextField = Exclude<keyof CertificateDraft, 'kind' | 'selfClaim'>
+type TextField = Exclude<keyof CertificateDraft, 'kind' | 'selfClaim' | 'promo'>
 
 export function CertificateForm(): ReactElement {
   const t = useT()
@@ -139,6 +142,23 @@ export function CertificateForm(): ReactElement {
           <span className="field__hint">{t('certificates.selfClaim.hint')}</span>
         </span>
       </label>
+
+      {draft.selfClaim ? (
+        <PromoTermsFields
+          id="certificate-promo"
+          draft={draft.promo}
+          problem={
+            touched &&
+            !checked.ok &&
+            (checked.problem === 'promoDates' || checked.problem === 'promoLimit')
+              ? checked.problem
+              : null
+          }
+          onChange={(promo) => {
+            setDraft({ ...draft, promo })
+          }}
+        />
+      ) : null}
 
       <div className="save-bar">
         {touched && !checked.ok ? (

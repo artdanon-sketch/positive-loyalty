@@ -5,6 +5,7 @@ import {
   ClaimedPromoCertificate,
   CreateCertificateInput,
   PromoCertificate,
+  PromoTerms,
   UpdateCertificateInput,
 } from './certificate.js'
 
@@ -58,6 +59,8 @@ describe('Сертификаты: контракт', () => {
         validityDays: 30,
         howTo: ['Покажите код на кассе'],
         claimed: false,
+        endsAt: '2026-10-31T16:59:59.999Z',
+        left: 88,
       }).success,
     ).toBe(true)
     expect(
@@ -106,5 +109,28 @@ describe('День рождения: контракт', () => {
     expect(GuestBirthdayInput.safeParse({ date: '2999-01-01' }).success).toBe(false)
     expect(GuestBirthdayInput.safeParse({ date: '1899-12-31' }).success).toBe(false)
     expect(GuestBirthdayInput.safeParse({ date: '17.05.1990' }).success).toBe(false)
+  })
+})
+
+describe('Условия промо: контракт', () => {
+  it('ПУСТЫЕ УСЛОВИЯ — БЕЗ СРОКА И ТИРАЖА; КОНЕЦ РАНЬШЕ НАЧАЛА — НЕЛЬЗЯ', () => {
+    expect(PromoTerms.safeParse({ startsAt: null, endsAt: null, limit: null }).success).toBe(true)
+    expect(
+      PromoTerms.safeParse({
+        startsAt: '2026-10-31T00:00:00.000Z',
+        endsAt: '2026-10-01T00:00:00.000Z',
+        limit: null,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('ТИРАЖ — ЦЕЛОЕ ОТ ОДНОГО ДО МИЛЛИОНА', () => {
+    for (const limit of [0, 2.5, 1_000_001]) {
+      expect(PromoTerms.safeParse({ startsAt: null, endsAt: null, limit }).success).toBe(false)
+    }
+    expect(
+      UpdateCertificateInput.safeParse({ promo: { startsAt: null, endsAt: null, limit: 100 } })
+        .success,
+    ).toBe(true)
   })
 })

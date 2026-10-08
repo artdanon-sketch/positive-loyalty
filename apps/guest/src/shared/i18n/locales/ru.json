@@ -172,6 +172,8 @@
   "promo.title": "Забрать сертификат",
   "promo.hint": "Заведение раздаёт их бесплатно. Заберите — промокод появится в «Ваших подарках».",
   "promo.validityLead": "Действует, дней:",
+  "promo.endsAt": "Забрать до {date}",
+  "promo.left": "Осталось: {count}",
   "promo.value.item": "В подарок: {item}",
   "promo.value.fixed": "Скидка {amount}",
   "promo.value.percent": "Скидка {percent}%",
