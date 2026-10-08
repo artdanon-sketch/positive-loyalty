@@ -140,6 +140,48 @@ describe('Промокоды: выдача и погашение', () => {
     expect(codes.size).toBe(20)
   })
 
+  it('ПОВТОР С ТЕМ ЖЕ КЛЮЧОМ БЕЗ ПРЕДПРОВЕРКИ — ТОТ ЖЕ КОД, А НЕ ОШИБКА', async () => {
+    // Промо и день рождения зовут выдачу без «а не выдано ли уже». Раньше
+    // повтор упирался в UNIQUE, транзакция ломалась, и поиск первого кода
+    // падал с 25P02 — гость, нажавший «Забрать» дважды, получал 500.
+    const { tenantId, guestId, offerId } = await seed()
+    const key = `repeat-${randomUUID()}`
+
+    const first = await service.issue({
+      offerId,
+      guestId,
+      tenantId,
+      validityDays: 7,
+      now,
+      idempotencyKey: key,
+    })
+    const second = await service.issue({
+      offerId,
+      guestId,
+      tenantId,
+      validityDays: 7,
+      now,
+      idempotencyKey: key,
+    })
+
+    expect(first.replayed).toBe(false)
+    expect(second).toMatchObject({ id: first.id, code: first.code, replayed: true })
+  })
+
+  it('ГОНКА: ДВЕ ВЫДАЧИ С ОДНИМ КЛЮЧОМ ОДНОВРЕМЕННО — ОДИН КОД, ОБЕ УСПЕШНЫ', async () => {
+    // Сеть повторила запрос, пока первый ещё шёл. Предпроверка у вызывающего
+    // здесь не спасает: оба запроса её проходят, а второй встречает UNIQUE.
+    const { tenantId, guestId, offerId } = await seed()
+    const key = `race-${randomUUID()}`
+    const issue = () =>
+      service.issue({ offerId, guestId, tenantId, validityDays: 7, now, idempotencyKey: key })
+
+    const results = await Promise.all([issue(), issue(), issue()])
+
+    expect(new Set(results.map((grant) => grant.code)).size).toBe(1)
+    expect(results.filter((grant) => !grant.replayed)).toHaveLength(1)
+  })
+
   it('гасит код и помечает, кто это сделал', async () => {
     const { tenantId, guestId, offerId } = await seed()
     const grant = await service.issue({ offerId, guestId, tenantId, validityDays: 7, now })

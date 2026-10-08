@@ -1,5 +1,6 @@
 import {
   AcceptReferralResult,
+  ClaimedPromoCertificate,
   GuestMe,
   GuestMessageView,
   GuestMessages,
@@ -13,6 +14,7 @@ import {
   GuestReviews,
   GuestWallet,
   JoinVenueResult,
+  PromoCertificateList,
 } from '@positive/contracts'
 import type {
   CreateGuestMessageInput,
@@ -105,6 +107,16 @@ export function fetchNews(authGet: AuthGet): Promise<GuestNews> {
 /** Что можно взять за баллы (docs/02, раздел 2.13). */
 export function fetchGuestCatalog(authGet: AuthGet): Promise<GuestCatalog> {
   return authGet('/guest/catalog', GuestCatalog)
+}
+
+/** Промо-сертификаты, которые гость может забрать сам (docs/02, раздел 5.11). */
+export function fetchPromos(authGet: AuthGet): Promise<PromoCertificateList> {
+  return authGet('/guest/promo', PromoCertificateList)
+}
+
+/** Забрать промо-сертификат — промокод ляжет в кошелёк. */
+export function claimPromo(authPost: AuthPost, offerId: string): Promise<ClaimedPromoCertificate> {
+  return authPost(`/guest/promo/${encodeURIComponent(offerId)}/claim`, {}, ClaimedPromoCertificate)
 }
 
 /** Имя и язык гостя (docs/02, раздел 2.12). */

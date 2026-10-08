@@ -29,7 +29,7 @@ const PROBLEMS: Readonly<Record<CertificateProblem, TranslationKey>> = {
   validityDays: 'certificates.problem.validityDays',
 }
 
-type TextField = Exclude<keyof CertificateDraft, 'kind'>
+type TextField = Exclude<keyof CertificateDraft, 'kind' | 'selfClaim'>
 
 export function CertificateForm(): ReactElement {
   const t = useT()
@@ -124,6 +124,21 @@ export function CertificateForm(): ReactElement {
       {draft.kind === 'FREE_ITEM' ? input('itemName', 'certificates.field.itemName') : null}
 
       {input('validityDays', 'certificates.field.validityDays', 'numeric')}
+
+      <label className="field field--check" htmlFor="certificate-selfClaim">
+        <input
+          id="certificate-selfClaim"
+          type="checkbox"
+          checked={draft.selfClaim}
+          onChange={(event) => {
+            setDraft({ ...draft, selfClaim: event.target.checked })
+          }}
+        />
+        <span>
+          <span className="field__label">{t('certificates.field.selfClaim')}</span>
+          <span className="field__hint">{t('certificates.selfClaim.hint')}</span>
+        </span>
+      </label>
 
       <div className="save-bar">
         {touched && !checked.ok ? (

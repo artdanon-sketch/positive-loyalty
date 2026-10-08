@@ -72,6 +72,7 @@ export class CertificatesService {
           schedule: {},
           limits: {},
           reward,
+          selfClaim: input.selfClaim ?? false,
           i18n: { title: { ru: input.title, en: input.title }, howTo: HOW_TO },
         },
         select: { id: true },
@@ -115,6 +116,7 @@ export class CertificatesService {
         where: { id, tenantId, type: 'GIFT_CARD' },
         data: {
           ...(input.isActive === undefined ? {} : { status: input.isActive ? 'LIVE' : 'PAUSED' }),
+          ...(input.selfClaim === undefined ? {} : { selfClaim: input.selfClaim }),
           ...(input.title === undefined
             ? {}
             : { i18n: { title: { ru: input.title, en: input.title }, howTo: HOW_TO } }),
@@ -132,8 +134,8 @@ export class CertificatesService {
       tenantId,
       entityType: 'Offer',
       entityId: id,
-      oldValue: { title: before.title, isActive: before.isActive },
-      newValue: { title: after.title, isActive: after.isActive },
+      oldValue: { title: before.title, isActive: before.isActive, selfClaim: before.selfClaim },
+      newValue: { title: after.title, isActive: after.isActive, selfClaim: after.selfClaim },
     })
 
     return after
@@ -148,7 +150,7 @@ export class CertificatesService {
     const offers = await tx.offer.findMany({
       where: { tenantId, type: 'GIFT_CARD', ...(id === undefined ? {} : { id }) },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, status: true, reward: true, i18n: true },
+      select: { id: true, status: true, selfClaim: true, reward: true, i18n: true },
     })
 
     const counts =
@@ -176,6 +178,7 @@ export class CertificatesService {
           value: reward.data.value,
           validityDays: reward.data.validityDays,
           isActive: offer.status === 'LIVE',
+          selfClaim: offer.selfClaim,
           issued: mine.reduce((sum, row) => sum + row._count._all, 0),
           redeemed: mine
             .filter((row) => row.state === 'REDEEMED')

@@ -12,8 +12,20 @@ describe('Черновик сертификата', () => {
         title: 'Сертификат',
         value: { kind: 'FIXED_OFF', amount: 50_000 },
         validityDays: 30,
+        selfClaim: false,
       },
     })
+  })
+
+  it('ПРОМО: галочка self-claim уходит в шаблон', () => {
+    expect(
+      fromCertificateDraft({
+        ...BLANK_CERTIFICATE,
+        title: 'Промо',
+        amount: '500',
+        selfClaim: true,
+      }),
+    ).toMatchObject({ ok: true, input: { selfClaim: true } })
   })
 
   it('процент — с потолком и без, подарок — названием', () => {

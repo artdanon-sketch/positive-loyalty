@@ -2750,7 +2750,7 @@ PATCH /v1/admin/certificates/{id}   { "isActive": false }
 {
   "id": "7b2e…", "title": "Сертификат на 500 ฿",
   "value": { "kind": "FIXED_OFF", "amount": 50000 }, "validityDays": 30,
-  "isActive": true, "issued": 12, "redeemed": 7
+  "isActive": true, "selfClaim": false, "issued": 12, "redeemed": 7
 }
 ```
 
@@ -2760,9 +2760,40 @@ PATCH /v1/admin/certificates/{id}   { "isActive": false }
   а выдача, погашение и кошелёк гостя работают как у любого промокода.
 - Выключенный шаблон не выдаётся, выданные по нему промокоды живут свой срок.
   В аудит — `CERTIFICATE_CREATED`, `CERTIFICATE_UPDATED`.
+- `selfClaim` — **промо-сертификат**: гость забирает его сам из приложения (см. ниже).
+  Передаётся при создании (по умолчанию `false`) и переключается в `PATCH`. Обычный
+  (`selfClaim: false`) выдаёт только персонал.
 - **Подарить сертификат** — `POST /v1/admin/guests/{guestId}/gifts` с `certificateId`
   вместо `title`: название и срок берутся из шаблона. Лимит менеджера — двадцать подарков
   за сутки — считает и сертификаты. Выключенный или чужой шаблон — `404 CERTIFICATE_NOT_FOUND`.
+
+#### Промо-сертификаты — гость забирает сам (docs/11, UDS-разбор)
+
+**Приложение гостя.** Вход по гостевому токену.
+
+```http
+GET  /v1/guest/promo
+POST /v1/guest/promo/{offerId}/claim
+```
+
+```json
+[
+  {
+    "offerId": "7b2e…", "tenantId": "kata…", "venue": "Kata Beach Kitchen",
+    "title": "Сертификат на 500 ฿", "value": { "kind": "FIXED_OFF", "amount": 50000 },
+    "validityDays": 30, "howTo": ["Покажите код на кассе"], "claimed": false
+  }
+]
+```
+
+- `GET /v1/guest/promo` — включённые (`selfClaim`) шаблоны по всем заведениям, где у гостя
+  есть участие. Границу держит база: политика `guest_promo_offers` (миграция 20260919140000)
+  отдаёт только `LIVE` self-claim `GIFT_CARD` заведений гостя. `claimed` — забран ли уже.
+- `POST /v1/guest/promo/{offerId}/claim` — выдаёт гостю промокод (`201 { offerId, code, expiresAt }`),
+  тем же `OfferGrantService`, что и подарок из карточки: код ложится в кошелёк, касса гасит
+  как любой. Срок — `validityDays` от момента получения. **Один на гостя:** повтор возвращает
+  тот же код (ключ идемпотентности `promo:{offerId}:{guestId}`), второго не выдаёт. Чужой,
+  выключенный или не-промо — `404 PROMO_NOT_FOUND`. Общего тиража в v1 нет.
 
 ### 5.6.3 Подарок ко дню рождения — работает (У9)
 
