@@ -7,6 +7,7 @@ import { LedgerService } from '../core/ledger.service'
 import { MEMBERSHIP_RULES_SELECT, MembershipRulesService } from '../core/membership-rules.service'
 import type { MembershipSnapshot, ReferralFacts } from '../core/membership-rules.service'
 import { PrismaService } from '../core/prisma.service'
+import { ReferralSharesService } from '../core/referral-shares.service'
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
 import { parseProgramConfig } from '@positive/contracts'
@@ -42,6 +43,7 @@ export class PosWebhookService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly rules: MembershipRulesService,
+    private readonly shares: ReferralSharesService,
   ) {}
 
   /**
@@ -247,6 +249,16 @@ export class PosWebhookService {
       { tenantId },
     )
 
+    // Проценты пригласившим — по тому же чеку и тем же ключом, что у кассы:
+    // чек, проведённый и кассой, и вебхуком, второй раз не заплатит.
+    await this.shares.give(
+      tenantId,
+      membership,
+      envelope.receipt.id,
+      envelope.receipt.total,
+      config,
+    )
+
     await this.rules.refreshTier(tenantId, membership.id, config)
     await this.rules.refreshInviterTier(tenantId, membership, config)
 
@@ -266,7 +278,7 @@ export class PosWebhookService {
           refId: envelope.receipt.id,
           type: { in: ['EARN', 'REDEEM'] },
         },
-        select: { id: true, idempotencyKey: true },
+        select: { id: true, idempotencyKey: true, membershipId: true },
       }),
     )
 
@@ -287,6 +299,12 @@ export class PosWebhookService {
         },
         { tenantId },
       )
+    }
+
+    // И проценты пригласившим с этого чека.
+    const buyerId = legs[0]?.membershipId
+    if (buyerId !== undefined) {
+      await this.shares.takeBack(tenantId, buyerId, envelope.receipt.id)
     }
 
     return 'PROCESSED'

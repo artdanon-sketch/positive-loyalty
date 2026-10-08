@@ -30,7 +30,9 @@ describe('Поиск гостя по одной строке', () => {
   })
 
   it('цифры проверяются и как номер чека: гость может показать чек', () => {
-    expect(clauses('1042')).toContainEqual({ ledgerEntries: { some: { refId: '1042' } } })
+    expect(clauses('1042')).toContainEqual({
+      ledgerEntries: { some: { refType: 'receipt', refId: '1042' } },
+    })
   })
 
   it('промокод ищется в верхнем регистре и только среди своих подарков', () => {

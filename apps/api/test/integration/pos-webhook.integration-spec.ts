@@ -59,6 +59,8 @@ interface EnvelopeOptions {
   readonly total?: number
   readonly withGuest?: boolean
   readonly merchant?: string
+  /** Чей код на экране кассы. По умолчанию — гость полигона. */
+  readonly guest?: string
 }
 
 const envelope = (options: EnvelopeOptions = {}): Record<string, unknown> => {
@@ -68,6 +70,7 @@ const envelope = (options: EnvelopeOptions = {}): Record<string, unknown> => {
     total = 120_000,
     withGuest = true,
     merchant = merchantId,
+    guest = guestId,
   } = options
 
   return {
@@ -81,7 +84,9 @@ const envelope = (options: EnvelopeOptions = {}): Record<string, unknown> => {
       currency: 'THB',
       paidBy: 'PROMPTPAY',
       closedAt: posTime(),
-      ...(withGuest ? { loyalty: { guestToken: signGuestQrToken({ guestId }, SECRET) } } : {}),
+      ...(withGuest
+        ? { loyalty: { guestToken: signGuestQrToken({ guestId: guest }, SECRET) } }
+        : {}),
       items: [{ sku: 'tomyum', qty: 1, price: 32_000 }],
     },
   }
@@ -347,6 +352,42 @@ describe('Обработка события', () => {
       tx.ledgerEntry.findFirst({ where: { tenantId, refId: receiptId, type: 'EARN' } }),
     )
     expect(earn?.amount).toBe(6_000)
+  })
+
+  it('ЧЕК ДРУГА ИЗ КАССЫ POSITIVE ПЛАТИТ ПРОЦЕНТ ПРИГЛАСИВШЕМУ, ОТМЕНА — ЗАБИРАЕТ', async () => {
+    // Свой гость и свой пригласивший: общий гость полигона остаётся без цепочки.
+    const inviter = await createMembershipFixture(prisma, { tenantId })
+    const friend = await createMembershipFixture(prisma, { tenantId })
+    await prisma.membership.update({
+      where: { id: friend.membershipId },
+      data: { referredById: inviter.membershipId, source: 'REFERRAL' },
+    })
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { settings: { referral: { enabled: true, reward: 0, limit: 10, levels: [5, 0, 0] } } },
+    })
+
+    const receiptId = `pos_rcpt_${randomUUID().slice(0, 8)}`
+    const closed = await send(envelope({ receiptId, total: 120_000, guest: friend.guestId }))
+    expect(await settle((closed.body as { eventId: string }).eventId)).toBe('PROCESSED')
+
+    const balanceOf = async (): Promise<number> =>
+      (
+        await prisma.membership.findUniqueOrThrow({
+          where: { id: inviter.membershipId },
+          select: { pointsBalance: true },
+        })
+      ).pointsBalance
+
+    // 5 % от 1 200 ฿.
+    expect(await balanceOf()).toBe(6_000)
+
+    const voided = await send(
+      envelope({ event: 'receipt.voided', receiptId, guest: friend.guestId }),
+    )
+    expect(await settle((voided.body as { eventId: string }).eventId)).toBe('PROCESSED')
+
+    expect(await balanceOf()).toBe(0)
   })
 
   it('отмена неизвестного чека — пропуск, а не сбой', async () => {

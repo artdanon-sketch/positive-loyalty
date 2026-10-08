@@ -221,9 +221,13 @@ export class GuestService {
         visitsTotal: row.visitsTotal,
         lastVisitAt: row.lastVisitAt?.toISOString() ?? null,
         isControlGroup: row.isControlGroup,
-        // Тем же правилом, что GET …/referral: группе сравнения баллов не положено.
+        // Тем же правилом, что GET …/referral: приглашения что-то дают — разовые
+        // баллы или процент с покупок друзей, — и группе сравнения баллов не положено.
         inviteReward:
-          referral !== null && referral.enabled && referral.reward > 0 && !row.isControlGroup
+          referral !== null &&
+          referral.enabled &&
+          (referral.reward > 0 || referral.levels.some((pct) => pct > 0)) &&
+          !row.isControlGroup
             ? referral.reward
             : null,
         expiring: expiring.get(row.id) ?? null,

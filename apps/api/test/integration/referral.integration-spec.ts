@@ -383,12 +383,12 @@ describe('Приглашения в бэк-офисе', () => {
     const saved = await putReferral(ownerToken, { enabled: true, reward: 7_000, limit: 3 })
 
     expect(saved.status).toBe(200)
-    expect(saved.body).toEqual({ enabled: true, reward: 7_000, limit: 3 })
+    expect(saved.body).toEqual({ enabled: true, reward: 7_000, limit: 3, levels: [0, 0, 0] })
 
     const read = await request(server())
       .get('/v1/admin/settings/program/referral')
       .set('Authorization', `Bearer ${ownerToken}`)
-    expect(read.body).toEqual({ enabled: true, reward: 7_000, limit: 3 })
+    expect(read.body).toEqual({ enabled: true, reward: 7_000, limit: 3, levels: [0, 0, 0] })
 
     const tiers = await request(server())
       .get('/v1/admin/settings/program/tiers')

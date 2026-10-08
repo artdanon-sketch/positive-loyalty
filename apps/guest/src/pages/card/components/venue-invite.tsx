@@ -16,6 +16,12 @@ import { useReferral } from '../hooks'
  * в тот мессенджер, где его друзья. Нет окна — ссылка копируется.
  */
 
+/** Подписи процента по кругам: друг, его друзья, третий круг. */
+const LEVEL_KEYS = ['invite.level.1', 'invite.level.2', 'invite.level.3'] as const
+
+/** Проценты — как деньги: локаль одна, чтобы «0,5 %» не прыгало от языка. */
+const PERCENT = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 })
+
 const inviteLink = (tenantId: string, code: string): string =>
   `${window.location.origin}/?venue=${encodeURIComponent(tenantId)}&ref=${encodeURIComponent(code)}`
 
@@ -101,9 +107,19 @@ export function VenueInvite({ membership }: { membership: WalletMembership }): R
         <p className="venue__inviteHint">{t('invite.off')}</p>
       ) : (
         <>
-          <p className="venue__inviteHint">
-            {t('invite.reward').replace('{amount}', formatBaht(ready.reward))}
-          </p>
+          {ready.reward > 0 ? (
+            <p className="venue__inviteHint">
+              {t('invite.reward').replace('{amount}', formatBaht(ready.reward))}
+            </p>
+          ) : null}
+          {/* Процент с покупок друзей — по кругам; нулевой круг не упоминаем. */}
+          {ready.levels.map((pct, index) =>
+            pct > 0 ? (
+              <p className="venue__inviteHint" key={LEVEL_KEYS[index] ?? index}>
+                {t(LEVEL_KEYS[index] ?? 'invite.level.1').replace('{pct}', PERCENT.format(pct))}
+              </p>
+            ) : null,
+          )}
           <label className="venue__inviteLabel" htmlFor={inputId}>
             {t('invite.link')}
           </label>
@@ -135,10 +151,12 @@ export function VenueInvite({ membership }: { membership: WalletMembership }): R
             ) : null}
           </div>
           <p className="venue__inviteHint">
-            {t('invite.stats')
-              .replace('{invited}', String(ready.invited))
-              .replace('{rewarded}', String(ready.rewarded))
-              .replace('{limit}', String(ready.limit))}
+            {ready.reward > 0
+              ? t('invite.stats')
+                  .replace('{invited}', String(ready.invited))
+                  .replace('{rewarded}', String(ready.rewarded))
+                  .replace('{limit}', String(ready.limit))
+              : t('invite.statsInvited').replace('{invited}', String(ready.invited))}
           </p>
         </>
       )}

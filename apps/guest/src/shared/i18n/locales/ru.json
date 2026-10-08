@@ -184,6 +184,10 @@
   "promo.error": "Не получилось забрать. Попробуйте ещё раз.",
   "venueBot.connect": "Получать сообщения от заведения",
   "venueBot.opening": "Открываем Telegram…",
-  "card.venues.expiring": "{points} баллами сгорят {date}",
-  "rewards.notEnough": "пока не хватает"
+  "card.venues.expiring": "{points} баллов сгорят {date}",
+  "rewards.notEnough": "пока не хватает",
+  "invite.level.1": "С каждой покупки друга — {pct} % баллами.",
+  "invite.level.2": "С покупок его друзей — {pct} %.",
+  "invite.level.3": "И со следующего круга — {pct} %.",
+  "invite.statsInvited": "Пришло друзей: {invited}"
 }

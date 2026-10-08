@@ -5,6 +5,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { IdempotencyKeyReusedError } from './ledger.errors'
 import { LedgerService } from './ledger.service'
 import { PrismaService } from './prisma.service'
+import { REFERRAL_REWARD_KEY_PREFIX, referralRewardKey } from './referral-shares'
 import { checkRates, needsReferrals, resolveTier } from './tiers'
 import type { CheckRates } from './tiers'
 
@@ -312,7 +313,7 @@ export class MembershipRulesService {
       return
     }
 
-    const idempotencyKey = `referral:${friend.id}`
+    const idempotencyKey = referralRewardKey(friend.id)
 
     const state = await this.prisma.forTenant(tenantId, async (tx) => {
       const [already, inviter, rewarded] = await Promise.all([
@@ -321,8 +322,15 @@ export class MembershipRulesService {
           where: { id: inviterId, tenantId },
           select: { isControlGroup: true },
         }),
+        // Только разовые награды: проценты с покупок друзей лимит не съедают.
         tx.ledgerEntry.count({
-          where: { tenantId, membershipId: inviterId, refType: 'referral' },
+          where: {
+            tenantId,
+            membershipId: inviterId,
+            type: 'GRANT',
+            refType: 'referral',
+            idempotencyKey: { startsWith: REFERRAL_REWARD_KEY_PREFIX },
+          },
         }),
       ])
 

@@ -103,6 +103,7 @@ const pickReferral = (config: ProgramConfig): ReferralSettings => ({
   enabled: config.referral.enabled,
   reward: config.referral.reward,
   limit: config.referral.limit,
+  levels: config.referral.levels,
 })
 
 const pickReviews = (config: ProgramConfig): ReviewSettings => ({
@@ -317,7 +318,15 @@ export class ProgramSettingsService {
       const raw = isRecord(tenant.settings) ? tenant.settings : {}
       const current = this.parse(tenantId, raw)
 
-      const merged: Record<string, unknown> = { ...raw, referral: input }
+      // Проценты с покупок — только если их прислали: старый экран о них не знает
+      // и включённые проценты сбрасывать не должен.
+      const merged: Record<string, unknown> = {
+        ...raw,
+        referral: {
+          ...(isRecord(raw['referral']) ? raw['referral'] : {}),
+          ...omitUndefined(input),
+        },
+      }
 
       const checked = this.parse(tenantId, merged)
 

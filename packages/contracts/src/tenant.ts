@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { BirthdayConfig } from './birthday.js'
+import { NO_REFERRAL_LEVELS, ReferralLevels } from './referral.js'
 import { ReviewConfig } from './review-config.js'
 import { SuspiciousConfig } from './security-config.js'
 
@@ -116,8 +117,10 @@ export const ReferralConfig = z
     enabled: z.boolean().default(false),
     /** Баллы пригласившему за друга, в минорных единицах. */
     reward: z.number().int().nonnegative().default(0),
-    /** Сколько наград может получить один гость. */
+    /** Сколько разовых наград может получить один гость. */
     limit: z.number().int().positive().default(10),
+    /** Процент с покупок друзей по кругам (referral.ts). Старые настройки — без процентов. */
+    levels: ReferralLevels.default(() => [...NO_REFERRAL_LEVELS]),
   })
   .strict()
 

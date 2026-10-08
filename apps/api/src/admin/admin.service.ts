@@ -18,6 +18,7 @@ import { maskPhone } from '../common/pii/mask-phone'
 import { AuditService } from '../core/audit.service'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../core/prisma.service'
+import { REFERRAL_REWARD_KEY_PREFIX } from '../core/referral-shares'
 import { needsReferrals, resolveTier } from '../core/tiers'
 import { guestsCsv } from './guest-export'
 import { GuestAudienceService } from './guest-audience.service'
@@ -404,7 +405,13 @@ export class AdminService {
             }),
         tx.membership.count({ where: { tenantId, referredById: membership.id } }),
         tx.ledgerEntry.count({
-          where: { tenantId, membershipId: membership.id, refType: 'referral' },
+          where: {
+            tenantId,
+            membershipId: membership.id,
+            type: 'GRANT',
+            refType: 'referral',
+            idempotencyKey: { startsWith: REFERRAL_REWARD_KEY_PREFIX },
+          },
         }),
       ])
 
