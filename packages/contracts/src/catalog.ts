@@ -99,6 +99,46 @@ export const GuestCatalog = z.object({ items: z.array(GuestCatalogItem) }).stric
 export type GuestCatalog = z.infer<typeof GuestCatalog>
 
 /**
+ * Что кассир может выдать гостю за баллы. docs/02, раздел 3.8.
+ *
+ * Без этого списка кассе было нечем пользоваться: гость видит в приложении
+ * «покажите карту на кассе — списание проведёт кассир», а кассир не видел
+ * ни наград, ни кнопки. «Хватает или нет» считает сервер — по балансу гостя
+ * в этом заведении, тем же правилом, что и в приложении гостя.
+ */
+export const PosRewardsQuery = z
+  .object({
+    membershipId: z.uuid(),
+  })
+  .strict()
+
+export type PosRewardsQuery = z.infer<typeof PosRewardsQuery>
+
+export const PosReward = z
+  .object({
+    id: z.uuid(),
+    name: z.string(),
+    /** Цена в баллах — в тех же сотых долях, что и баланс. */
+    pointsPrice: z.number().int().positive(),
+    imageUrl: z.url().nullable(),
+    affordable: z.boolean(),
+  })
+  .strict()
+
+export type PosReward = z.infer<typeof PosReward>
+
+export const PosRewards = z
+  .object({
+    /** Баланс гостя в этом заведении сейчас. */
+    balance: z.number().int(),
+    /** Позиции на витрине с ценой в баллах — в порядке владельца. */
+    items: z.array(PosReward),
+  })
+  .strict()
+
+export type PosRewards = z.infer<typeof PosRewards>
+
+/**
  * Выдача награды за баллы на кассе. docs/02, раздел 3.8.
  *
  * ВЫДАЁТ КАССА, А НЕ ГОСТЬ САМ. Кнопка «получить» в телефоне означала бы, что

@@ -138,6 +138,19 @@ describe('Отправка накопленного', () => {
     expect(preview.mock.calls.map(([input]) => input.withoutDiscount)).toEqual([true, undefined])
   })
 
+  it('БАЛЛЫ, ОТДАННЫЕ ВМЕСТО ДЕНЕГ, СПИСЫВАЮТСЯ И ПРИ ДОСЫЛКЕ', async () => {
+    // Гость оплатил часть чека баллами, а ответ на проведение потерялся: повтор
+    // без списания оставил бы гостю и баллы, и заплаченное меньше.
+    enqueue(sale({ receiptId: 'r-points', discountGiven: true, redeemRequested: 15_000 }))
+    enqueue(sale({ receiptId: 'r-cash', queuedAt: 2_000, discountGiven: true }))
+    const sender = workingSender()
+    const preview = vi.spyOn(sender, 'preview')
+
+    await flushQueue(sender, TENANT, 3_000)
+
+    expect(preview.mock.calls.map(([input]) => input.redeemRequested)).toEqual([15_000, undefined])
+  })
+
   it('чек уходит в том же порядке, в каком его пробили', async () => {
     enqueue(sale({ receiptId: 'r-1', queuedAt: 1_000 }))
     enqueue(sale({ receiptId: 'r-2', queuedAt: 2_000 }))

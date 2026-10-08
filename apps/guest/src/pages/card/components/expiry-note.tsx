@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import type { WalletMembership } from '@positive/contracts'
 
+import { formatBaht } from '../../../shared/format/baht'
 import { useT } from '../../../shared/i18n/i18n-context'
 
 /**
@@ -23,7 +24,7 @@ export function ExpiryNote({ membership }: { membership: WalletMembership }): Re
   return (
     <span className="venue__expiry">
       {t('card.venues.expiring')
-        .replace('{points}', String(membership.expiring.points))
+        .replace('{points}', formatBaht(membership.expiring.points))
         .replace('{date}', new Date(membership.expiring.at).toLocaleDateString())}
     </span>
   )

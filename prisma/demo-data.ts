@@ -881,7 +881,13 @@ export const STAFF: readonly StaffSeed[] = TENANTS.flatMap((tenant, tenantIndex)
   }))
 })
 
-/** Витрины трёх заведений: по три позиции у каждого. */
+/**
+ * Витрины трёх заведений: по три позиции у каждого.
+ *
+ * Цена в баллах — в тех же сотых долях, что баланс гостя: 12 000 — это 120,00 ฿
+ * баллами. Кофе по карману многим демо-гостям, сет на двоих — почти никому:
+ * на кассе и в приложении видны оба состояния.
+ */
 export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
   {
     id: uuidFromIndex('c0000000', 1),
@@ -889,7 +895,7 @@ export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
     name: 'Кофе в подарок',
     description: 'Любой напиток из меню кофейной стойки.',
     priceMinor: 12_000,
-    pointsPrice: 600,
+    pointsPrice: 12_000,
     sortOrder: 0,
   },
   {
@@ -898,7 +904,7 @@ export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
     name: 'Сет на двоих',
     description: 'Два основных блюда и десерт.',
     priceMinor: 180_000,
-    pointsPrice: 9_000,
+    pointsPrice: 180_000,
     sortOrder: 1,
   },
   {
@@ -916,7 +922,7 @@ export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
     name: 'Массаж стоп, 30 минут',
     description: 'Быстрое восстановление после пляжа.',
     priceMinor: 45_000,
-    pointsPrice: 2_500,
+    pointsPrice: 45_000,
     sortOrder: 0,
   },
   {
@@ -925,7 +931,7 @@ export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
     name: 'Тайский массаж, час',
     description: 'Классика, ради которой копят.',
     priceMinor: 90_000,
-    pointsPrice: 6_000,
+    pointsPrice: 90_000,
     sortOrder: 1,
   },
   {
@@ -934,7 +940,7 @@ export const CATALOG_ITEMS: readonly CatalogItemSeed[] = [
     name: 'День аренды скутера',
     description: 'Шлем и бензин включены.',
     priceMinor: 30_000,
-    pointsPrice: 3_000,
+    pointsPrice: 30_000,
     sortOrder: 0,
   },
 ]

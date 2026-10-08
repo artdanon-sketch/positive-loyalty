@@ -1172,6 +1172,58 @@ body {
   font-size: 22px;
 }
 
+/* Награды за баллы на кассе: название, цена и кнопка в строку. */
+.pos__rewards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.pos__rewards-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pos__reward {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.pos__reward-name {
+  flex: 1 1 140px;
+  font-weight: 600;
+}
+
+.pos__reward-price {
+  color: var(--tx-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Оплата баллами: поле и кнопка в строку, на узком экране — друг под другом. */
+.pos__points {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.pos__points .field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+
+.pos__points-text {
+  flex: 1 1 200px;
+  margin: 0;
+  font-weight: 600;
+}
+
 .pos__notice {
   margin: 0;
   padding: var(--sp-3) var(--sp-4);

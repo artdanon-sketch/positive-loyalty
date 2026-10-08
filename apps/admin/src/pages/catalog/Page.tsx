@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
 import type { CatalogItem } from '@positive/contracts'
 
+import { fill } from '../../shared/format/fill'
 import { formatBaht } from '../../shared/format/format'
 import { useT } from '../../shared/i18n'
 import { useCatalog, useCreateCatalogItem, useUpdateCatalogItem } from './hooks'
@@ -47,7 +48,10 @@ export function CatalogPage(): ReactElement {
 
   const priceOf = (item: CatalogItem): string => {
     const money = item.priceMinor === null ? null : formatBaht(item.priceMinor)
-    const points = item.pointsPrice === null ? null : `${String(item.pointsPrice)} ★`
+    const points =
+      item.pointsPrice === null
+        ? null
+        : fill(t('catalog.pointsShort'), { amount: formatBaht(item.pointsPrice) })
 
     return [money, points].filter((part) => part !== null).join(' · ')
   }

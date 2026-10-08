@@ -14,6 +14,7 @@ import type {
   ProgramConfig,
   RedeemRewardInput,
   RedeemRewardResult,
+  PosRewards,
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
@@ -1027,6 +1028,53 @@ export class PosService {
    * придумывает касса. Планшет, отправивший запрос дважды из-за сети, спишет
    * баллы один раз.
    */
+  /**
+   * Награды за баллы, которые кассир может выдать этому гостю. docs/02, раздел 3.8.
+   *
+   * Чужое участие — 404, как и несуществующее: по ответу не узнать, что гость
+   * где-то есть. «Хватает» — по балансу сейчас; окончательно решает журнал при
+   * выдаче, потому что вторая касса может успеть списать раньше.
+   */
+  async rewards(membershipId: string): Promise<PosRewards> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+
+      if (membership === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Участие не найдено' },
+        })
+      }
+
+      const items = await tx.catalogItem.findMany({
+        where: { tenantId, isActive: true, pointsPrice: { not: null } },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, pointsPrice: true, imageUrl: true },
+      })
+
+      return {
+        balance: membership.pointsBalance,
+        items: items.flatMap((item) =>
+          item.pointsPrice === null
+            ? []
+            : [
+                {
+                  id: item.id,
+                  name: item.name,
+                  pointsPrice: item.pointsPrice,
+                  imageUrl: item.imageUrl,
+                  affordable: membership.pointsBalance >= item.pointsPrice,
+                },
+              ],
+        ),
+      }
+    })
+  }
+
   async redeemReward(input: RedeemRewardInput): Promise<RedeemRewardResult> {
     const { tenantId, actorId } = TenantContext.getOrThrow()
 

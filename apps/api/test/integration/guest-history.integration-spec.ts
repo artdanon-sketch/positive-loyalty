@@ -187,4 +187,47 @@ describe('История гостя', () => {
     expect(body.items.some((item) => item.type === 'REVERSAL' && item.points === -30)).toBe(true)
     expect(body.items.some((item) => item.points === 30)).toBe(true)
   })
+
+  it('ПОРЯДОК — ПО ДАТЕ ОПЕРАЦИИ, А ГДЕ ЕЁ НЕТ — ПО ДАТЕ ЗАПИСИ: ВЧЕРАШНИЙ ЧЕК НЕ УХОДИТ ПОД СЕНТЯБРЬ', async () => {
+    // Свой гость: у основного полигона счётчики строк проверяются выше.
+    const guest = await createMembershipFixture(prisma)
+    const guestToken = signGuestToken({ guestId: guest.guestId }, SECRET)
+    const DAY = 24 * 60 * 60 * 1000
+
+    // Старый чек из кассы POSitive — с датой операции месяц назад.
+    await ledger.earn(
+      {
+        membershipId: guest.membershipId,
+        amount: 11,
+        basisAmount: 11_000,
+        idempotencyKey: idempotencyKey('history-old-webhook'),
+        occurredAt: new Date(Date.now() - 30 * DAY).toISOString(),
+        source: 'POS_WEBHOOK',
+        actorType: 'SYSTEM',
+      },
+      guest.scope,
+    )
+    // Свежий чек с экрана кассира — без даты операции, только дата записи.
+    await ledger.earn(
+      {
+        membershipId: guest.membershipId,
+        amount: 22,
+        basisAmount: 22_000,
+        idempotencyKey: idempotencyKey('history-fresh-pos'),
+        source: 'STAFF_MANUAL',
+        actorType: 'STAFF',
+        actorId: undefined,
+      },
+      guest.scope,
+    )
+
+    const body = (
+      await request(server())
+        .get('/v1/guest/history')
+        .set('Authorization', `Bearer ${guestToken}`)
+        .expect(200)
+    ).body as HistoryBody
+
+    expect(body.items.map((item) => item.points)).toEqual([22, 11])
+  })
 })

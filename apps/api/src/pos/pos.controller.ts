@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common'
 import {
+  ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -29,6 +30,7 @@ import {
   PosHistoryQuery,
   PosInvite,
   PosMe,
+  PosRewardsQuery,
 } from '@positive/contracts'
 import type {
   CommitResult,
@@ -36,6 +38,7 @@ import type {
   PosGuest,
   PosVoidResult,
   PreviewResult,
+  PosRewards,
   RedeemGrantResult,
   RedeemRewardResult,
   SaleKind,
@@ -135,6 +138,32 @@ export class PosController {
     }
 
     return this.posService.addTag(membershipId, parsed.data.tagId)
+  }
+
+  @Get('rewards')
+  @ApiOperation({
+    summary: 'Награды за баллы для гостя на кассе',
+    description:
+      'Позиции витрины с ценой в баллах и признак «хватает» по балансу гостя в этом заведении.',
+  })
+  @ApiOkResponse({ description: 'Баланс гостя и награды в порядке владельца' })
+  @ApiBadRequestResponse({ description: 'Не указан или неверен membershipId' })
+  @ApiNotFoundResponse({ description: 'Гость не участвует в программе этого заведения' })
+  @ApiForbiddenResponse({ description: 'Нет роли кассы' })
+  async rewards(@Query() query: Record<string, unknown>): Promise<PosRewards> {
+    const parsed = PosRewardsQuery.safeParse(query)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Укажите участие гостя',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.rewards(parsed.data.membershipId)
   }
 
   @Post('rewards/redeem')

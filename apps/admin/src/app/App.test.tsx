@@ -4168,6 +4168,150 @@ describe('Касса: акции в чеке', () => {
     expect(within(issued).getByText('•••• K2QP')).toBeInTheDocument()
   })
 
+  it('НАГРАДА ЗА БАЛЛЫ: КАССИР ВИДИТ, НА ЧТО ХВАТАЕТ, ВЫДАЁТ — И БАЛАНС ГОСТЯ СРАЗУ МЕНЬШЕ', async () => {
+    const COFFEE = '63636363-6363-4636-8636-636363636363'
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/rewards/redeem': () =>
+        json({ itemName: 'Кофе в подарок', pointsSpent: 6_000, balanceAfter: 24_175 }),
+      '/v1/pos/rewards': () =>
+        json({
+          balance: 30_175,
+          items: [
+            {
+              id: COFFEE,
+              name: 'Кофе в подарок',
+              pointsPrice: 6_000,
+              imageUrl: null,
+              affordable: true,
+            },
+            {
+              id: '64646464-6464-4646-8646-646464646464',
+              name: 'Сет на двоих',
+              pointsPrice: 90_000,
+              imageUrl: null,
+              affordable: false,
+            },
+          ],
+        }),
+    })
+    render(<App />)
+
+    await fillAndSubmitLogin()
+    fireEvent.change(await screen.findByLabelText(t('pos.phone.label')), {
+      target: { value: '+66812345678' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: t('pos.phone.find') }))
+    expect(await screen.findByText(POS_GUEST.displayName)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.rewards.open') }))
+
+    const list = await screen.findByRole('region', { name: t('pos.rewards.title') })
+    const coffee = (await within(list).findByText('Кофе в подарок')).closest('li')
+    const set = within(list).getByText('Сет на двоих').closest('li')
+    expect(set).not.toBeNull()
+    expect(within(set as HTMLElement).getByRole('button')).toBeDisabled()
+
+    fireEvent.click(
+      within(coffee as HTMLElement).getByRole('button', { name: t('pos.rewards.give') }),
+    )
+
+    expect(
+      await within(list).findByText(
+        fill(t('pos.rewards.done'), {
+          name: 'Кофе в подарок',
+          spent: formatBaht(6_000),
+          balance: formatBaht(24_175),
+        }),
+      ),
+    ).toBeInTheDocument()
+    // Баланс в карточке гостя — уже после выдачи.
+    expect(screen.getAllByText(new RegExp(formatBaht(24_175))).length).toBeGreaterThan(0)
+
+    const redeemCall = fetchMock.mock.calls.find(([input]) =>
+      requestOf(input as RequestInfo | URL).endsWith('/rewards/redeem'),
+    )
+    const body = JSON.parse((redeemCall?.[1] as RequestInit).body as string) as {
+      membershipId: string
+      itemId: string
+      redemptionId: string
+    }
+    expect(body).toMatchObject({ membershipId: POS_GUEST.membershipId, itemId: COFFEE })
+    expect(body.redemptionId).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('ОПЛАТА БАЛЛАМИ: КАССИР СПИСЫВАЕТ ДО ПОТОЛКА, ВИДИТ «К ОПЛАТЕ» И ПРОВОДИТ ПЕРЕСЧИТАННЫЙ ЧЕК', async () => {
+    const RECOUNTED = '78787878-7878-4787-8787-787878787878'
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
+      '/v1/pos/transactions/preview': (init) => {
+        const body = JSON.parse(init?.body as string) as { redeemRequested?: number }
+
+        return (body.redeemRequested ?? 0) > 0
+          ? json({
+              ...POS_PREVIEW,
+              previewId: RECOUNTED,
+              amount: 90_000,
+              maxRedeemable: 18_000,
+              redeem: 18_000,
+              amountToPay: 72_000,
+              pointsToEarn: 3_600,
+            })
+          : json({
+              ...POS_PREVIEW,
+              amount: 90_000,
+              maxRedeemable: 18_000,
+              amountToPay: 90_000,
+              pointsToEarn: 4_500,
+            })
+      },
+      '/v1/pos/transactions/commit': () =>
+        json({ ...POS_COMMIT, redeemed: 18_000, earned: 3_600, newBalance: 15_775 }),
+    })
+    render(<App />)
+
+    await reachConfirm()
+
+    // Поле сразу заполнено потолком: «списать сколько можно» — одно нажатие.
+    const available = await screen.findByLabelText(
+      fill(t('pos.points.available'), { amount: formatBaht(18_000) }),
+    )
+    expect(available).toHaveValue('180')
+    fireEvent.click(screen.getByRole('button', { name: t('pos.points.apply') }))
+
+    expect(
+      await screen.findByText(fill(t('pos.points.applied'), { amount: formatBaht(18_000) })),
+    ).toBeInTheDocument()
+    expect(screen.getByText(t('pos.confirm.redeem')).nextElementSibling).toHaveTextContent(
+      `−${formatBaht(18_000)}`,
+    )
+    expect(screen.getByText(t('pos.confirm.toPay')).nextElementSibling).toHaveTextContent(
+      formatBaht(72_000),
+    )
+    // Станет на карте: было 301,75 − списали 180 + начислим 36.
+    expect(screen.getByText(t('pos.confirm.balanceAfter')).nextElementSibling).toHaveTextContent(
+      formatBaht(30_175 - 18_000 + 3_600),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: t('pos.confirm.submit') }))
+
+    expect(await screen.findByText(t('pos.done.redeemed'))).toBeInTheDocument()
+
+    const previewBodies = fetchMock.mock.calls
+      .filter(([input]) => requestOf(input as RequestInfo | URL).endsWith('/preview'))
+      .map(
+        ([, init]) => JSON.parse((init as RequestInit).body as string) as Record<string, unknown>,
+      )
+    expect(previewBodies.at(-1)).toMatchObject({ redeemRequested: 18_000, amount: 90_000 })
+
+    const commitCall = fetchMock.mock.calls.find(([input]) =>
+      requestOf(input as RequestInfo | URL).endsWith('/commit'),
+    )
+    expect(JSON.parse((commitCall?.[1] as RequestInit).body as string)).toMatchObject({
+      previewId: RECOUNTED,
+    })
+  })
+
   it('СКИДКА ВМЕСТО БАЛЛОВ: КАССИР ВИДИТ СКИДКУ И СУММУ К ОПЛАТЕ, А НЕ «НАЧИСЛИМ 0»', async () => {
     stubApi({
       '/v1/auth/staff/pin': () => json(CASHIER_TOKENS),
