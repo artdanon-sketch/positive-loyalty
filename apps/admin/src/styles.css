@@ -3608,3 +3608,9 @@ body {
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
 }
+
+.promo-terms-panel {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}

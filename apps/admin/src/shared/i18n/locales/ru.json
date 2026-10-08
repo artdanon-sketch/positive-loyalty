@@ -990,6 +990,7 @@
   "certificates.promoTerms.left": "осталось {left} из {limit}",
   "certificates.promoTerms.none": "без срока и тиража",
   "certificates.promoTerms.edit": "Условия",
+  "certificates.promoTerms.title": "Условия промо «{title}»",
   "certificates.promoTerms.save": "Сохранить условия",
   "certificates.promoTerms.cancel": "Отмена",
   "certificates.problem.title": "Название — от 2 до 80 знаков",

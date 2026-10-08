@@ -990,6 +990,7 @@
   "certificates.promoTerms.left": "{left} of {limit} left",
   "certificates.promoTerms.none": "no end date or limit",
   "certificates.promoTerms.edit": "Terms",
+  "certificates.promoTerms.title": "Promo terms: {title}",
   "certificates.promoTerms.save": "Save terms",
   "certificates.promoTerms.cancel": "Cancel",
   "certificates.problem.title": "Name — 2 to 80 characters",

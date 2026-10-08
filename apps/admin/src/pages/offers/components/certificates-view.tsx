@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 
 import { useAuth } from '../../../shared/auth/auth-context'
@@ -26,7 +26,7 @@ export function CertificatesView(): ReactElement {
   const certificates = useCertificates()
   const update = useUpdateCertificate()
   const [editing, setEditing] = useState<string | null>(null)
-  const columns = isOwner ? 6 : 5
+  const editingCertificate = (certificates.data ?? []).find((item) => item.id === editing)
 
   return (
     <>
@@ -61,96 +61,83 @@ export function CertificatesView(): ReactElement {
               </thead>
               <tbody>
                 {certificates.data.map((certificate) => (
-                  <Fragment key={certificate.id}>
-                    <tr className={certificate.isActive ? undefined : 'data-table__row--muted'}>
-                      <td>
-                        {certificate.title}
-                        {certificate.selfClaim ? (
-                          <>
-                            {' '}
-                            <span className="chip">{t('certificates.promo')}</span>
-                          </>
-                        ) : null}
-                        {certificate.isActive ? null : (
-                          <>
-                            {' '}
-                            <span className="chip chip--muted">{t('certificates.off')}</span>
-                          </>
-                        )}
-                        {certificate.selfClaim ? (
-                          <span className="field__hint certificate-promo">
-                            {describePromoTerms(certificate.promo, certificate.issued, t)}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td>{certificateValueText(certificate.value, t)}</td>
-                      <td className="data-table__num">
-                        {fill(t('certificates.days'), { n: certificate.validityDays })}
-                      </td>
-                      <td className="data-table__num">{certificate.issued}</td>
-                      <td className="data-table__num">{certificate.redeemed}</td>
-                      {isOwner ? (
-                        <td className="data-table__actions">
-                          {certificate.selfClaim ? (
-                            <button
-                              className="button"
-                              type="button"
-                              aria-expanded={editing === certificate.id}
-                              onClick={() => {
-                                setEditing(editing === certificate.id ? null : certificate.id)
-                              }}
-                            >
-                              {t('certificates.promoTerms.edit')}
-                            </button>
-                          ) : null}
-                          <button
-                            className="button"
-                            type="button"
-                            disabled={update.isPending}
-                            onClick={() => {
-                              update.mutate({
-                                id: certificate.id,
-                                input: { selfClaim: !certificate.selfClaim },
-                              })
-                            }}
-                          >
-                            {t(
-                              certificate.selfClaim
-                                ? 'certificates.promo.off'
-                                : 'certificates.promo.on',
-                            )}
-                          </button>
-                          <button
-                            className="button"
-                            type="button"
-                            disabled={update.isPending}
-                            onClick={() => {
-                              update.mutate({
-                                id: certificate.id,
-                                input: { isActive: !certificate.isActive },
-                              })
-                            }}
-                          >
-                            {t(
-                              certificate.isActive ? 'certificates.disable' : 'certificates.enable',
-                            )}
-                          </button>
-                        </td>
+                  <tr
+                    key={certificate.id}
+                    className={certificate.isActive ? undefined : 'data-table__row--muted'}
+                  >
+                    <td>
+                      {certificate.title}
+                      {certificate.selfClaim ? (
+                        <>
+                          {' '}
+                          <span className="chip">{t('certificates.promo')}</span>
+                        </>
                       ) : null}
-                    </tr>
-                    {editing === certificate.id ? (
-                      <tr>
-                        <td colSpan={columns}>
-                          <PromoTermsEditor
-                            certificate={certificate}
-                            onDone={() => {
-                              setEditing(null)
+                      {certificate.isActive ? null : (
+                        <>
+                          {' '}
+                          <span className="chip chip--muted">{t('certificates.off')}</span>
+                        </>
+                      )}
+                      {certificate.selfClaim ? (
+                        <span className="field__hint certificate-promo">
+                          {describePromoTerms(certificate.promo, certificate.issued, t)}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>{certificateValueText(certificate.value, t)}</td>
+                    <td className="data-table__num">
+                      {fill(t('certificates.days'), { n: certificate.validityDays })}
+                    </td>
+                    <td className="data-table__num">{certificate.issued}</td>
+                    <td className="data-table__num">{certificate.redeemed}</td>
+                    {isOwner ? (
+                      <td className="data-table__actions">
+                        {certificate.selfClaim ? (
+                          <button
+                            className="button"
+                            type="button"
+                            aria-expanded={editing === certificate.id}
+                            onClick={() => {
+                              setEditing(editing === certificate.id ? null : certificate.id)
                             }}
-                          />
-                        </td>
-                      </tr>
+                          >
+                            {t('certificates.promoTerms.edit')}
+                          </button>
+                        ) : null}
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={update.isPending}
+                          onClick={() => {
+                            update.mutate({
+                              id: certificate.id,
+                              input: { selfClaim: !certificate.selfClaim },
+                            })
+                          }}
+                        >
+                          {t(
+                            certificate.selfClaim
+                              ? 'certificates.promo.off'
+                              : 'certificates.promo.on',
+                          )}
+                        </button>
+                        <button
+                          className="button"
+                          type="button"
+                          disabled={update.isPending}
+                          onClick={() => {
+                            update.mutate({
+                              id: certificate.id,
+                              input: { isActive: !certificate.isActive },
+                            })
+                          }}
+                        >
+                          {t(certificate.isActive ? 'certificates.disable' : 'certificates.enable')}
+                        </button>
+                      </td>
                     ) : null}
-                  </Fragment>
+                  </tr>
                 ))}
               </tbody>
             </table>
@@ -162,6 +149,23 @@ export function CertificatesView(): ReactElement {
             {update.error.message}
           </p>
         ) : null}
+
+        {/* Под таблицей, а не строкой в ней: таблица шире экрана телефона, и поля
+            в её строке уезжали бы за прокрутку. */}
+        {editingCertificate === undefined ? null : (
+          <section className="promo-terms-panel" aria-labelledby="promo-terms-title">
+            <h3 className="panel__title" id="promo-terms-title">
+              {fill(t('certificates.promoTerms.title'), { title: editingCertificate.title })}
+            </h3>
+            <PromoTermsEditor
+              key={editingCertificate.id}
+              certificate={editingCertificate}
+              onDone={() => {
+                setEditing(null)
+              }}
+            />
+          </section>
+        )}
       </section>
 
       {isOwner ? <CertificateForm /> : null}
