@@ -72,6 +72,14 @@ describe('Настройки программы', () => {
     expect(ProgramSettings.safeParse({ ...valid, pointsExpireDays: 30 }).success).toBe(true)
   })
 
+  it('РЕЖИМ «СКИДКОЙ СРАЗУ» СОХРАНЯЕТСЯ: КАССА ЕГО СОБЛЮДАЕТ', () => {
+    expect(ProgramSettings.safeParse({ ...valid, mode: 'DISCOUNT' }).success).toBe(true)
+    expect(ProgramSettings.safeParse({ ...valid, mode: 'CASHBACK' }).success).toBe(true)
+    // Старый клиент режим не присылает — и этим ничего не переключает.
+    expect(ProgramSettings.parse(valid).mode).toBeUndefined()
+    expect(ProgramSettings.safeParse({ ...valid, mode: 'STAMPS' }).success).toBe(false)
+  })
+
   it('поля обязательны — «не прислал» не превращается в «сбросить»', () => {
     const { baseRedeemRate: _dropped, ...withoutRedeem } = valid
 

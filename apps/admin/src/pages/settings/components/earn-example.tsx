@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import type { ProgramMode } from '@positive/contracts'
 
 import { formatBaht } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
@@ -16,22 +17,29 @@ import { useT } from '../../../shared/i18n'
  *
  * Оплата баллами показана с оговоркой «если столько накопил»: потолок —
  * это доля чека, но не больше баланса гостя.
+ *
+ * В РЕЖИМЕ СКИДКИ пример показывает скидку и сумму к оплате, а потолок баллов —
+ * от того, что осталось после скидки: ровно в этом порядке считает касса
+ * (checkout-math.ts).
  */
 
 /** Чек примера: 1 000 ฿ в сатангах. */
 const RECEIPT = 100_000
 
 export function EarnExample({
+  mode,
   earnRate,
   redeemRate,
 }: {
+  mode: ProgramMode
   earnRate: number
   redeemRate: number
 }): ReactElement {
   const t = useT()
 
-  const earned = Math.floor((RECEIPT * earnRate) / 100)
-  const redeemable = Math.floor((RECEIPT * redeemRate) / 100)
+  const reward = Math.floor((RECEIPT * earnRate) / 100)
+  const due = mode === 'DISCOUNT' ? RECEIPT - reward : RECEIPT
+  const redeemable = Math.floor((due * redeemRate) / 100)
 
   return (
     <div className="example" aria-live="polite">
@@ -42,9 +50,15 @@ export function EarnExample({
           <dd>{formatBaht(RECEIPT)}</dd>
         </div>
         <div>
-          <dt>{t('settings.example.earn')}</dt>
-          <dd className="example__accent">{formatBaht(earned)}</dd>
+          <dt>{t(mode === 'DISCOUNT' ? 'settings.example.discount' : 'settings.example.earn')}</dt>
+          <dd className="example__accent">{formatBaht(reward)}</dd>
         </div>
+        {mode === 'DISCOUNT' ? (
+          <div>
+            <dt>{t('settings.example.toPay')}</dt>
+            <dd>{formatBaht(due)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>{t('settings.example.redeem')}</dt>
           <dd>

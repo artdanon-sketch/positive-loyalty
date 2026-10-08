@@ -125,6 +125,19 @@ describe('Отправка накопленного', () => {
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ membershipId: 'm-from-phone' }))
   })
 
+  it('ЧЕК БЕЗ ПРЕДРАСЧЁТА ИДЁТ «БЕЗ СКИДКИ», ПОДТВЕРЖДЁННЫЙ — СО СКИДКОЙ', async () => {
+    // Гость, чей чек ушёл в очередь до предрасчёта, заплатил полную цену: сервер
+    // начислит ему баллы вместо скидки. Кассир, видевший скидку, её уже дал.
+    enqueue(sale({ receiptId: 'r-blind' }))
+    enqueue(sale({ receiptId: 'r-seen', queuedAt: 2_000, discountGiven: true }))
+    const sender = workingSender()
+    const preview = vi.spyOn(sender, 'preview')
+
+    await flushQueue(sender, TENANT, 3_000)
+
+    expect(preview.mock.calls.map(([input]) => input.withoutDiscount)).toEqual([true, undefined])
+  })
+
   it('чек уходит в том же порядке, в каком его пробили', async () => {
     enqueue(sale({ receiptId: 'r-1', queuedAt: 1_000 }))
     enqueue(sale({ receiptId: 'r-2', queuedAt: 2_000 }))

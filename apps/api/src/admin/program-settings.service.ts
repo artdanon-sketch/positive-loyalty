@@ -61,6 +61,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
 const pick = (config: ProgramConfig): ProgramSettings => ({
+  mode: config.mode,
   baseEarnRate: config.baseEarnRate,
   baseRedeemRate: config.baseRedeemRate,
   pointsExpireDays: config.pointsExpireDays,
@@ -158,6 +159,9 @@ export class ProgramSettingsService {
 
       const merged: Record<string, unknown> = {
         ...raw,
+        // Режим — так же, как срок жизни баллов ниже: старый клиент о нём не знает
+        // и переключать заведение обратно на баллы не должен.
+        ...(input.mode === undefined ? {} : { mode: input.mode }),
         baseEarnRate: input.baseEarnRate,
         baseRedeemRate: input.baseRedeemRate,
         // Ключ приезжает, только если его прислали: старый клиент о сроке

@@ -141,6 +141,14 @@ export const PreviewInput = z
     redeemRequested: z.number().int().nonnegative().default(0),
     receiptNumber: z.string().min(1).max(64).optional(),
     locationId: z.string().min(1).max(64).optional(),
+    /**
+     * Скидку на кассе не дали: чек уже оплачен целиком. Так досылаются чеки из
+     * офлайн-очереди, пробитые без предрасчёта, — кассир не видел скидки, гость
+     * заплатил полную цену. В режиме DISCOUNT такой чек получает вместо скидки
+     * баллы по той же ставке: иначе гость остался бы и без скидки, и без баллов.
+     * В режиме CASHBACK флаг ничего не меняет.
+     */
+    withoutDiscount: z.boolean().optional(),
   })
   .strict()
 
@@ -151,9 +159,15 @@ export const PreviewResult = z
     previewId: z.uuid(),
     expiresAt: z.iso.datetime(),
     amount: z.number().int().positive(),
-    /** Потолок списания: доля чека из настроек, но не больше баланса. */
+    /**
+     * Скидка гостя в этом чеке — режим DISCOUNT (docs/02, раздел 3.2). В режиме
+     * CASHBACK и у контрольной группы — 0. Уже вычтена из amountToPay.
+     */
+    discount: z.number().int().nonnegative(),
+    /** Потолок списания: доля чека после скидки, но не больше баланса. */
     maxRedeemable: z.number().int().nonnegative(),
     redeem: z.number().int().nonnegative(),
+    /** Сколько взять с гостя деньгами: чек минус скидка минус баллы. */
     amountToPay: z.number().int().nonnegative(),
     pointsToEarn: z.number().int().nonnegative(),
     /** Баланс на момент расчёта. Изменился к коммиту — BALANCE_CHANGED. */
@@ -197,6 +211,8 @@ export const CommitResult = z
     transactionId: z.uuid(),
     redeemed: z.number().int().nonnegative(),
     earned: z.number().int().nonnegative(),
+    /** Скидка, которую гость получил в этом чеке. Повтор возвращает ту же. */
+    discount: z.number().int().nonnegative(),
     newBalance: z.number().int(),
     /** true, если этот же чек уже проводился: повтор вернул первый результат. */
     replayed: z.boolean(),

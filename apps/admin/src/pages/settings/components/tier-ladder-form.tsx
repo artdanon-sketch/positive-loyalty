@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
-import type { TierSettings } from '@positive/contracts'
+import type { ProgramMode, TierSettings } from '@positive/contracts'
 
 import { fill } from '../../../shared/format/fill'
 import { useT } from '../../../shared/i18n'
@@ -17,6 +17,9 @@ import type { TierDraft, TierProblem, TierRowDraft, TierRowField } from '../tier
  * пока её не станет; сервер проверяет те же правила сам.
  *
  * Условия и приветственные баллы — в батах; в сатанги их переводит tier-draft.ts.
+ *
+ * В режиме «скидкой сразу» ставка статуса — процент скидки, и подпись поля
+ * говорит именно это: «Начисление, %» там соврало бы владельцу.
  */
 
 const ROW_PROBLEMS: Readonly<Record<TierRowField, TranslationKey>> = {
@@ -39,7 +42,13 @@ const newKey = (): string =>
     ? crypto.randomUUID()
     : `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
-export function TierLadderForm({ initial }: { initial: TierSettings }): ReactElement {
+export function TierLadderForm({
+  initial,
+  programMode,
+}: {
+  initial: TierSettings
+  programMode: ProgramMode
+}): ReactElement {
   const t = useT()
   const save = useSaveTierSettings()
   const [draft, setDraft] = useState<TierDraft>(() => toDraft(initial))
@@ -121,7 +130,13 @@ export function TierLadderForm({ initial }: { initial: TierSettings }): ReactEle
 
             <div className="panel__grid">
               {field(row, index, 'name', 'tiers.name', 'text')}
-              {field(row, index, 'earnRate', 'tiers.earn', 'decimal')}
+              {field(
+                row,
+                index,
+                'earnRate',
+                programMode === 'DISCOUNT' ? 'tiers.discount' : 'tiers.earn',
+                'decimal',
+              )}
               {field(row, index, 'redeemRate', 'tiers.redeem', 'decimal')}
             </div>
 
