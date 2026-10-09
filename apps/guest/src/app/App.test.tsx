@@ -344,6 +344,30 @@ describe('Статус в кошельке', () => {
   })
 })
 
+describe('Баллы сгорят', () => {
+  it('СУММА В БАТАХ, КАК БАЛАНС, И ПОДПИСЬ «БАЛЛАМИ СГОРЯТ»', async () => {
+    stubApi({
+      '/v1/guest/wallet': () =>
+        json({
+          ...WALLET_RESPONSE,
+          memberships: WALLET_RESPONSE.memberships.map((m) =>
+            m.brandName === 'Kata Beach Kitchen'
+              ? { ...m, expiring: { points: 6_000, at: '2026-10-20T10:00:00.000Z' } }
+              : m,
+          ),
+        }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const venues = within(await screen.findByRole('region', { name: t('card.venues.title') }))
+    // Фраза буквально, а не из словаря: «60,00 ฿ баллов сгорят» уже возвращалось
+    // при слиянии веток, и тест через t() его бы не заметил.
+    expect(venues.getByText(/^60,00\s฿ баллами сгорят /)).toBeInTheDocument()
+  })
+})
+
 const KATA_ID = '33333333-3333-4333-8333-333333333333'
 const INVITE_CODE = '7KQ2MX4P'
 
