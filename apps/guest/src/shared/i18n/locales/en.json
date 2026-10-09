@@ -184,7 +184,7 @@
   "promo.error": "Could not claim. Please try again.",
   "venueBot.connect": "Get messages from this venue",
   "venueBot.opening": "Opening Telegram…",
-  "card.venues.expiring": "{points} points expire on {date}",
+  "card.venues.expiring": "{points} in points expire on {date}",
   "rewards.notEnough": "not enough yet",
   "invite.level.1": "{pct}% of every purchase your friend makes, in points.",
   "invite.level.2": "{pct}% of purchases by their friends.",
