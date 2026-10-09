@@ -14,6 +14,7 @@ import type {
   OperationsReport,
   RfmReport,
   StaffReport,
+  TopGuestsReport,
 } from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
@@ -106,5 +107,14 @@ export class ReportsController {
   @ApiForbiddenResponse({ description: 'Кассиру отчёты не положены' })
   async staff(@Query() query: Record<string, unknown>): Promise<StaffReport> {
     return this.reports.staff(periodOf(query))
+  }
+
+  @Get('top-guests')
+  @ApiOperation({ summary: 'Лучшие гости: двадцать по выручке за период' })
+  @ApiOkResponse({ description: 'Место, гость, покупки и выручка за период, баланс сейчас' })
+  @ApiBadRequestResponse({ description: 'Период не 7d, 30d или 90d' })
+  @ApiForbiddenResponse({ description: 'Кассиру отчёты не положены' })
+  async topGuests(@Query() query: Record<string, unknown>): Promise<TopGuestsReport> {
+    return this.reports.topGuests(periodOf(query))
   }
 }

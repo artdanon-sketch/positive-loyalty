@@ -169,3 +169,43 @@ export const StaffReport = z
   .strict()
 
 export type StaffReport = z.infer<typeof StaffReport>
+
+// ─── Лучшие гости ────────────────────────────────────────────────────────────
+
+/** Сколько гостей в рейтинге: двадцать — те, кого владелец знает в лицо. */
+export const TOP_GUESTS_LIMIT = 20
+
+export const TopGuestsRow = z
+  .object({
+    /** Место в рейтинге, с единицы. */
+    rank: z.number().int().positive(),
+    membershipId: z.uuid(),
+    guestId: z.uuid(),
+    displayName: z.string().nullable(),
+    /** Телефон по роли, как в списке гостей: менеджеру — маской, владельцу — целиком. */
+    phone: z.string().min(1).nullable(),
+    tier: z.object({ id: z.string(), name: z.string() }).strict().nullable(),
+    /** Покупок за период — без отменённых чеков. */
+    purchases: Count,
+    /** Оплачено деньгами за период. */
+    turnover: Minor,
+    /** Баланс баллов сейчас: сколько программа ему должна. */
+    pointsBalance: z.number().int(),
+    lastVisitAt: z.iso.datetime().nullable(),
+  })
+  .strict()
+
+export type TopGuestsRow = z.infer<typeof TopGuestsRow>
+
+/**
+ * Лучшие гости за период — по выручке, при равенстве — по числу покупок.
+ * docs/02, раздел 5.10. Рейтинг за всё время — сортировка списка гостей.
+ */
+export const TopGuestsReport = z
+  .object({
+    period: DashboardPeriod,
+    guests: z.array(TopGuestsRow),
+  })
+  .strict()
+
+export type TopGuestsReport = z.infer<typeof TopGuestsReport>

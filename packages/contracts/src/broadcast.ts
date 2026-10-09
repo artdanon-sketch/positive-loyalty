@@ -30,11 +30,12 @@ export const BROADCAST_FATIGUE_DAYS = 30
 /** Рассылок в списке бэк-офиса за раз. */
 export const BROADCASTS_PAGE = 20
 
-/** Аудитория — фильтры списка гостей без листания и без поиска строкой. */
+/** Аудитория — фильтры списка гостей без листания, без поиска строкой и без порядка. */
 export const BroadcastAudience = AdminGuestsQuery.omit({
   limit: true,
   offset: true,
   q: true,
+  sort: true,
 })
 
 export type BroadcastAudience = z.infer<typeof BroadcastAudience>

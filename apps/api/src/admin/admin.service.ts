@@ -10,6 +10,7 @@ import type {
   AdminTimelineItem,
   AdminGuestsQuery,
   GuestExportInput,
+  GuestSort,
 } from '@positive/contracts'
 
 import { TenantContext } from '../common/tenant/tenant-context'
@@ -37,6 +38,28 @@ const EXPORT_LIMIT = 10_000
 const GUEST_ROW_INCLUDE = {
   guest: { select: { displayName: true, phoneE164: true, mode: true } },
 } as const
+
+/**
+ * Порядок списка гостей. docs/02, раздел 5.2.
+ *
+ * По умолчанию — недавние сверху, спящие в конце: экран отвечает на вопрос «кто
+ * был недавно». Остальное — рейтинг за всё время, как «Рейтинг клиентов» у UDS.
+ * Последний ключ — id: без него равные по сумме гости менялись бы местами между
+ * страницами, и один попадал бы на две страницы, а другой — ни на одну.
+ */
+const guestOrder = (sort: GuestSort | undefined): Prisma.MembershipOrderByWithRelationInput[] => {
+  switch (sort) {
+    case 'spent':
+      return [{ spentTotal: 'desc' }, { visitsTotal: 'desc' }, { id: 'asc' }]
+    case 'visits':
+      return [{ visitsTotal: 'desc' }, { spentTotal: 'desc' }, { id: 'asc' }]
+    case 'points':
+      return [{ pointsBalance: 'desc' }, { id: 'asc' }]
+    case 'recent':
+    case undefined:
+      return [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }]
+  }
+}
 
 /**
  * Чтение данных бэк-офиса.
@@ -141,8 +164,7 @@ export class AdminService {
         tx.membership.findMany({
           where,
           include: GUEST_ROW_INCLUDE,
-          // Спящие гости в конце: экран отвечает на вопрос «кто был недавно».
-          orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+          orderBy: guestOrder(filters.sort),
           take: limit,
           skip: offset,
         }),
@@ -200,7 +222,8 @@ export class AdminService {
         rows: await tx.membership.findMany({
           where,
           include: GUEST_ROW_INCLUDE,
-          orderBy: [{ lastVisitAt: { sort: 'desc', nulls: 'last' } }, { id: 'asc' }],
+          // Файл — в том же порядке, что и экран, с которого его выгрузили.
+          orderBy: guestOrder(input.filters.sort),
           take: EXPORT_LIMIT,
         }),
         tierNames: await this.tierNames(tx, tenantId),

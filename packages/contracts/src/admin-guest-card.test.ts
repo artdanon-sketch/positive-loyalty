@@ -35,6 +35,31 @@ describe('Поиск гостей: запрос', () => {
   it('лишний параметр отвергается: заведение не выбирают в запросе', () => {
     expect(AdminGuestsQuery.safeParse({ tenantId: 'x' }).success).toBe(false)
   })
+
+  it('ПОКУПКИ, БАЛЛЫ, ДЕНЬ РОЖДЕНИЯ И ПОРЯДОК ПРИХОДЯТ СТРОКАМИ ИЗ АДРЕСА', () => {
+    expect(
+      AdminGuestsQuery.parse({
+        visitsFrom: '5',
+        pointsTo: '0',
+        birthday: 'week',
+        sort: 'spent',
+      }),
+    ).toEqual({
+      limit: 20,
+      offset: 0,
+      visitsFrom: 5,
+      pointsTo: 0,
+      birthday: 'week',
+      sort: 'spent',
+    })
+  })
+
+  it('НОЛЬ ПОКУПОК — НЕ ДИАПАЗОН, А ФИЛЬТР «НЕ ПОКУПАЛИ»; НЕИЗВЕСТНОЕ — ОТКАЗ', () => {
+    expect(AdminGuestsQuery.safeParse({ visitsFrom: '0' }).success).toBe(false)
+    expect(AdminGuestsQuery.safeParse({ pointsFrom: '-1' }).success).toBe(false)
+    expect(AdminGuestsQuery.safeParse({ birthday: 'year' }).success).toBe(false)
+    expect(AdminGuestsQuery.safeParse({ sort: 'random' }).success).toBe(false)
+  })
 })
 
 describe('Карточка гостя: схема', () => {

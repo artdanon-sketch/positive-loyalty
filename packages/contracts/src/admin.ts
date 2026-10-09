@@ -125,6 +125,17 @@ export const AdminGuestsList = z
 
 export type AdminGuestsList = z.infer<typeof AdminGuestsList>
 
+/** Верхняя граница счётчиков в фильтрах: больше в int4 не поместится. */
+const GUEST_COUNTER_MAX = 2_147_483_647
+
+/** Окно дня рождения в фильтре гостей. */
+export const GuestBirthdayWindow = z.enum(['today', 'week', 'month'])
+export type GuestBirthdayWindow = z.infer<typeof GuestBirthdayWindow>
+
+/** Порядок списка гостей. */
+export const GuestSort = z.enum(['recent', 'spent', 'visits', 'points'])
+export type GuestSort = z.infer<typeof GuestSort>
+
 /**
  * Список гостей с поиском. docs/10, раздел 5.2 — «поиск-везде».
  *
@@ -156,6 +167,27 @@ export const AdminGuestsQuery = z
     tag: z.uuid().optional(),
     /** RFM-сегмент на сегодня — из отчёта «RFM» (docs/11, У8). */
     segment: RfmSegment.optional(),
+    /**
+     * Покупок (визитов с чеком) от и до, включительно. «Не покупали» — отдельный
+     * фильтр `buyers`, поэтому здесь от одной. Границы перепутаны — список пуст,
+     * а не ошибка: так же честно ответила бы база.
+     */
+    visitsFrom: z.coerce.number().int().min(1).max(GUEST_COUNTER_MAX).optional(),
+    visitsTo: z.coerce.number().int().min(1).max(GUEST_COUNTER_MAX).optional(),
+    /** Баланс баллов от и до, в минорных единицах. `pointsTo=0` — «баллов нет». */
+    pointsFrom: z.coerce.number().int().min(0).max(GUEST_COUNTER_MAX).optional(),
+    pointsTo: z.coerce.number().int().min(0).max(GUEST_COUNTER_MAX).optional(),
+    /**
+     * День рождения по часам заведения: сегодня, в ближайшие семь дней (включая
+     * сегодня) или в этом месяце. Гость без дня рождения не попадает ни в один.
+     */
+    birthday: GuestBirthdayWindow.optional(),
+    /**
+     * Порядок списка. `recent` — недавние сверху (по умолчанию); остальное —
+     * рейтинг гостей за всё время: больше потратили, чаще покупали, больше баллов.
+     * На то, КТО попал в список, не влияет — только на порядок.
+     */
+    sort: GuestSort.optional(),
   })
   .strict()
 
@@ -165,6 +197,8 @@ export type AdminGuestsQuery = z.infer<typeof AdminGuestsQuery>
  * Фильтры списка гостей — те же в списке и в выгрузке. docs/02, раздел 5.2 · docs/11, У4.
  *
  * Складываются через «и»: «спящие резиденты со статусом Золото» — три фильтра сразу.
+ * `sort` сюда входит ради выгрузки — файл в том же порядке, что и экран; условие
+ * отбора его не читает.
  */
 export type AdminGuestFilters = Omit<AdminGuestsQuery, 'limit' | 'offset'>
 

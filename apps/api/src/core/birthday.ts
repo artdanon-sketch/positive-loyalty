@@ -40,3 +40,25 @@ export const birthdayYearInWindow = (
 
   return null
 }
+
+/**
+ * День рождения в окне фильтра гостей: сегодня, в ближайшие семь дней или в этом
+ * месяце. docs/02, раздел 5.2.
+ *
+ * «Неделя» — сегодня и шесть дней вперёд, через Новый год тоже: в пятницу
+ * 29 декабря именинник 2 января — на этой неделе. Правила те же, что у подарка:
+ * 29 февраля в невисокосный год — 28-го.
+ *
+ * «Месяц» — календарный месяц заведения: 29 февраля попадает в февраль всегда.
+ */
+export const birthdayInWindow = (
+  birthday: Date,
+  today: Date,
+  window: 'today' | 'week' | 'month',
+): boolean => {
+  if (window === 'month') {
+    return birthday.getUTCMonth() === today.getUTCMonth()
+  }
+
+  return birthdayYearInWindow(birthday, today, window === 'week' ? 6 : 0, 0) !== null
+}
