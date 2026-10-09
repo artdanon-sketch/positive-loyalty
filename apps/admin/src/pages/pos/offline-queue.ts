@@ -64,6 +64,11 @@ export interface QueuedSale {
    * безопасная сторона: гость не останется ни без скидки, ни без баллов.
    */
   readonly discountGiven?: true
+  /**
+   * Сколько баллов гость отдал вместо денег. Повтор списывает их снова: без этого
+   * гость, заплативший баллами, сохранил бы и баллы, и заплатил бы меньше.
+   */
+  readonly redeemRequested?: number
   readonly queuedAt: number
   readonly attempts: number
   /** Последняя причина неудачи — её видит кассир в списке застрявших. */
@@ -191,6 +196,7 @@ export interface SaleSender {
     amount: number
     receiptNumber?: string
     withoutDiscount?: true
+    redeemRequested?: number
   }) => Promise<{ previewId: string }>
   commit: (input: { previewId: string; receiptId: string }) => Promise<unknown>
 }
@@ -239,6 +245,7 @@ export async function flushQueue(
         amount: sale.amount,
         ...(sale.receiptNumber === undefined ? {} : { receiptNumber: sale.receiptNumber }),
         ...(sale.discountGiven === true ? {} : { withoutDiscount: true }),
+        ...(sale.redeemRequested === undefined ? {} : { redeemRequested: sale.redeemRequested }),
       })
 
       await sender.commit({ previewId: preview.previewId, receiptId: sale.receiptId })

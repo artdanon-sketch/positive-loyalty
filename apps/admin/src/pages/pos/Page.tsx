@@ -9,6 +9,8 @@ import type { TranslationKey } from '../../shared/i18n'
 import { HistoryTab } from './components/history-tab'
 import { InviteTab } from './components/invite-tab'
 import { IssuedGrants, OfferLines } from './components/offer-lines'
+import { GuestRewards } from './components/guest-rewards'
+import { PointsPayment } from './components/points-payment'
 import { ProfileTab } from './components/profile-tab'
 import { QrScanner } from './components/qr-scanner'
 import { GuestTags } from './components/guest-tags'
@@ -189,25 +191,35 @@ function SaleTab({
           }}
         />
       ) : stage.kind === 'AMOUNT' ? (
-        <AmountStep
-          guest={stage.guest}
-          queue={queue}
-          onReady={(preview, receiptId, receiptNumber) => {
-            setStage({
-              kind: 'CONFIRM',
-              guest: stage.guest,
-              preview,
-              receiptId,
-              ...(receiptNumber === undefined ? {} : { receiptNumber }),
-            })
-          }}
-          onQueued={(receiptId) => {
-            setStage({ kind: 'QUEUED', receiptId })
-          }}
-          onCancel={() => {
-            setStage({ kind: 'GUEST' })
-          }}
-        />
+        <>
+          <AmountStep
+            guest={stage.guest}
+            queue={queue}
+            onReady={(preview, receiptId, receiptNumber) => {
+              setStage({
+                kind: 'CONFIRM',
+                guest: stage.guest,
+                preview,
+                receiptId,
+                ...(receiptNumber === undefined ? {} : { receiptNumber }),
+              })
+            }}
+            onQueued={(receiptId) => {
+              setStage({ kind: 'QUEUED', receiptId })
+            }}
+            onCancel={() => {
+              setStage({ kind: 'GUEST' })
+            }}
+          />
+          {/* Награда за баллы — отдельно от чека: денег нет, начислять не с чего.
+            Баланс в карточке гостя обновляется сразу после выдачи. */}
+          <GuestRewards
+            membershipId={stage.guest.membershipId}
+            onSpent={(balance) => {
+              setStage({ kind: 'AMOUNT', guest: { ...stage.guest, points: balance } })
+            }}
+          />
+        </>
       ) : stage.kind === 'CONFIRM' ? (
         <ConfirmStep
           guest={stage.guest}
@@ -658,7 +670,7 @@ function OfflineAmountStep({
 /** Шаг 3: подтверждение. Один тап, без диалога «вы уверены». */
 function ConfirmStep({
   guest,
-  preview,
+  preview: initial,
   receiptId,
   receiptNumber,
   queue,
@@ -677,12 +689,31 @@ function ConfirmStep({
 }): ReactElement {
   const t = useT()
   const commit = useCommit()
+  const repreview = usePreview()
   const saleKinds = usePosSaleKinds()
   const [saleKindId, setSaleKindId] = useState('')
+  // Оплата баллами пересчитывает чек на сервере: проводится всегда последний
+  // предрасчёт — тот, что кассир видит на экране.
+  const [preview, setPreview] = useState(initial)
+
+  const recount = (redeemRequested: number): void => {
+    repreview.mutate(
+      {
+        membershipId: guest.membershipId,
+        amount: preview.amount,
+        redeemRequested,
+        ...(receiptNumber === undefined ? {} : { receiptNumber }),
+      },
+      { onSuccess: setPreview },
+    )
+  }
 
   // Сравнение, а не `=== 0`: сервер до режима скидки поля не присылал, и касса,
   // обновившаяся раньше сервера, не должна терять строку начисления.
   const discounted = preview.discount > 0
+  const paidWithPoints = preview.redeem > 0
+  // Сравнение, а не само поле: сервер до подарка в предрасчёте его не присылал.
+  const welcome = preview.welcomeBonus > 0 ? preview.welcomeBonus : 0
 
   // Справочник ведут не все заведения. Где его нет — выбора нет вовсе,
   // и чек проводится ровно как раньше: лишний пустой список посреди кассы
@@ -701,32 +732,68 @@ function ConfirmStep({
         {/* Режим «скидкой сразу»: кассир обязан увидеть, сколько взять с гостя,
             до того как пробьёт оплату, — иначе гость заплатит полную цену. */}
         {discounted ? (
-          <>
-            <div className="pos__row pos__row--accent">
-              <dt>{t('pos.confirm.discount')}</dt>
-              <dd>−{formatBaht(preview.discount)}</dd>
-            </div>
-            <div className="pos__row pos__row--total">
-              <dt>{t('pos.confirm.toPay')}</dt>
-              <dd>{formatBaht(preview.amountToPay)}</dd>
-            </div>
-          </>
+          <div className="pos__row pos__row--accent">
+            <dt>{t('pos.confirm.discount')}</dt>
+            <dd>−{formatBaht(preview.discount)}</dd>
+          </div>
+        ) : null}
+        {paidWithPoints ? (
+          <div className="pos__row">
+            <dt>{t('pos.confirm.redeem')}</dt>
+            <dd>−{formatBaht(preview.redeem)}</dd>
+          </div>
+        ) : null}
+        {/* «К оплате» — сколько взять деньгами: кассир обязан видеть это до того,
+            как пробьёт оплату, иначе гость заплатит полную цену. */}
+        {discounted || paidWithPoints ? (
+          <div className="pos__row pos__row--total">
+            <dt>{t('pos.confirm.toPay')}</dt>
+            <dd>{formatBaht(preview.amountToPay)}</dd>
+          </div>
         ) : null}
         {/* Баллы — если они есть или скидки нет: «Начислим 0» под скидкой только
             сбивал бы кассира. Без скидки ноль показываем — это контрольная группа. */}
         {!discounted || preview.pointsToEarn > 0 ? (
-          <>
-            <div className={discounted ? 'pos__row' : 'pos__row pos__row--accent'}>
-              <dt>{t('pos.confirm.earn')}</dt>
-              <dd>{formatBaht(preview.pointsToEarn)}</dd>
-            </div>
-            <div className="pos__row">
-              <dt>{t('pos.confirm.balanceAfter')}</dt>
-              <dd>{formatBaht(preview.balanceAtPreview + preview.pointsToEarn)}</dd>
-            </div>
-          </>
+          <div className={discounted ? 'pos__row' : 'pos__row pos__row--accent'}>
+            <dt>{t('pos.confirm.earn')}</dt>
+            <dd>{formatBaht(preview.pointsToEarn)}</dd>
+          </div>
+        ) : null}
+        {/* Подарок за первую покупку — кассир называет его вслух. Раньше он молча
+            приходил сверху, и «станет на карте» расходилось с картой. */}
+        {welcome > 0 ? (
+          <div className="pos__row pos__row--accent">
+            <dt>{t('pos.confirm.welcome')}</dt>
+            <dd>+{formatBaht(welcome)}</dd>
+          </div>
+        ) : null}
+        {!discounted || preview.pointsToEarn > 0 || paidWithPoints || welcome > 0 ? (
+          <div className="pos__row">
+            <dt>{t('pos.confirm.balanceAfter')}</dt>
+            <dd>
+              {formatBaht(
+                preview.balanceAtPreview - preview.redeem + preview.pointsToEarn + welcome,
+              )}
+            </dd>
+          </div>
         ) : null}
       </dl>
+
+      <PointsPayment
+        key={preview.previewId}
+        preview={preview}
+        pending={repreview.isPending}
+        onApply={recount}
+        onClear={() => {
+          recount(0)
+        }}
+      />
+
+      {repreview.isError ? (
+        <p className="pos__error" role="alert">
+          {isNetworkFailure(repreview.error) ? t('pos.points.offline') : repreview.error.message}
+        </p>
+      ) : null}
 
       <OfferLines applied={preview.appliedOffers} skipped={preview.skippedOffers} />
 
@@ -766,7 +833,7 @@ function ConfirmStep({
         <button
           className="button button--primary"
           type="button"
-          disabled={commit.isPending}
+          disabled={commit.isPending || repreview.isPending}
           onClick={() => {
             commit.mutate(
               {
@@ -794,6 +861,9 @@ function ConfirmStep({
                       // У чеков, отложенных без предрасчёта, флага нет: скидки там
                       // не было, и сервер начислит вместо неё баллы.
                       discountGiven: true,
+                      // Баллы гость уже отдал вместо денег — повтор обязан их
+                      // списать, иначе гость получит и скидку баллами, и баллы.
+                      ...(preview.redeem > 0 ? { redeemRequested: preview.redeem } : {}),
                       // ВИД ПРОДАЖИ В ОЧЕРЕДЬ НЕ КЛАДЁТСЯ, И ЭТО НАРОЧНО.
                       // Пока чек лежит в очереди, владелец может выключить
                       // этот вид в бэк-офисе — и повтор получил бы отказ
@@ -885,6 +955,18 @@ function DoneStep({
             <div className="pos__row">
               <dt>{t('pos.confirm.earn')}</dt>
               <dd>+{formatBaht(result.earned)}</dd>
+            </div>
+          ) : null}
+          {result.redeemed > 0 ? (
+            <div className="pos__row">
+              <dt>{t('pos.done.redeemed')}</dt>
+              <dd>−{formatBaht(result.redeemed)}</dd>
+            </div>
+          ) : null}
+          {result.welcomeBonus > 0 ? (
+            <div className="pos__row">
+              <dt>{t('pos.confirm.welcome')}</dt>
+              <dd>+{formatBaht(result.welcomeBonus)}</dd>
             </div>
           ) : null}
           <div className="pos__row">

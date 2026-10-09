@@ -124,7 +124,12 @@ const preview = async (venue: Venue, amount: number, membershipId = venue.member
       .set('Authorization', `Bearer ${venue.cashier}`)
       .send({ membershipId, amount })
       .expect(200)
-  ).body as { previewId: string; pointsToEarn: number; maxRedeemable: number }
+  ).body as {
+    previewId: string
+    pointsToEarn: number
+    maxRedeemable: number
+    welcomeBonus: number
+  }
 
 const sale = async (venue: Venue, amount: number, membershipId = venue.membershipId) => {
   const counted = await preview(venue, amount, membershipId)
@@ -135,7 +140,7 @@ const sale = async (venue: Venue, amount: number, membershipId = venue.membershi
       .set('Authorization', `Bearer ${venue.cashier}`)
       .send({ previewId: counted.previewId, receiptId: `rcpt-tiers-${randomUUID()}` })
       .expect(200)
-  ).body as { earned: number; newBalance: number }
+  ).body as { earned: number; newBalance: number; welcomeBonus: number }
 }
 
 const lookup = async (venue: Venue, guestId: string) =>
@@ -288,22 +293,55 @@ describe('Статус на кассе', () => {
 })
 
 describe('Приветственные баллы', () => {
+  it('ПОВТОР ПРОВЕДЕНИЯ ПЕРВОГО ЧЕКА ТОЖЕ ГОВОРИТ О ПОДАРКЕ, ВТОРОЙ ЧЕК — НЕТ', async () => {
+    const venue = await openVenue({
+      welcomeBonus: { enabled: true, amount: 5_000, trigger: 'ON_FIRST_PURCHASE' },
+    })
+    const receiptId = `rcpt-welcome-${randomUUID()}`
+    const commit = async (previewId: string) =>
+      (
+        await request(server())
+          .post('/v1/pos/transactions/commit')
+          .set('Authorization', `Bearer ${venue.cashier}`)
+          .send({ previewId, receiptId })
+          .expect(200)
+      ).body as { welcomeBonus: number; replayed: boolean }
+
+    expect(await commit((await preview(venue, 100_000)).previewId)).toMatchObject({
+      welcomeBonus: 5_000,
+      replayed: false,
+    })
+    // Связь оборвалась, касса повторила тем же номером чека.
+    expect(await commit((await preview(venue, 100_000)).previewId)).toMatchObject({
+      welcomeBonus: 5_000,
+      replayed: true,
+    })
+    expect((await sale(venue, 100_000)).welcomeBonus).toBe(0)
+  })
+
   it('ЗА ПЕРВУЮ ПОКУПКУ — ОДИН РАЗ, ЖУРНАЛОМ, БЕЗ ЛИШНЕГО ВИЗИТА; КОНТРОЛЬНОЙ ГРУППЕ — НЕТ', async () => {
     const venue = await openVenue({
       welcomeBonus: { enabled: true, amount: 5_000, trigger: 'ON_FIRST_PURCHASE' },
     })
 
+    // Касса знает о подарке ДО проведения: кассир называет его гостю вслух,
+    // а «станет на карте» сходится с картой.
+    expect((await preview(venue, 100_000)).welcomeBonus).toBe(5_000)
+
     const first = await sale(venue, 100_000)
 
     // 5% от 1 000 ฿ — 5 000 баллов, и столько же приветственных.
-    expect(first).toMatchObject({ earned: 5_000, newBalance: 10_000 })
+    expect(first).toMatchObject({ earned: 5_000, newBalance: 10_000, welcomeBonus: 5_000 })
     expect(await welcomeEntries(venue.membershipId)).toBe(1)
     expect(await membershipOf(venue.membershipId)).toMatchObject({
       visitsTotal: 1,
       pointsBalance: 10_000,
     })
 
-    expect((await sale(venue, 100_000)).newBalance).toBe(15_000)
+    // Второй чек — без подарка, и касса это тоже знает заранее.
+    expect((await preview(venue, 100_000)).welcomeBonus).toBe(0)
+    const second = await sale(venue, 100_000)
+    expect(second).toMatchObject({ newBalance: 15_000, welcomeBonus: 0 })
     expect(await welcomeEntries(venue.membershipId)).toBe(1)
 
     const control = await createMembershipFixture(prisma, { tenantId: venue.tenantId })

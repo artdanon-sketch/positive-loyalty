@@ -1,5 +1,7 @@
 import type { GuestHistoryEntry, LedgerType } from '@positive/contracts'
 
+import { formatBaht } from '../../shared/format/baht'
+
 import type { TranslationKey } from '../../shared/i18n/dictionaries'
 
 /**
@@ -23,14 +25,18 @@ export const HISTORY_LABEL: Readonly<Record<LedgerType, TranslationKey>> = {
   GRANT: 'history.kind.grant',
 }
 
-/** Баллы со знаком: «+120», «−80». Ноль тоже бывает — у отмены без баллов. */
+/**
+ * Баллы со знаком — в батах, как баланс над ними: «+39,50 ฿», «−25,00 ฿».
+ * Голое «+3950» под балансом «39,50 ฿» читалось как другая валюта.
+ * Ноль тоже бывает — у отмены без баллов.
+ */
 export const signedPoints = (points: number): string => {
   if (points > 0) {
-    return `+${String(points)}`
+    return `+${formatBaht(points)}`
   }
 
   // Минус берём типографский: дефис в этом месте читается как перенос.
-  return points < 0 ? `−${String(Math.abs(points))}` : '0'
+  return points < 0 ? `−${formatBaht(Math.abs(points))}` : formatBaht(0)
 }
 
 /** Знак операции для оформления строки. */

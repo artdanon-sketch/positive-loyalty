@@ -27,10 +27,15 @@ describe('Черновик позиции каталога', () => {
     })
   })
 
-  it('ПОЗИЦИЯ ТОЛЬКО ЗА БАЛЛЫ — ЭТО НОРМА', () => {
-    expect(fromItemDraft(draft({ points: '300' }), 0)).toMatchObject({
+  it('ПОЗИЦИЯ ТОЛЬКО ЗА БАЛЛЫ — ЭТО НОРМА; ЦЕНА В БАЛЛАХ — В БАТАХ, КАК БАЛАНС ГОСТЯ', () => {
+    // «60» — это 60,00 ฿ баллами: журнал списывает в тех же сотых долях, в каких
+    // гость видит свой баланс.
+    expect(fromItemDraft(draft({ points: '60' }), 0)).toMatchObject({
       ok: true,
-      input: { priceMinor: null, pointsPrice: 300 },
+      input: { priceMinor: null, pointsPrice: 6_000 },
+    })
+    expect(fromItemDraft(draft({ points: '12,5' }), 0)).toMatchObject({
+      input: { pointsPrice: 1_250 },
     })
   })
 

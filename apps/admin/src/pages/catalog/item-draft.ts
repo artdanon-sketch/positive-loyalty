@@ -9,6 +9,10 @@ import type { TranslationKey } from '../../shared/i18n'
  * здесь и только здесь: если он размажется по экрану, однажды позиция
  * за 320 ฿ станет позицией за 3,20 ฿.
  *
+ * ЦЕНА В БАЛЛАХ — ТОЖЕ В БАТАХ. Баланс гостя везде показан батами («39,50 ฿»),
+ * и журнал списывает цену в тех же сотых долях. Раньше цену писали голым числом
+ * «600 ★» — а с карты уходило 6,00 ฿, и ни гость, ни владелец этого не видели.
+ *
  * ПОЗИЦИЯ БЕЗ ЕДИНОЙ ЦЕНЫ БЕССМЫСЛЕННА: ни гость не поймёт, что с ней делать,
  * ни владелец не вспомнит, зачем завёл.
  */
@@ -18,7 +22,7 @@ export interface ItemDraft {
   readonly description: string
   /** Цена деньгами, в батах, как её пишет владелец. */
   readonly priceBaht: string
-  /** Цена в баллах. */
+  /** Цена в баллах — в батах, как баланс гостя. */
   readonly points: string
   readonly imageUrl: string
 }
@@ -95,7 +99,8 @@ export const fromItemDraft = (draft: ItemDraft, sortOrder: number): ItemCheck =>
       description: draft.description.trim(),
       // Баты в сатанги — здесь и больше нигде.
       priceMinor: baht === null ? null : Math.round(baht * 100),
-      pointsPrice: points === null || points === 0 ? null : Math.round(points),
+      // Баллы — в тех же сотых долях, что и баланс: «60» значит 60,00 ฿.
+      pointsPrice: points === null || points === 0 ? null : Math.round(points * 100),
       imageUrl: imageUrl === '' ? null : imageUrl,
       sortOrder,
     },

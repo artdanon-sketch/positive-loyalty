@@ -184,5 +184,6 @@
   "promo.error": "Не получилось забрать. Попробуйте ещё раз.",
   "venueBot.connect": "Получать сообщения от заведения",
   "venueBot.opening": "Открываем Telegram…",
-  "card.venues.expiring": "{points} баллов сгорят {date}"
+  "card.venues.expiring": "{points} баллами сгорят {date}",
+  "rewards.notEnough": "пока не хватает"
 }

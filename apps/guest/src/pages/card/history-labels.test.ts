@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { GuestHistoryEntry } from '@positive/contracts'
 
+import { formatBaht } from '../../shared/format/baht'
 import { HISTORY_LABEL, historyTone, signedPoints } from './history-labels'
 
 /**
@@ -20,13 +21,13 @@ const entry = (points: number): GuestHistoryEntry => ({
 })
 
 describe('История: как показываем баллы', () => {
-  it('НАЧИСЛЕНИЕ С ПЛЮСОМ, СПИСАНИЕ С ТИПОГРАФСКИМ МИНУСОМ', () => {
-    expect(signedPoints(120)).toBe('+120')
-    expect(signedPoints(-80)).toBe('−80')
+  it('НАЧИСЛЕНИЕ С ПЛЮСОМ, СПИСАНИЕ С ТИПОГРАФСКИМ МИНУСОМ — В БАТАХ, КАК БАЛАНС', () => {
+    expect(signedPoints(3_950)).toBe(`+${formatBaht(3_950)}`)
+    expect(signedPoints(-2_500)).toBe(`−${formatBaht(2_500)}`)
   })
 
   it('НОЛЬ ОСТАЁТСЯ НУЛЁМ, БЕЗ ЗНАКА: ОТМЕНА БЕЗ БАЛЛОВ — НЕ ПОТЕРЯ', () => {
-    expect(signedPoints(0)).toBe('0')
+    expect(signedPoints(0)).toBe(formatBaht(0))
   })
 
   it('ЗНАК ОПЕРАЦИИ ЧИТАЕТСЯ ИЗ ЧИСЛА, А НЕ ИЗ ТИПА ЗАПИСИ', () => {

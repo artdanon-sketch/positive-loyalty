@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 
+import { formatBaht } from '../../../shared/format/baht'
 import { useT } from '../../../shared/i18n/i18n-context'
 import { useGuestCatalog } from '../hooks'
 
@@ -45,9 +46,13 @@ export function RewardsList(): ReactElement | null {
               <span className="rewards__name">{item.name}</span>
               <span className="rewards__venue">{item.venue}</span>
             </div>
+            {/* Цена — в батах, как баланс гостя: «600 ★» рядом с балансом «39,50 ฿»
+                выглядело как «не хватает», хотя кофе стоил 6 ฿. */}
             <span className="rewards__price">
-              {item.pointsPrice}
-              {item.affordable ? ' ★' : ' ★…'}
+              {formatBaht(item.pointsPrice)}
+              {item.affordable ? null : (
+                <span className="rewards__venue"> {t('rewards.notEnough')}</span>
+              )}
             </span>
           </li>
         ))}

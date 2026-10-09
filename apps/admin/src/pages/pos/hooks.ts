@@ -10,9 +10,12 @@ import type {
   PosMe,
   PosTag,
   PosVoidResult,
+  PosRewards,
   PreviewResult,
   RedeemGrantInput,
   RedeemGrantResult,
+  RedeemRewardInput,
+  RedeemRewardResult,
   SaleKind,
 } from '@positive/contracts'
 
@@ -125,7 +128,7 @@ export function useFindGuest(): UseMutationResult<
 export function usePreview(): UseMutationResult<
   PreviewResult,
   Error,
-  { membershipId: string; amount: number; redeem?: number; receiptNumber?: string }
+  { membershipId: string; amount: number; redeemRequested?: number; receiptNumber?: string }
 > {
   const { authFetch } = useAuth()
 
@@ -198,6 +201,45 @@ export function useRedeemGrant(): UseMutationResult<RedeemGrantResult, Error, Re
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin'] })
+    },
+  })
+}
+
+/**
+ * Награды за баллы для найденного гостя. docs/02, раздел 3.8.
+ *
+ * Запрос, а не мутация: список ничего не меняет. Грузится, только когда кассир
+ * открыл список, — касса не тратит запрос на каждого гостя.
+ */
+export function usePosRewards(
+  membershipId: string,
+  enabled: boolean,
+): UseQueryResult<PosRewards, Error> {
+  const { authFetch } = useAuth()
+
+  return useQuery({
+    queryKey: ['pos', 'rewards', membershipId],
+    queryFn: () =>
+      authFetch<PosRewards>(`/pos/rewards?membershipId=${encodeURIComponent(membershipId)}`),
+    enabled,
+  })
+}
+
+/** Выдать награду за баллы. Повтор с тем же redemptionId второй раз не списывает. */
+export function useRedeemReward(): UseMutationResult<RedeemRewardResult, Error, RedeemRewardInput> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input) =>
+      authFetch<RedeemRewardResult>('/pos/rewards/redeem', {
+        method: 'POST',
+        body: JSON.stringify(input),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: (_result, input) => {
+      void queryClient.invalidateQueries({ queryKey: ['pos', 'rewards', input.membershipId] })
       void queryClient.invalidateQueries({ queryKey: ['admin'] })
     },
   })

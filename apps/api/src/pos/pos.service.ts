@@ -14,6 +14,7 @@ import type {
   ProgramConfig,
   RedeemRewardInput,
   RedeemRewardResult,
+  PosRewards,
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
@@ -36,7 +37,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError, InsufficientBalanceError } from '../core/ledger.errors'
 import { BirthdayService } from '../core/birthday.service'
 import { LedgerService } from '../core/ledger.service'
-import { MembershipRulesService } from '../core/membership-rules.service'
+import { MembershipRulesService, welcomeKey } from '../core/membership-rules.service'
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
 import type { GrantView } from '../core/offer-grant.service'
 import { PrismaService } from '../core/prisma.service'
@@ -502,6 +503,13 @@ export class PosService {
       // Кэшбэк акций — сверху и в режиме скидки тоже: акцию «+5 % баллами»
       // владелец заводит нарочно, и режим её не отменяет.
       const pointsToEarn = membership.isControlGroup ? 0 : basePoints + outcome.earnDelta
+      // Подарок за первую покупку — тем же правилом, что выдаст его проведение.
+      const welcomeBonus = await this.rules.welcomeDue(
+        tenantId,
+        membership,
+        config,
+        'FIRST_PURCHASE',
+      )
 
       const expiresAt = new Date(now.getTime() + PREVIEW_TTL_MINUTES * 60_000)
 
@@ -538,6 +546,7 @@ export class PosService {
         redeem,
         amountToPay,
         pointsToEarn,
+        welcomeBonus,
         balanceAtPreview: membership.pointsBalance,
         appliedOffers: outcome.applied.map((offer) => ({
           offerId: offer.offerId,
@@ -687,7 +696,7 @@ export class PosService {
     // начисления тогда уже включает подарок, и повтор чека вернёт тот же баланс,
     // что и первый ответ. Ключ подарка один на участие: «первый чек» после отмены
     // первого подарка не повторит.
-    await this.rules.grantWelcome(tenantId, current, config, 'FIRST_PURCHASE')
+    const welcomed = await this.rules.grantWelcome(tenantId, current, config, 'FIRST_PURCHASE')
 
     // Награда пригласившему — за первую покупку друга и тем же порядком: до начисления,
     // один ключ на участие друга (docs/05, раздел 6.2).
@@ -750,6 +759,7 @@ export class PosService {
       redeemed,
       earned: preview.pointsToEarn,
       discount: discountOf(preview),
+      welcomeBonus: welcomed === null ? 0 : config.welcomeBonus.amount,
       newBalance: earnOutcome.entry.balanceAfter,
       replayed,
       grantsIssued,
@@ -1027,6 +1037,53 @@ export class PosService {
    * придумывает касса. Планшет, отправивший запрос дважды из-за сети, спишет
    * баллы один раз.
    */
+  /**
+   * Награды за баллы, которые кассир может выдать этому гостю. docs/02, раздел 3.8.
+   *
+   * Чужое участие — 404, как и несуществующее: по ответу не узнать, что гость
+   * где-то есть. «Хватает» — по балансу сейчас; окончательно решает журнал при
+   * выдаче, потому что вторая касса может успеть списать раньше.
+   */
+  async rewards(membershipId: string): Promise<PosRewards> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+
+      if (membership === null) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Участие не найдено' },
+        })
+      }
+
+      const items = await tx.catalogItem.findMany({
+        where: { tenantId, isActive: true, pointsPrice: { not: null } },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, pointsPrice: true, imageUrl: true },
+      })
+
+      return {
+        balance: membership.pointsBalance,
+        items: items.flatMap((item) =>
+          item.pointsPrice === null
+            ? []
+            : [
+                {
+                  id: item.id,
+                  name: item.name,
+                  pointsPrice: item.pointsPrice,
+                  imageUrl: item.imageUrl,
+                  affordable: membership.pointsBalance >= item.pointsPrice,
+                },
+              ],
+        ),
+      }
+    })
+  }
+
   async redeemReward(input: RedeemRewardInput): Promise<RedeemRewardResult> {
     const { tenantId, actorId } = TenantContext.getOrThrow()
 
@@ -1227,7 +1284,7 @@ export class PosService {
           refId: receiptId,
           type: { in: ['EARN', 'REDEEM'] },
         },
-        select: { id: true, type: true, amount: true, balanceAfter: true },
+        select: { id: true, type: true, amount: true, balanceAfter: true, membershipId: true },
       }),
     )
 
@@ -1265,6 +1322,7 @@ export class PosService {
       redeemed: redeem === undefined ? 0 : Math.abs(redeem.amount),
       earned: earn.amount,
       discount: committed === null ? 0 : discountOf(committed),
+      welcomeBonus: await this.welcomeOfReceipt(tenantId, earn.membershipId, earn.id),
       newBalance: earn.balanceAfter,
       replayed: true,
       grantsIssued,
@@ -1399,6 +1457,48 @@ export class PosService {
         data: { state: 'VOID' },
       }),
     )
+  }
+
+  /**
+   * Приветственные баллы, пришедшие с проведённым чеком, — для повтора проведения.
+   *
+   * Подарок за первую покупку выдаётся ровно на первом чеке участия, поэтому он
+   * «принадлежит» этому чеку, если раньше чеков не было. Иначе повтор вернул бы
+   * ноль, и экран успеха снова умолчал бы о подарке.
+   */
+  private async welcomeOfReceipt(
+    tenantId: string,
+    membershipId: string,
+    earnId: string,
+  ): Promise<number> {
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const [welcome, earn] = await Promise.all([
+        tx.ledgerEntry.findUnique({
+          where: { idempotencyKey: welcomeKey(membershipId) },
+          select: { amount: true },
+        }),
+        tx.ledgerEntry.findFirst({
+          where: { id: earnId, tenantId },
+          select: { createdAt: true },
+        }),
+      ])
+
+      if (welcome === null || earn === null) {
+        return 0
+      }
+
+      const earlier = await tx.ledgerEntry.count({
+        where: {
+          tenantId,
+          membershipId,
+          type: 'EARN',
+          refType: 'receipt',
+          createdAt: { lt: earn.createdAt },
+        },
+      })
+
+      return earlier === 0 ? welcome.amount : 0
+    })
   }
 
   private async loadConfig(tenantId: string): Promise<ReturnType<typeof parseProgramConfig>> {

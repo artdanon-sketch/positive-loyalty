@@ -264,4 +264,52 @@ describe('Награда за баллы: выдаёт касса', () => {
 
     expect(response.status).toBe(404)
   })
+
+  it('КАССА ВИДИТ НАГРАДЫ ДЛЯ ГОСТЯ: ЦЕНА, «ХВАТАЕТ ИЛИ НЕТ», СНЯТЫХ И БЕЗ ЦЕНЫ В БАЛЛАХ НЕТ', async () => {
+    const cashier = signAccessToken(
+      { tenantId: guest.tenantId, actorId: null, role: 'CASHIER' },
+      'catalog-secret-not-used-anywhere-else',
+    )
+
+    const response = await request(server())
+      .get(`/v1/pos/rewards?membershipId=${guest.membershipId}`)
+      .set('Authorization', `Bearer ${cashier}`)
+      .expect(200)
+
+    const body = response.body as {
+      balance: number
+      items: Array<{ name: string; pointsPrice: number; affordable: boolean }>
+    }
+    const membership = await prisma.membership.findUniqueOrThrow({
+      where: { id: guest.membershipId },
+      select: { pointsBalance: true },
+    })
+
+    expect(body.balance).toBe(membership.pointsBalance)
+    expect(body.items.every((item) => item.pointsPrice > 0)).toBe(true)
+    // Снятый с витрины кофе и чужой кофе кассе не показываются.
+    expect(body.items.map((item) => item.name)).not.toContain('Кофе в подарок')
+    expect(body.items.map((item) => item.name)).not.toContain('Чужой кофе')
+    for (const item of body.items) {
+      expect(item.affordable).toBe(membership.pointsBalance >= item.pointsPrice)
+    }
+    expect(body.items.find((item) => item.name === 'Ужин на троих')?.affordable).toBe(false)
+  })
+
+  it('ЧУЖОЙ ГОСТЬ — 404, КАК НЕСУЩЕСТВУЮЩИЙ; БЕЗ УЧАСТИЯ В ЗАПРОСЕ — 400', async () => {
+    const cashier = signAccessToken(
+      { tenantId: guest.tenantId, actorId: null, role: 'CASHIER' },
+      'catalog-secret-not-used-anywhere-else',
+    )
+
+    await request(server())
+      .get(`/v1/pos/rewards?membershipId=${stranger.membershipId}`)
+      .set('Authorization', `Bearer ${cashier}`)
+      .expect(404)
+
+    await request(server())
+      .get('/v1/pos/rewards')
+      .set('Authorization', `Bearer ${cashier}`)
+      .expect(400)
+  })
 })

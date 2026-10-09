@@ -145,7 +145,9 @@ export class GuestService {
       for (const item of withExpiry) {
         const entries = await tx.ledgerEntry.findMany({
           where: { membershipId: item.membershipId },
-          orderBy: [{ occurredAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+          // Порядок окна — по дате записи; партии по дате операции сортирует
+          // сам расчёт (points-expiry.ts).
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           take: 200,
           select: { amount: true, occurredAt: true, createdAt: true },
         })

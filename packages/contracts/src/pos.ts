@@ -170,6 +170,12 @@ export const PreviewResult = z
     /** Сколько взять с гостя деньгами: чек минус скидка минус баллы. */
     amountToPay: z.number().int().nonnegative(),
     pointsToEarn: z.number().int().nonnegative(),
+    /**
+     * Приветственные баллы за первую покупку — придут вместе с этим чеком,
+     * сверх `pointsToEarn`. 0 — не положены (уже были, не первая покупка,
+     * выключены, контрольная группа). Кассир называет подарок гостю вслух.
+     */
+    welcomeBonus: z.number().int().nonnegative(),
     /** Баланс на момент расчёта. Изменился к коммиту — BALANCE_CHANGED. */
     balanceAtPreview: z.number().int(),
     /**
@@ -213,6 +219,8 @@ export const CommitResult = z
     earned: z.number().int().nonnegative(),
     /** Скидка, которую гость получил в этом чеке. Повтор возвращает ту же. */
     discount: z.number().int().nonnegative(),
+    /** Приветственные баллы, пришедшие с этим чеком. Входят в `newBalance`. */
+    welcomeBonus: z.number().int().nonnegative(),
     newBalance: z.number().int(),
     /** true, если этот же чек уже проводился: повтор вернул первый результат. */
     replayed: z.boolean(),

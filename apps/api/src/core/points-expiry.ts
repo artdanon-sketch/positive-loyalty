@@ -86,8 +86,12 @@ export const upcomingExpiry = (
 ): UpcomingExpiry | null => {
   let left = spentTotal
   const cutoff = expiryCutoff(now, days)
+  // Самые старые — первыми, как бы ни пришли: запрос сортирует по дате записи,
+  // а чек из кассы POSitive старится по дате операции. Без этого предупреждение
+  // гасило списаниями не те партии и называло не ту дату.
+  const oldestFirst = [...earns].sort((a, b) => a.at.getTime() - b.at.getTime())
 
-  for (const earn of earns) {
+  for (const earn of oldestFirst) {
     // Списания гасят самые старые начисления: пока хватает потраченного,
     // партия уже погашена и сгорать в ней нечему.
     if (left >= earn.amount) {

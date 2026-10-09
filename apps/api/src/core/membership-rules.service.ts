@@ -64,6 +64,9 @@ const TRIGGER: Readonly<Record<WelcomeMoment, ProgramConfig['welcomeBonus']['tri
   FIRST_PURCHASE: 'ON_FIRST_PURCHASE',
 }
 
+/** Ключ приветственных баллов: один на участие навсегда. */
+export const welcomeKey = (membershipId: string): string => `welcome:${membershipId}`
+
 @Injectable()
 export class MembershipRulesService {
   private readonly logger = new Logger(MembershipRulesService.name)
@@ -202,12 +205,19 @@ export class MembershipRulesService {
    *
    * Контрольной группе не положено: у неё нет баллов вовсе (docs/01, раздел 4.2).
    */
-  async grantWelcome(
+  /**
+   * Сколько приветственных баллов положено гостю в этот момент — 0, если не положено.
+   *
+   * Одно правило для предрасчёта и для самой выдачи: касса показывает «подарок за
+   * первую покупку» ровно тогда, когда проведение его выдаст. Раньше предрасчёт
+   * о подарке молчал — кассир обещал «станет на карте 50 ฿», а становилось 100.
+   */
+  async welcomeDue(
     tenantId: string,
     membership: Pick<MembershipSnapshot, 'id' | 'visitsTotal' | 'isControlGroup'>,
     config: ProgramConfig,
     moment: WelcomeMoment,
-  ): Promise<number | null> {
+  ): Promise<number> {
     const bonus = config.welcomeBonus
 
     if (
@@ -217,21 +227,35 @@ export class MembershipRulesService {
       membership.isControlGroup ||
       membership.visitsTotal > 0
     ) {
-      return null
+      return 0
     }
-
-    const idempotencyKey = `welcome:${membership.id}`
 
     // Подарок уже у гостя. Проверяем заранее, а не повтором журнала: если владелец
     // с тех пор поменял сумму, повтор с новой суммой журнал справедливо счёл бы
     // чужой операцией — и сканирование гостя упало бы.
     const already = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findUnique({ where: { idempotencyKey }, select: { id: true } }),
+      tx.ledgerEntry.findUnique({
+        where: { idempotencyKey: welcomeKey(membership.id) },
+        select: { id: true },
+      }),
     )
 
-    if (already !== null) {
+    return already === null ? bonus.amount : 0
+  }
+
+  async grantWelcome(
+    tenantId: string,
+    membership: Pick<MembershipSnapshot, 'id' | 'visitsTotal' | 'isControlGroup'>,
+    config: ProgramConfig,
+    moment: WelcomeMoment,
+  ): Promise<number | null> {
+    const bonus = config.welcomeBonus
+
+    if ((await this.welcomeDue(tenantId, membership, config, moment)) === 0) {
       return null
     }
+
+    const idempotencyKey = welcomeKey(membership.id)
 
     try {
       const result = await this.ledger.grant(

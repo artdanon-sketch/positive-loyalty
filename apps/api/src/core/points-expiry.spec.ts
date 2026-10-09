@@ -83,6 +83,20 @@ describe('Сгорание баллов: предупреждение заран
     expect(upcomingExpiry(earns, 100, 30, now)).toMatchObject({ points: 200 })
   })
 
+  it('ПАРТИИ ПРИШЛИ НЕ ПО ПОРЯДКУ — СПИСАНИЯ ВСЁ РАВНО ГАСЯТ САМУЮ СТАРУЮ', () => {
+    // Чек из кассы POSitive досылается позже и встаёт в выборку после свежего
+    // чека с экрана кассира, хотя по дате операции он старше.
+    const earns = [
+      { at: new Date(now.getTime() - 5 * day), amount: 200 },
+      { at: new Date(now.getTime() - 20 * day), amount: 300 },
+    ]
+
+    const result = upcomingExpiry(earns, 100, 30, now)
+
+    expect(result).toMatchObject({ points: 200 })
+    expect(result?.at.getTime()).toBe(now.getTime() - 20 * day + 30 * day)
+  })
+
   it('ДАТА — ЭТО ДЕНЬ НАЧИСЛЕНИЯ ПЛЮС СРОК', () => {
     const at = new Date(now.getTime() - 10 * day)
     const result = upcomingExpiry([{ at, amount: 500 }], 0, 30, now)
