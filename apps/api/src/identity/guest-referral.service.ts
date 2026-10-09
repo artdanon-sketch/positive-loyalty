@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import type { AcceptReferralResult, GuestReferral, ReferralConfig } from '@positive/contracts'
-import { ProgramConfig, REFERRAL_CODE_LENGTH } from '@positive/contracts'
+import { NO_REFERRAL_LEVELS, ProgramConfig, REFERRAL_CODE_LENGTH } from '@positive/contracts'
 
 import { PrismaService } from '../core/prisma.service'
+import { REFERRAL_REWARD_KEY_PREFIX } from '../core/referral-shares'
 import { isUniqueViolation, randomCode } from '../core/random-code'
 import { currentGuestId } from './current-guest'
 
@@ -68,8 +69,13 @@ export class GuestReferralService {
     const referral = referralOf(own.tenant.settings)
     // Контрольной группе баллов не положено — ссылка, которая ничего не принесёт,
     // хуже отсутствующей.
+    // Приглашать есть смысл, если программа хоть что-то даёт: разовую награду
+    // или процент с покупок друзей.
     const program =
-      referral !== null && referral.enabled && referral.reward > 0 && !own.isControlGroup
+      referral !== null &&
+      referral.enabled &&
+      (referral.reward > 0 || referral.levels.some((pct) => pct > 0)) &&
+      !own.isControlGroup
         ? referral
         : null
 
@@ -80,7 +86,13 @@ export class GuestReferralService {
       Promise.all([
         tx.membership.count({ where: { tenantId, referredById: own.id } }),
         tx.ledgerEntry.count({
-          where: { tenantId, membershipId: own.id, refType: 'referral' },
+          where: {
+            tenantId,
+            membershipId: own.id,
+            type: 'GRANT',
+            refType: 'referral',
+            idempotencyKey: { startsWith: REFERRAL_REWARD_KEY_PREFIX },
+          },
         }),
       ]),
     )
@@ -92,6 +104,7 @@ export class GuestReferralService {
       code,
       reward: program?.reward ?? 0,
       limit: program?.limit ?? 0,
+      levels: program?.levels ?? [...NO_REFERRAL_LEVELS],
       invited,
       rewarded,
     }

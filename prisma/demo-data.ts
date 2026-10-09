@@ -236,7 +236,9 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 30,
       pointsExpireDays: 365,
       welcomeBonus: { enabled: true, amount: 5_000, trigger: 'ON_FIRST_PURCHASE' },
-      referral: { enabled: true, reward: 5_000, limit: 10 },
+      // Ресторан — с процентом с покупок друзей по трём кругам, как у UDS:
+      // соседи без него, и оба состояния на виду.
+      referral: { enabled: true, reward: 5_000, limit: 10, levels: [5, 3, 1] },
       birthday: {
         enabled: true,
         reward: { kind: 'POINTS', amount: 10_000 },
@@ -296,7 +298,7 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 25,
       pointsExpireDays: 180,
       welcomeBonus: { enabled: true, amount: 10_000, trigger: 'ON_JOIN' },
-      referral: { enabled: true, reward: 10_000, limit: 5 },
+      referral: { enabled: true, reward: 10_000, limit: 5, levels: [0, 0, 0] },
       birthday: {
         enabled: false,
         reward: { kind: 'POINTS', amount: 10_000 },
@@ -345,7 +347,7 @@ export const TENANTS: readonly TenantSeed[] = [
       baseRedeemRate: 20,
       pointsExpireDays: null,
       welcomeBonus: { enabled: false, amount: 0, trigger: 'ON_JOIN' },
-      referral: { enabled: false, reward: 0, limit: 10 },
+      referral: { enabled: false, reward: 0, limit: 10, levels: [0, 0, 0] },
       birthday: {
         enabled: false,
         reward: { kind: 'POINTS', amount: 10_000 },

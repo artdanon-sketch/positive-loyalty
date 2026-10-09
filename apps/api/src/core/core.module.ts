@@ -11,6 +11,7 @@ import { OfferGrantService } from './offer-grant.service'
 import { PointsExpiryService } from './points-expiry.service'
 import { PointsExpirySweeper } from './points-expiry.sweeper'
 import { PrismaService } from './prisma.service'
+import { ReferralSharesService } from './referral-shares.service'
 
 /**
  * Ядро: доступ к базе и журнал баллов.
@@ -48,6 +49,7 @@ import { PrismaService } from './prisma.service'
     AuditService,
     OfferGrantService,
     MembershipRulesService,
+    ReferralSharesService,
     BirthdayService,
   ],
   exports: [
@@ -59,6 +61,7 @@ import { PrismaService } from './prisma.service'
     AuditService,
     OfferGrantService,
     MembershipRulesService,
+    ReferralSharesService,
     BirthdayService,
   ],
 })

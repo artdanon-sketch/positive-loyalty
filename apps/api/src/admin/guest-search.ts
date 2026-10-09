@@ -42,7 +42,9 @@ export const guestSearchWhere = (
 
   const anyOf: Prisma.MembershipWhereInput[] = [
     { guest: { displayName: { contains: q, mode: 'insensitive' } } },
-    { ledgerEntries: { some: { refId: q } } },
+    // Только записи самого чека: процент с покупки друга лежит у пригласившего
+    // с тем же номером чека, но искали не его.
+    { ledgerEntries: { some: { refType: 'receipt', refId: q } } },
   ]
 
   const digits = q.replace(PHONE_NOISE, '')

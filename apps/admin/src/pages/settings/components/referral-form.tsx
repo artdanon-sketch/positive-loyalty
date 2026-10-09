@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
+import { NO_REFERRAL_LEVELS } from '@positive/contracts'
 import type { ReferralSettings } from '@positive/contracts'
 
+import { fill } from '../../../shared/format/fill'
+import { formatBaht } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
 import type { TranslationKey } from '../../../shared/i18n'
 import { useSaveReferralSettings } from '../hooks'
-import { fromReferralDraft, toReferralDraft } from '../referral-draft'
-import type { ReferralDraft, ReferralProblem } from '../referral-draft'
+import { fromReferralDraft, levelsExample, toReferralDraft } from '../referral-draft'
+import type { LevelsDraft, ReferralDraft, ReferralProblem } from '../referral-draft'
 
 /**
  * Форма приглашений друзей. docs/02, раздел 5.6.2 · docs/11, У6.
@@ -15,15 +18,39 @@ import type { ReferralDraft, ReferralProblem } from '../referral-draft'
  * суммы и лимита на экране нет, как у приветственных баллов: настраивать то, что
  * не работает, незачем. Под формой одна строка «что поправить», и кнопка ждёт,
  * пока её не станет; сервер проверяет те же правила сам.
+ *
+ * ПРОЦЕНТ С ПОКУПОК — ТРИ КРУГА, КАК У UDS, с примером на чеке друга в 1 000 ฿:
+ * «5 %» владелец видит как пятьдесят батов, которые отдаёт с каждой покупки.
  */
 
 const PROBLEMS: Readonly<Record<ReferralProblem, TranslationKey>> = {
   reward: 'referral.problem.reward',
   limit: 'referral.problem.limit',
+  levels: 'referral.problem.levels',
+  nothing: 'referral.problem.nothing',
+}
+
+const LEVEL_LABELS: readonly TranslationKey[] = [
+  'referral.level.1',
+  'referral.level.2',
+  'referral.level.3',
+]
+
+const sameLevels = (a: ReferralSettings, b: ReferralSettings): boolean => {
+  const left = a.levels ?? NO_REFERRAL_LEVELS
+  const right = b.levels ?? NO_REFERRAL_LEVELS
+
+  return left.every((pct, index) => pct === right[index])
 }
 
 const same = (a: ReferralSettings, b: ReferralSettings): boolean =>
-  a.enabled === b.enabled && a.reward === b.reward && a.limit === b.limit
+  a.enabled === b.enabled && a.reward === b.reward && a.limit === b.limit && sameLevels(a, b)
+
+const withLevel = (levels: LevelsDraft, index: number, value: string): LevelsDraft => [
+  index === 0 ? value : levels[0],
+  index === 1 ? value : levels[1],
+  index === 2 ? value : levels[2],
+]
 
 export function ReferralForm({ initial }: { initial: ReferralSettings }): ReactElement {
   const t = useT()
@@ -100,6 +127,52 @@ export function ReferralForm({ initial }: { initial: ReferralSettings }): ReactE
             </span>
           </div>
         </div>
+      ) : null}
+
+      {draft.enabled ? (
+        <fieldset className="referral-levels">
+          <legend className="field__label">{t('referral.levels.title')}</legend>
+          <div className="form-row">
+            {draft.levels.map((value, index) => (
+              <div className="field" key={LEVEL_LABELS[index]}>
+                <label className="field__label" htmlFor={`referral-level-${String(index + 1)}`}>
+                  {t(LEVEL_LABELS[index] ?? 'referral.level.1')}
+                </label>
+                <input
+                  id={`referral-level-${String(index + 1)}`}
+                  className="field__input"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0"
+                  aria-invalid={!checked.ok && checked.problem === 'levels'}
+                  value={value}
+                  onChange={(event) => {
+                    setDraft({
+                      ...draft,
+                      levels: withLevel(draft.levels, index, event.target.value),
+                    })
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="field__hint">{t('referral.levels.hint')}</p>
+          {checked.ok && (checked.settings.levels ?? NO_REFERRAL_LEVELS).some((pct) => pct > 0) ? (
+            <p className="field__hint" aria-live="polite">
+              {(() => {
+                const [first = 0, second = 0, third = 0] = levelsExample(
+                  checked.settings.levels ?? NO_REFERRAL_LEVELS,
+                )
+                return fill(t('referral.levels.example'), {
+                  l1: formatBaht(first),
+                  l2: formatBaht(second),
+                  l3: formatBaht(third),
+                })
+              })()}
+            </p>
+          ) : null}
+        </fieldset>
       ) : null}
 
       <div className="save-bar">

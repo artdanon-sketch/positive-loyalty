@@ -404,6 +404,7 @@ describe('Пригласить друга', () => {
           code: INVITE_CODE,
           reward: 5_000,
           limit: 10,
+          levels: [0, 0, 0],
           invited: 3,
           rewarded: 2,
         }),
@@ -428,6 +429,38 @@ describe('Пригласить друга', () => {
           .replace('{limit}', '10'),
       ),
     ).toBeInTheDocument()
+  })
+})
+
+describe('Пригласить друга: процент с покупок', () => {
+  it('ТРИ КРУГА, КАК У UDS: ГОСТЬ ВИДИТ, СКОЛЬКО ПОЛУЧИТ С ПОКУПОК ДРУЗЕЙ', async () => {
+    stubApi({
+      [`/v1/guest/venues/${KATA_ID}/referral`]: () =>
+        json({
+          tenantId: KATA_ID,
+          brandName: 'Kata Beach Kitchen',
+          enabled: true,
+          code: INVITE_CODE,
+          reward: 0,
+          limit: 10,
+          levels: [5, 3, 0.5],
+          invited: 4,
+          rewarded: 0,
+        }),
+    })
+    render(<App />)
+
+    await signIn()
+
+    const venues = within(await screen.findByRole('region', { name: t('card.venues.title') }))
+    fireEvent.click(venues.getByRole('button', { name: t('invite.open') }))
+
+    expect(await venues.findByText(t('invite.level.1').replace('{pct}', '5'))).toBeInTheDocument()
+    expect(venues.getByText(t('invite.level.2').replace('{pct}', '3'))).toBeInTheDocument()
+    expect(venues.getByText(t('invite.level.3').replace('{pct}', '0,5'))).toBeInTheDocument()
+    // Разовой награды нет — нет ни её строки, ни счётчика «наград из лимита».
+    expect(venues.queryByText(/баллами, когда он впервые/)).toBeNull()
+    expect(venues.getByText(t('invite.statsInvited').replace('{invited}', '4'))).toBeInTheDocument()
   })
 })
 

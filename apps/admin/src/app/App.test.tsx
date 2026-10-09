@@ -2132,10 +2132,69 @@ describe('Настройки программы', () => {
         enabled: true,
         reward: 7_500,
         limit: 3,
+        levels: [0, 0, 0],
       })
     })
 
     expect(await within(section).findByText(t('referral.saved'))).toBeInTheDocument()
+  })
+
+  it('ТРИ КРУГА, КАК У UDS: ПРОЦЕНТЫ С ПРИМЕРОМ НА ЧЕКЕ И БЕЗ РАЗОВОЙ НАГРАДЫ', async () => {
+    const fetchMock = stubApi({
+      '/v1/auth/staff/pin': () => json(OWNER_TOKENS),
+      '/v1/admin/settings/program/suspicious': () => json(SUSPICIOUS_SETTINGS),
+      '/v1/admin/settings/program/reviews': () => json(REVIEW_SETTINGS),
+      '/v1/admin/settings/program/birthday': () => json(BIRTHDAY_SETTINGS),
+      '/v1/admin/settings/program/referral': (init) =>
+        init?.method === 'PUT' ? json(JSON.parse(init.body as string)) : json(REFERRAL_SETTINGS),
+      '/v1/admin/settings/program/tiers': () => json(TIER_SETTINGS),
+      '/v1/admin/settings/program': () => json(PROGRAM_SETTINGS),
+    })
+    render(<App />)
+
+    await openSettings('settings.hub.referral.name')
+    const section = screen.getByRole('region', { name: t('referral.title') })
+
+    fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
+    // Ни разовых баллов, ни процента — приглашать незачем.
+    expect(within(section).getByText(t('referral.problem.nothing'))).toBeInTheDocument()
+
+    fireEvent.change(within(section).getByLabelText(t('referral.level.1')), {
+      target: { value: '5' },
+    })
+    fireEvent.change(within(section).getByLabelText(t('referral.level.2')), {
+      target: { value: '3' },
+    })
+    fireEvent.change(within(section).getByLabelText(t('referral.level.3')), {
+      target: { value: '1' },
+    })
+
+    expect(
+      within(section).getByText(
+        fill(t('referral.levels.example'), {
+          l1: formatBaht(5_000),
+          l2: formatBaht(3_000),
+          l3: formatBaht(1_000),
+        }),
+      ),
+    ).toBeInTheDocument()
+
+    fireEvent.click(within(section).getByRole('button', { name: t('referral.save') }))
+
+    await waitFor(() => {
+      const put = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          requestOf(input as RequestInfo | URL).endsWith('/referral') &&
+          (init as RequestInit | undefined)?.method === 'PUT',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse((put?.[1] as RequestInit).body as string)).toEqual({
+        enabled: true,
+        reward: 0,
+        limit: 10,
+        levels: [5, 3, 1],
+      })
+    })
   })
 
   it('включённая награда без суммы не отправляется и объясняется рядом', async () => {
@@ -2156,7 +2215,7 @@ describe('Настройки программы', () => {
 
     fireEvent.click(await within(section).findByLabelText(t('referral.enabled')))
 
-    expect(within(section).getByText(t('referral.problem.reward'))).toBeInTheDocument()
+    expect(within(section).getByText(t('referral.problem.nothing'))).toBeInTheDocument()
     expect(within(section).getByRole('button', { name: t('referral.save') })).toBeDisabled()
     expect(
       fetchMock.mock.calls.some(

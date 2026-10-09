@@ -41,6 +41,7 @@ import { MembershipRulesService, welcomeKey } from '../core/membership-rules.ser
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
 import type { GrantView } from '../core/offer-grant.service'
 import { PrismaService } from '../core/prisma.service'
+import { ReferralSharesService } from '../core/referral-shares.service'
 import type { Prisma } from '../generated/prisma/client'
 import { evaluateOffers } from '../rules/rules-engine'
 import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
@@ -185,6 +186,7 @@ export class PosService {
     private readonly grants: OfferGrantService,
     private readonly rules: MembershipRulesService,
     private readonly birthdays: BirthdayService,
+    private readonly shares: ReferralSharesService,
   ) {}
 
   /**
@@ -731,6 +733,10 @@ export class PosService {
       return result
     })()
 
+    // Процент с покупки — пригласившим друга, до трёх кругов (docs/02, раздел 5.6.2).
+    // От уплаченного деньгами, как и начисление самому гостю.
+    await this.shares.give(tenantId, current, input.receiptId, preview.amountToPay, config)
+
     await this.prisma.forTenant(tenantId, async (tx) => {
       await tx.transactionPreview.updateMany({
         where: { id: preview.id, tenantId, committedAt: null },
@@ -840,8 +846,9 @@ export class PosService {
     const alreadyVoided = await this.findCompletedReversal(tenantId, transactionId, legs)
 
     if (alreadyVoided !== null) {
-      // Первый вызов мог оборваться после компенсаций, но до промокодов.
+      // Первый вызов мог оборваться после компенсаций, но до промокодов и процентов.
       await this.voidCheckGrants(tenantId, anchor.refId)
+      await this.shares.takeBack(tenantId, anchor.membershipId, anchor.refId)
       return alreadyVoided
     }
 
@@ -923,6 +930,10 @@ export class PosService {
         reversals.push({ entryId: leg.id, reversalId: existing.id, amount: existing.amount })
       }
     }
+
+    // Проценты пригласившим с этого чека — обратно: иначе «провести и отменить»
+    // раздавало бы баллы друзьям без покупки.
+    await this.shares.takeBack(tenantId, anchor.membershipId, anchor.refId)
 
     // Баланс читаем после всех компенсаций: порядок записей чека не обязан
     // совпадать с порядком компенсаций, «последняя строка цикла» — не истина.
@@ -1284,7 +1295,14 @@ export class PosService {
           refId: receiptId,
           type: { in: ['EARN', 'REDEEM'] },
         },
-        select: { id: true, type: true, amount: true, balanceAfter: true, membershipId: true },
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          balanceAfter: true,
+          basisAmount: true,
+          membershipId: true,
+        },
       }),
     )
 
@@ -1313,6 +1331,10 @@ export class PosService {
     )
     const grantsIssued =
       committed === null ? [] : await this.issueCheckGrants(tenantId, committed, receiptId)
+
+    // Проценты пригласившим — тем же ключом: первый вызов мог оборваться после
+    // начисления, но до них. Уже выданные повтор не задвоит.
+    await this.giveSharesAgain(tenantId, earn.membershipId, receiptId, earn.basisAmount ?? 0)
 
     return {
       // Тот же порядок, что и на прямом пути: идентификатором операции служит
@@ -1499,6 +1521,27 @@ export class PosService {
 
       return earlier === 0 ? welcome.amount : 0
     })
+  }
+
+  /** Повтор проведения: досоздать проценты пригласившим, если первый вызов не успел. */
+  private async giveSharesAgain(
+    tenantId: string,
+    membershipId: string,
+    receiptId: string,
+    basisAmount: number,
+  ): Promise<void> {
+    const buyer = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.membership.findFirst({
+        where: { id: membershipId, tenantId },
+        select: { id: true, referredById: true, isControlGroup: true },
+      }),
+    )
+
+    if (buyer === null || buyer.referredById === null) {
+      return
+    }
+
+    await this.shares.give(tenantId, buyer, receiptId, basisAmount, await this.loadConfig(tenantId))
   }
 
   private async loadConfig(tenantId: string): Promise<ReturnType<typeof parseProgramConfig>> {

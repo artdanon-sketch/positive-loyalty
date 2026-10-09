@@ -30,7 +30,36 @@ describe('Приглашения друзей: контракт', () => {
     )
   })
 
-  it('старые настройки без приглашений читаются как «выключено»', () => {
-    expect(parseProgramConfig({}).referral).toEqual({ enabled: false, reward: 0, limit: 10 })
+  it('старые настройки без приглашений читаются как «выключено», проценты — нулями', () => {
+    expect(parseProgramConfig({}).referral).toEqual({
+      enabled: false,
+      reward: 0,
+      limit: 10,
+      levels: [0, 0, 0],
+    })
+    // Настройки, сохранённые до процентов, тоже читаются: проценты — нулями.
+    expect(
+      parseProgramConfig({ referral: { enabled: true, reward: 5_000, limit: 3 } }).referral.levels,
+    ).toEqual([0, 0, 0])
+  })
+
+  it('ТОЛЬКО ПРОЦЕНТЫ С ПОКУПОК, БЕЗ РАЗОВЫХ БАЛЛОВ, — ЗАКОННАЯ ПРОГРАММА: 5 / 3 / 1', () => {
+    expect(
+      ReferralSettings.safeParse({ enabled: true, reward: 0, limit: 5, levels: [5, 3, 1] }).success,
+    ).toBe(true)
+    // Включено, но всё по нулям — приглашать незачем.
+    expect(
+      ReferralSettings.safeParse({ enabled: true, reward: 0, limit: 5, levels: [0, 0, 0] }).success,
+    ).toBe(false)
+  })
+
+  it('КРУГОВ РОВНО ТРИ, ПРОЦЕНТ НА КРУГЕ — ОТ 0 ДО 20', () => {
+    const base = { enabled: true, reward: 5_000, limit: 5 }
+
+    expect(ReferralSettings.safeParse({ ...base, levels: [5, 3] }).success).toBe(false)
+    expect(ReferralSettings.safeParse({ ...base, levels: [5, 3, 1, 1] }).success).toBe(false)
+    expect(ReferralSettings.safeParse({ ...base, levels: [21, 0, 0] }).success).toBe(false)
+    expect(ReferralSettings.safeParse({ ...base, levels: [-1, 0, 0] }).success).toBe(false)
+    expect(ReferralSettings.safeParse({ ...base, levels: [0.5, 0, 0] }).success).toBe(true)
   })
 })
