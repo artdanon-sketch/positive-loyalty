@@ -81,6 +81,23 @@ describe('ProgramConfig', () => {
     expect(() => parseProgramConfig({ ...FULL_CONFIG, baseEarnRatio: 12 })).toThrow()
   })
 
+  it('раздел «О заведении» в тех же настройках не делает их «повреждёнными»', () => {
+    // Экран профиля кладёт его ключом profile. Без этого ключа в схеме касса
+    // заведения, заполнившего профиль, отвечала TENANT_MISCONFIGURED.
+    const profile = {
+      about: 'Кухня у моря',
+      phone: null,
+      website: null,
+      address: 'Kata Rd 12',
+      hours: '9:00–22:00',
+    }
+
+    expect(parseProgramConfig({ ...FULL_CONFIG, profile }).profile).toEqual(profile)
+    expect(parseProgramConfig({}).profile).toBeUndefined()
+    // Строгость сохраняется и внутри профиля.
+    expect(() => parseProgramConfig({ profile: { ...profile, instagram: '@kata' } })).toThrow()
+  })
+
   it('держит границы ставок', () => {
     expect(() => ProgramConfig.parse({ baseEarnRate: 80 })).toThrow()
     expect(() => ProgramConfig.parse({ baseRedeemRate: 140 })).toThrow()
