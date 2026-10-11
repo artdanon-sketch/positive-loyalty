@@ -1,6 +1,7 @@
 import { parseProgramConfig } from '@positive/contracts'
 
 import { loadApiRuntime } from './api-runtime.ts'
+import { askHidden, askLine } from './prompt.ts'
 
 /**
  * Заводит боевое заведение: само заведение, владельца и его устройство входа.
@@ -92,96 +93,6 @@ const slugify = (name: string): string => {
 
   return slug
 }
-
-/**
- * Скрытый ввод.
- *
- * Тот же приём, что и в настройке Supabase, и по той же причине: подмена
- * внутреннего метода readline на живой машине не сработала, и вставленный
- * секрет оказался на экране. Читаем посимвольно сами.
- */
-/** Обычный видимый ввод строки — для почты: она не секрет. */
-const askLine = async (prompt: string): Promise<string> => {
-  const { createInterface } = await import('node:readline/promises')
-  const rl = createInterface({ input: process.stdin, output: out })
-  try {
-    return await rl.question(prompt)
-  } finally {
-    rl.close()
-  }
-}
-
-const askHidden = (prompt: string): Promise<string> =>
-  new Promise((resolve) => {
-    const stdin = process.stdin
-
-    if (typeof stdin.setRawMode !== 'function') {
-      die('Эту команду нужно запускать в обычном окне терминала: она задаёт вопрос.')
-    }
-
-    out.write(prompt)
-
-    const wasRaw = stdin.isRaw === true
-    stdin.setRawMode(true)
-    stdin.resume()
-    stdin.setEncoding('utf8')
-
-    let value = ''
-    let inEscape = false
-
-    const finish = (done: () => void): void => {
-      stdin.off('data', onData)
-      stdin.setRawMode(wasRaw)
-      stdin.pause()
-      done()
-    }
-
-    const onData = (chunk: string): void => {
-      for (const ch of chunk) {
-        if (inEscape) {
-          if (/[A-Za-z~]/.test(ch)) inEscape = false
-          continue
-        }
-
-        if (ch === '\u001b') {
-          inEscape = true
-          continue
-        }
-
-        if (ch === '\r' || ch === '\n') {
-          out.write('\n')
-          finish(() => resolve(value))
-          return
-        }
-
-        if (ch === '\u0003') {
-          out.write('\n')
-          finish(() => {
-            say('')
-            say('Отменено. Ничего не создано.')
-            say('')
-            process.exit(130)
-          })
-          return
-        }
-
-        if (ch === '\u007f' || ch === '\b') {
-          if (value.length > 0) {
-            value = value.slice(0, -1)
-            out.write('\b \b')
-          }
-          continue
-        }
-
-        if (ch < ' ') continue
-
-        value += ch
-        out.write('*')
-      }
-    }
-
-    stdin.on('data', onData)
-  })
 
 // ── Разбор аргументов ────────────────────────────────────────────────────────
 
