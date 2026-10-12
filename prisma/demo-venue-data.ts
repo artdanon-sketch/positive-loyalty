@@ -186,6 +186,14 @@ export const DEMO_SETTINGS: ProgramConfig = ProgramConfig.parse({
     shiftCap: 15,
   },
   ordering: { mode: 'OFF' },
+  // Раздел «О заведении»: лежит в тех же настройках ключом profile.
+  profile: {
+    about: 'Кафе у пляжа Ката: завтраки, паста и кофе с собой. Демо-заведение POSitive.',
+    phone: null,
+    website: null,
+    address: 'Kata Beach, Phuket',
+    hours: '08:00–22:00',
+  },
 })
 
 // ─── Справочники ─────────────────────────────────────────────────────────────

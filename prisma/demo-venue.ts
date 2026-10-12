@@ -138,10 +138,6 @@ const upsertTenant = async (): Promise<number> => {
     )
   }
 
-  // Раздел «О заведении» не заполняем: профиль ложится в те же настройки
-  // ключом `profile`, а строгая схема ProgramConfig этот ключ отвергает —
-  // касса такого заведения отвечает «настройки повреждены». Вернуть профиль
-  // сюда — после исправления схемы.
   const settings = DEMO_SETTINGS
 
   const tenant = await prisma.tenant.upsert({
