@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#0a0e14" />
+    <title>Показ POSitive</title>
+    <meta
+      name="description"
+      content="Быстрый доступ к экранам POSitive Loyalty на демо-кафе: владелец, касса, гость."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* Цвета — те же, что в packages/ui/src/tokens.css: страница показа выглядит
+         как часть продукта, а не как чужая витрина. */
+      :root {
+        color-scheme: dark;
+        --bg: #0a0e14;
+        --surf: #131922;
+        --surf-2: #1a222e;
+        --line: #232d3c;
+        --tx: #edf2f8;
+        --tx-2: #93a0b2;
+        --tx-3: #5f6b7c;
+        --mint: #34e1b4;
+        --cyan: #22d3ee;
+        --amber: #ffb84d;
+        --grad: linear-gradient(135deg, #34e1b4, #22d3ee);
+        --on-grad: #04221a;
+        --qr-paper: #ffffff;
+        --qr-ink: #0a0e14;
+        --radius: 14px;
+      }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) {
+          color-scheme: light;
+          --bg: #eef1f6;
+          --surf: #f5f8fb;
+          --surf-2: #e9eef5;
+          --line: #dfe5ee;
+          --tx: #0d131c;
+          --tx-2: #4e5a6c;
+          --tx-3: #8592a4;
+          --mint: #0f8f6e;
+          --cyan: #0e8aa3;
+          --amber: #a8650a;
+        }
+      }
+      :root[data-theme='light'] {
+        color-scheme: light;
+        --bg: #eef1f6;
+        --surf: #f5f8fb;
+        --surf-2: #e9eef5;
+        --line: #dfe5ee;
+        --tx: #0d131c;
+        --tx-2: #4e5a6c;
+        --tx-3: #8592a4;
+        --mint: #0f8f6e;
+        --cyan: #0e8aa3;
+        --amber: #a8650a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--tx);
+        font:
+          15px/1.5 Inter,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: inherit;
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: max(20px, env(safe-area-inset-top)) 16px 48px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 8px;
+      }
+      .mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        background: var(--grad);
+        flex: none;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .lead {
+        margin: 4px 0 24px;
+        color: var(--tx-2);
+        max-width: 640px;
+      }
+
+      h2 {
+        margin: 32px 0 4px;
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .hint {
+        margin: 0 0 14px;
+        color: var(--tx-2);
+        font-size: 14px;
+      }
+
+      .panel {
+        background: var(--surf);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+      .setup {
+        display: grid;
+        gap: 12px;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .num {
+        flex: none;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--surf-2);
+        color: var(--mint);
+        font-weight: 700;
+        font-size: 13px;
+        display: grid;
+        place-items: center;
+      }
+      .step p {
+        margin: 2px 0 8px;
+        color: var(--tx-2);
+        font-size: 14px;
+      }
+      .step b {
+        color: var(--tx);
+        font-weight: 600;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surf-2);
+        color: var(--tx);
+        font: inherit;
+        font-weight: 600;
+        font-size: 14px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .btn--main {
+        background: var(--grad);
+        color: var(--on-grad);
+        border-color: transparent;
+      }
+      .btn:focus-visible,
+      .card:focus-visible {
+        outline: 2px solid var(--cyan);
+        outline-offset: 2px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 10px;
+      }
+      .card {
+        display: block;
+        padding: 14px 14px 12px;
+        border-radius: var(--radius);
+        background: var(--surf);
+        border: 1px solid var(--line);
+        text-decoration: none;
+        transition:
+          border-color 0.15s,
+          transform 0.15s;
+      }
+      .card:hover {
+        border-color: var(--mint);
+        transform: translateY(-1px);
+      }
+      .card strong {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-weight: 600;
+      }
+      .card strong::after {
+        content: '↗';
+        color: var(--tx-3);
+        font-weight: 400;
+      }
+      .card span {
+        display: block;
+        margin-top: 4px;
+        color: var(--tx-2);
+        font-size: 13px;
+      }
+      .card .tag {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 1px 8px;
+        border-radius: 99px;
+        background: var(--surf-2);
+        color: var(--amber);
+        font-size: 12px;
+      }
+
+      .two {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      @media (min-width: 760px) {
+        .two {
+          grid-template-columns: 1.3fr 1fr;
+        }
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      td {
+        padding: 9px 4px;
+        border-top: 1px solid var(--line);
+        vertical-align: middle;
+      }
+      tr:first-child td {
+        border-top: 0;
+      }
+      .phone {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .copy {
+        min-height: 32px;
+        padding: 4px 10px;
+        font-size: 13px;
+      }
+      td.who span {
+        display: block;
+        color: var(--tx-2);
+        font-size: 12px;
+      }
+
+      .qr-box {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #qr {
+        width: 148px;
+        height: 148px;
+        padding: 10px;
+        border-radius: 12px;
+        background: var(--qr-paper);
+        flex: none;
+      }
+      #qr img,
+      #qr canvas {
+        width: 100% !important;
+        height: auto !important;
+      }
+
+      ol.script {
+        margin: 0;
+        padding-left: 22px;
+        display: grid;
+        gap: 10px;
+      }
+      ol.script li::marker {
+        color: var(--mint);
+        font-weight: 700;
+      }
+      ol.script b {
+        font-weight: 600;
+      }
+      ol.script span {
+        color: var(--tx-2);
+      }
+
+      footer {
+        margin-top: 36px;
+        color: var(--tx-3);
+        font-size: 13px;
+      }
+      footer code {
+        color: var(--tx-2);
+      }
+      .theme {
+        margin-left: auto;
+        min-height: 36px;
+        padding: 6px 10px;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="mark" aria-hidden="true"></div>
+        <div>
+          <h1>Показ POSitive Loyalty</h1>
+        </div>
+        <button class="btn theme" type="button" id="theme" aria-label="Сменить тему">◐</button>
+      </header>
+      <p class="lead">
+        Живая система на демо-кафе «POSitive Demo»: настоящие экраны, выдуманные гости. Ничего не
+        скачивать — всё открывается в браузере, на телефоне и на ноутбуке.
+      </p>
+
+      <h2>Перед показом — один раз на своём телефоне</h2>
+      <p class="hint">Вход держится 30 дней, потом повторить шаг 1.</p>
+      <div class="panel setup">
+        <div class="step">
+          <div class="num">1</div>
+          <div>
+            <b>Войдите в бэк-офис демо-кафе</b>
+            <p>
+              Почтой и паролем, которые вы задали для демо-кафе. Это вход владельца — с ним
+              открываются и отчёты, и касса.
+            </p>
+            <a
+              class="btn btn--main"
+              href="https://positive-loyalty.pages.dev/login"
+              target="_blank"
+              rel="noopener"
+              >Открыть вход</a
+            >
+          </div>
+        </div>
+        <div class="step">
+          <div class="num">2</div>
+          <div>
+            <b>Станьте гостем демо-кафе</b>
+            <p>Войдите через Google или Telegram — кафе появится в вашей карте гостя.</p>
+            <a class="btn" data-join href="#" target="_blank" rel="noopener"
+              >Вступить в демо-кафе</a
+            >
+          </div>
+        </div>
+      </div>
+
+      <h2>Владелец</h2>
+      <p class="hint">Бэк-офис: что видит хозяин заведения.</p>
+      <div class="grid" data-owner>
+        <a class="card" href="/"
+          ><strong>Обзор</strong
+          ><span>Выручка, гости по дням, советы: «зал пустует 14–17», «45 спящих»</span></a
+        >
+        <a class="card" href="/guests"
+          ><strong>Гости</strong><span>Рейтинг, фильтры как у UDS, теги, выгрузка</span></a
+        >
+        <a class="card" data-guest-card href="/guests"
+          ><strong>Карточка гостя</strong><span>Вся история, статус, баллы, «Подарить»</span></a
+        >
+        <a class="card" href="/offers"
+          ><strong>Акции</strong><span>Тихие часы, десерт к чеку, «Соскучились»</span></a
+        >
+        <a class="card" href="/offers?tab=certificates"
+          ><strong>Сертификаты</strong><span>Подарочные и промо — гость забирает сам</span></a
+        >
+        <a class="card" href="/catalog"
+          ><strong>Награды за баллы</strong><span>Кофе, десерт, сет — что взять за баллы</span></a
+        >
+        <a class="card" href="/reviews"
+          ><strong>Отзывы</strong><span>Средняя оценка, автоответы, оценка кассира</span></a
+        >
+        <a class="card" href="/reviews?tab=news"
+          ><strong>Новости</strong><span>Гость видит их в своей карте</span></a
+        >
+        <a class="card" href="/reviews?tab=automation"
+          ><strong>Автосценарии</strong><span>«Соскучились» уходит сам через 30 дней</span></a
+        >
+        <a class="card" href="/reports?tab=top"
+          ><strong>Лучшие гости</strong><span>Кто приносит больше всех</span></a
+        >
+        <a class="card" href="/reports?tab=rfm"
+          ><strong>Сегменты</strong><span>Чемпионы, засыпающие, в зоне риска</span></a
+        >
+        <a class="card" href="/reports?tab=staff"
+          ><strong>Сотрудники</strong><span>Кто из кассиров сколько пробил</span></a
+        >
+        <a class="card" href="/settings?section=referral"
+          ><strong>Приглашения</strong><span>Процент с покупок друзей на три круга</span
+          ><em class="tag">как у UDS</em></a
+        >
+        <a class="card" href="/settings?section=program"
+          ><strong>Начисление и статусы</strong><span>5 % баллами, «Постоянный», VIP</span></a
+        >
+        <a class="card" href="/settings/security"
+          ><strong>Безопасность</strong><span>Подозрительный кассир: семь чеков за утро</span></a
+        >
+        <a class="card" href="/partners?tab=catalog"
+          ><strong>Партнёры</strong><span>Соседи по району: акции друг для друга</span></a
+        >
+      </div>
+
+      <h2>Кассир</h2>
+      <p class="hint">Экран кассы. Гостя ищут по QR с его телефона или по номеру.</p>
+      <div class="two">
+        <div class="panel">
+          <table>
+            <tbody data-guests></tbody>
+          </table>
+        </div>
+        <div class="panel">
+          <p class="hint" style="margin-bottom: 12px">
+            Вбейте номер гостя вместо QR, введите сумму чека — «Посчитать». Чек от 800 ฿ получит
+            десерт по акции, с 14 до 17 по будням — +10 % баллами.
+          </p>
+          <a class="btn btn--main" data-owner-link href="/pos" target="_blank" rel="noopener"
+            >Открыть кассу</a
+          >
+        </div>
+      </div>
+
+      <h2>Гость</h2>
+      <p class="hint">Карта гостя: баллы, награды, новости, приглашения.</p>
+      <div class="two">
+        <div class="panel qr-box">
+          <div id="qr" role="img" aria-label="QR-код: вступить в демо-кафе"></div>
+          <div>
+            <b>Дайте клиенту отсканировать</b>
+            <p class="hint" style="margin: 4px 0 10px">
+              Он станет гостем демо-кафе на своём телефоне и увидит всё глазами гостя.
+            </p>
+            <a class="btn" data-join href="#" target="_blank" rel="noopener"
+              >Ссылка для вступления</a
+            >
+          </div>
+        </div>
+        <div class="panel">
+          <b>Своя карта гостя</b>
+          <p class="hint" style="margin: 4px 0 10px">
+            Баллы, статус, награды за баллы, кнопка «Пригласить».
+          </p>
+          <a
+            class="btn btn--main"
+            href="https://positive-guest.pages.dev/"
+            target="_blank"
+            rel="noopener"
+            >Открыть карту гостя</a
+          >
+        </div>
+      </div>
+
+      <h2>Сценарий показа на 5 минут</h2>
+      <div class="panel">
+        <ol class="script">
+          <li>
+            <b>Обзор.</b>
+            <span
+              >«Вот что вы видите утром»: выручка, кто вернулся, советы — например, что зал пустует
+              с 14 до 17, и акция «Тихие часы» на это.</span
+            >
+          </li>
+          <li>
+            <b>Клиент сканирует QR.</b>
+            <span>Он гость кафе за десять секунд, без приложения из магазина.</span>
+          </li>
+          <li>
+            <b>Касса.</b>
+            <span
+              >Найдите его по QR (или вбейте номер демо-гостя), чек 900 ฿ — баллы начислены, десерт
+              по акции выдан.</span
+            >
+          </li>
+          <li>
+            <b>Карта гостя.</b>
+            <span>Баллы пришли сразу; видно, сколько осталось до кофе за баллы.</span>
+          </li>
+          <li>
+            <b>Отзывы.</b>
+            <span>Гость ставит оценку — владелец видит её и кассира, тройки ждут ответа.</span>
+          </li>
+          <li>
+            <b>Приглашения.</b>
+            <span>Гость зовёт друзей и получает процент с их покупок на три круга.</span>
+          </li>
+        </ol>
+      </div>
+
+      <footer>
+        Гости, чеки и отзывы демо-кафе выдуманы; номера телефонов — из диапазона, который не
+        выдаётся людям. История дописывается до сегодняшнего дня командой
+        <code>pnpm demo:venue</code>.
+      </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script>
+      // Адреса и демо-гости — из prisma/demo-venue-data.ts. Меняются там — меняются здесь.
+      const ADMIN = 'https://positive-loyalty.pages.dev'
+      const GUEST = 'https://positive-guest.pages.dev'
+      const TENANT = '9050035c-15da-4470-8d1b-5dc1f1167612'
+      const JOIN = `${GUEST}/?venue=${TENANT}&src=DEMQRDSK`
+      const SHOW_GUESTS = [
+        {
+          name: 'Nong N.',
+          phone: '+447700900097',
+          id: 'afa4c147-206a-4b3f-8b87-5ab67dad5bc8',
+          note: 'Постоянный, в цепочке приглашений',
+        },
+        {
+          name: 'Виктория Т.',
+          phone: '+447700900108',
+          id: '2ca87886-ba34-48b5-844a-ef6a9b807e33',
+          note: 'Резидент, баллы на кофе',
+        },
+        {
+          name: 'Malee T.',
+          phone: '+447700900118',
+          id: '9c810246-c22c-420b-844a-ac7e32e6d318',
+          note: 'Резидент, ходит почти каждый день',
+        },
+      ]
+
+      for (const link of document.querySelectorAll('[data-owner] a, [data-owner-link]')) {
+        link.href = ADMIN + link.getAttribute('href')
+        link.target = '_blank'
+        link.rel = 'noopener'
+      }
+      document.querySelector('[data-guest-card]').href =
+        `${ADMIN}/guests?guest=${SHOW_GUESTS[0].id}`
+      for (const link of document.querySelectorAll('[data-join]')) link.href = JOIN
+
+      const rows = document.querySelector('[data-guests]')
+      for (const guest of SHOW_GUESTS) {
+        const row = document.createElement('tr')
+        const who = document.createElement('td')
+        who.className = 'who'
+        who.textContent = guest.name
+        const note = document.createElement('span')
+        note.textContent = guest.note
+        who.append(note)
+        const phone = document.createElement('td')
+        phone.className = 'phone'
+        phone.textContent = guest.phone
+        const action = document.createElement('td')
+        action.style.textAlign = 'right'
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'btn copy'
+        button.textContent = 'Копировать'
+        button.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(guest.phone)
+            button.textContent = 'Скопировано'
+          } catch {
+            button.textContent = guest.phone
+          }
+          setTimeout(() => (button.textContent = 'Копировать'), 1600)
+        })
+        action.append(button)
+        row.append(who, phone, action)
+        rows.append(row)
+      }
+
+      const qrBox = document.getElementById('qr')
+      if (typeof QRCode === 'function') {
+        new QRCode(qrBox, {
+          text: JOIN,
+          width: 256,
+          height: 256,
+          colorDark: '#0a0e14',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        })
+      } else {
+        qrBox.textContent = 'QR не загрузился — откройте ссылку ниже'
+      }
+
+      // Тема: по умолчанию как у системы, кнопка переключает и запоминает.
+      const root = document.documentElement
+      const saved = (() => {
+        try {
+          return localStorage.getItem('showcase-theme')
+        } catch {
+          return null
+        }
+      })()
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved
+      document.getElementById('theme').addEventListener('click', () => {
+        const dark =
+          root.dataset.theme === 'dark' ||
+          (root.dataset.theme === undefined &&
+            !window.matchMedia('(prefers-color-scheme: light)').matches)
+        root.dataset.theme = dark ? 'light' : 'dark'
+        try {
+          localStorage.setItem('showcase-theme', root.dataset.theme)
+        } catch {
+          // Без памяти тема просто не запомнится.
+        }
+      })
+    </script>
+  </body>
+</html>

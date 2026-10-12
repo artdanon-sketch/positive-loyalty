@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url'
 
 import type { LedgerEventsService } from '../apps/api/src/core/ledger-events.service.ts'
 import type { LedgerService } from '../apps/api/src/core/ledger.service.ts'
+import type { MembershipRulesService } from '../apps/api/src/core/membership-rules.service.ts'
 import type { PrismaService } from '../apps/api/src/core/prisma.service.ts'
 
 /** Корень собранного API. Слеш в конце обязателен: иначе `new URL` съест сегмент. */
@@ -45,6 +46,7 @@ const API_PACKAGE_JSON = new URL('../apps/api/package.json', import.meta.url)
 
 const PRISMA_SERVICE_MODULE = new URL('core/prisma.service.js', DIST_ROOT)
 const LEDGER_SERVICE_MODULE = new URL('core/ledger.service.js', DIST_ROOT)
+const RULES_SERVICE_MODULE = new URL('core/membership-rules.service.js', DIST_ROOT)
 const PIN_MODULE = new URL('auth/pin.js', DIST_ROOT)
 const MASK_MODULE = new URL('common/pii/mask-phone.js', DIST_ROOT)
 
@@ -60,6 +62,13 @@ type LedgerFeed = Pick<LedgerEventsService, 'publishEarned'>
 
 interface LedgerServiceModule {
   readonly LedgerService: new (prisma: PrismaService, events: LedgerFeed) => LedgerService
+}
+
+interface RulesServiceModule {
+  readonly MembershipRulesService: new (
+    prisma: PrismaService,
+    ledger: LedgerService,
+  ) => MembershipRulesService
 }
 
 /**
@@ -104,6 +113,11 @@ export interface ApiRuntime {
   readonly prisma: PrismaService
   /** Единственная точка изменения баллов в системе. */
   readonly ledger: LedgerService
+  /**
+   * Правила участия: статусы гостей. Демо-заведению статусы пересчитываются
+   * тем же кодом, что и после чека, — своей формулы «кто VIP» у скриптов нет.
+   */
+  readonly rules: MembershipRulesService
   /** Хеш PIN тем же scrypt, которым API проверяет вход. */
   readonly hashPin: (pin: string) => Promise<string>
   /** Маска телефона тем же способом, каким её строит API. */
@@ -113,9 +127,13 @@ export interface ApiRuntime {
 }
 
 const assertBuilt = (): void => {
-  const missing = [PRISMA_SERVICE_MODULE, LEDGER_SERVICE_MODULE, PIN_MODULE, MASK_MODULE].filter(
-    (module) => !existsSync(fileURLToPath(module)),
-  )
+  const missing = [
+    PRISMA_SERVICE_MODULE,
+    LEDGER_SERVICE_MODULE,
+    RULES_SERVICE_MODULE,
+    PIN_MODULE,
+    MASK_MODULE,
+  ].filter((module) => !existsSync(fileURLToPath(module)))
 
   if (missing.length === 0) {
     return
@@ -162,15 +180,18 @@ export const loadApiRuntime = async (): Promise<ApiRuntime> => {
 
   const prismaModule = (await import(PRISMA_SERVICE_MODULE.href)) as PrismaServiceModule
   const ledgerModule = (await import(LEDGER_SERVICE_MODULE.href)) as LedgerServiceModule
+  const rulesModule = (await import(RULES_SERVICE_MODULE.href)) as RulesServiceModule
   const pinModule = (await import(PIN_MODULE.href)) as PinModule
   const maskModule = (await import(MASK_MODULE.href)) as MaskModule
 
   const prisma = new prismaModule.PrismaService()
   const ledger = new ledgerModule.LedgerService(prisma, SILENT_FEED)
+  const rules = new rulesModule.MembershipRulesService(prisma, ledger)
 
   return {
     prisma,
     ledger,
+    rules,
     hashPin: pinModule.hashPin,
     maskPhone: maskModule.maskPhone,
     close: async () => {
