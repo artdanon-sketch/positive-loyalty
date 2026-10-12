@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto'
+
 import { parseProgramConfig } from '@positive/contracts'
 
 import { loadApiRuntime } from './api-runtime.ts'
 import { askHidden, askLine } from './prompt.ts'
 
 /**
- * Заводит боевое заведение: само заведение, владельца и его устройство входа.
+ * Заводит боевое заведение: само заведение и вход его владельца по почте.
  *
  * ЧЕМ ЭТО ОТЛИЧАЕТСЯ ОТ seed.ts. Seed наполняет полигон выдуманными данными:
  * двести гостей, девяносто дней продаж. Здесь не создаётся ни одного гостя
@@ -28,6 +30,12 @@ import { askHidden, askLine } from './prompt.ts'
  *
  * Виды: RESTAURANT, SPA, RENTAL, RETAIL, OTHER.
  * Повторный запуск безопасен: заведения и сотрудники обновляются, а не двоятся.
+ *
+ * ИДЕНТИФИКАТОРЫ — UUID. Раньше заведение получало id из названия («kefir»),
+ * а владелец — «kefir-owner». Остальная система считает оба UUID: гость такого
+ * заведения не мог вступить в программу, журнал отказывал в начислении
+ * (миграция 20261012120000_tenant_ids_to_uuid перевела уже заведённые).
+ * Повторный запуск находит заведение по названию, без учёта регистра.
  */
 
 const VERTICALS = ['RESTAURANT', 'SPA', 'RENTAL', 'RETAIL', 'OTHER'] as const
@@ -43,63 +51,11 @@ const die = (message: string): never => {
   process.exit(1)
 }
 
-/** Латиница, цифры и дефис — из этого получаются код устройства и идентификаторы. */
-const slugify = (name: string): string => {
-  const translit: Record<string, string> = {
-    а: 'a',
-    б: 'b',
-    в: 'v',
-    г: 'g',
-    д: 'd',
-    е: 'e',
-    ё: 'e',
-    ж: 'zh',
-    з: 'z',
-    и: 'i',
-    й: 'y',
-    к: 'k',
-    л: 'l',
-    м: 'm',
-    н: 'n',
-    о: 'o',
-    п: 'p',
-    р: 'r',
-    с: 's',
-    т: 't',
-    у: 'u',
-    ф: 'f',
-    х: 'h',
-    ц: 'c',
-    ч: 'ch',
-    ш: 'sh',
-    щ: 'sch',
-    ъ: '',
-    ы: 'y',
-    ь: '',
-    э: 'e',
-    ю: 'yu',
-    я: 'ya',
-  }
-
-  const slug = [...name.toLowerCase()]
-    .map((ch) => translit[ch] ?? ch)
-    .join('')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-
-  if (slug === '') {
-    die(`Из названия «${name}» не получается код: в нём нет ни латиницы, ни цифр.`)
-  }
-
-  return slug
-}
-
 // ── Разбор аргументов ────────────────────────────────────────────────────────
 
 interface BusinessInput {
   readonly brandName: string
   readonly vertical: Vertical
-  readonly slug: string
 }
 
 const parseArgs = (argv: readonly string[]): BusinessInput[] => {
@@ -134,14 +90,14 @@ const parseArgs = (argv: readonly string[]): BusinessInput[] => {
       die(`«${vertical}» — неизвестный вид заведения. Допустимы: ${VERTICALS.join(', ')}`)
     }
 
-    const slug = slugify(brandName)
+    const key = brandName.toLowerCase()
 
-    if (seen.has(slug)) {
-      die(`Два заведения дают одинаковый код «${slug}». Названия должны различаться.`)
+    if (seen.has(key)) {
+      die(`«${brandName}» указано дважды. Названия должны различаться.`)
     }
-    seen.add(slug)
+    seen.add(key)
 
-    return { brandName, vertical: vertical as Vertical, slug }
+    return { brandName, vertical: vertical as Vertical }
   })
 }
 
@@ -222,9 +178,35 @@ try {
   const created: Array<{ brand: string; email: string }> = []
 
   for (const [index, business] of businesses.entries()) {
-    const tenantId = business.slug
-    const staffId = `${business.slug}-owner`
     const cred = creds[index] ?? die('Внутренняя ошибка: не набрана учётка для заведения.')
+
+    // Уже заведённое находим по названию: id у него теперь UUID, а не слово.
+    const same = await prisma.tenant.findMany({
+      where: { brandName: { equals: business.brandName, mode: 'insensitive' } },
+      select: { id: true },
+    })
+
+    if (same.length > 1) {
+      die(`Заведений с названием «${business.brandName}» несколько — какое менять, не понять.`)
+    }
+
+    const tenantId = same[0]?.id ?? randomUUID()
+
+    const owner = await prisma.staff.findFirst({
+      where: { tenantId, role: 'OWNER' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    })
+    const staffId = owner?.id ?? randomUUID()
+
+    const taken = await prisma.staff.findFirst({
+      where: { email: cred.email, NOT: { id: staffId } },
+      select: { id: true },
+    })
+
+    if (taken !== null) {
+      die(`Почта ${cred.email} уже входит в другое заведение. Ничего не изменено.`)
+    }
 
     const passwordHash = await runtime.hashPin(cred.password)
 
