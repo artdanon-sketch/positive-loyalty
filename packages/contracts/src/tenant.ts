@@ -4,6 +4,7 @@ import { BirthdayConfig } from './birthday.js'
 import { NO_REFERRAL_LEVELS, ReferralLevels } from './referral.js'
 import { ReviewConfig } from './review-config.js'
 import { SuspiciousConfig } from './security-config.js'
+import { TenantProfileExtra } from './tenant-profile.js'
 
 /**
  * Конфигурация программы лояльности заведения.
@@ -181,6 +182,18 @@ export const ProgramConfig = z
     cashierRules: CashierRules.default(CashierRules.parse({})),
     staffReward: StaffRewardConfig.default(StaffRewardConfig.parse({})),
     ordering: OrderingConfig.default(OrderingConfig.parse({})),
+    /**
+     * Раздел «О заведении» (tenant-profile.ts). Экран профиля кладёт его в те же
+     * настройки ключом `profile`, поэтому схема обязана этот ключ знать.
+     *
+     * Без него строгая схема отвергала настройки целиком: у заведения, которое
+     * заполнило профиль, касса отвечала TENANT_MISCONFIGURED, сохранение любого
+     * раздела программы — 500, а статусы гостей в списке пропадали.
+     *
+     * Необязательный и без значения по умолчанию: у заведения, не открывавшего
+     * профиль, ключа нет и не появится от чтения.
+     */
+    profile: TenantProfileExtra.optional(),
   })
   .strict()
 

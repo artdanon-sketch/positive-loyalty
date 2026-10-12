@@ -107,6 +107,44 @@ describe('Профиль заведения', () => {
     expect(tenant?.brandName).toBe('Kata Beach Kitchen')
   })
 
+  it('С ЗАПОЛНЕННЫМ ПРОФИЛЕМ НАСТРОЙКИ ПРОГРАММЫ ЧИТАЮТСЯ И СОХРАНЯЮТСЯ', async () => {
+    // Профиль лежит в тех же настройках ключом profile. Строгая схема без этого
+    // ключа отвергала их целиком: касса отвечала «настройки повреждены»,
+    // сохранение любого раздела — 500.
+    const read = await request(server())
+      .get('/v1/admin/settings/program')
+      .set('Authorization', `Bearer ${ownerToken}`)
+
+    expect(read.status).toBe(200)
+    expect(read.body).toMatchObject({ baseEarnRate: 7, baseRedeemRate: 30 })
+
+    const saved = await request(server())
+      .put('/v1/admin/settings/program')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        baseEarnRate: 8,
+        baseRedeemRate: 30,
+        cashierRules: {
+          requireReceiptNumber: false,
+          maxManualAmount: null,
+          allowManualEntry: true,
+        },
+      })
+
+    expect(saved.status).toBe(200)
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true },
+    })
+
+    // И сохранение программы профиль не стёрло.
+    expect(tenant?.settings).toMatchObject({
+      baseEarnRate: 8,
+      profile: { hours: 'ежедневно 9:00–22:00', address: 'Kata Rd 12, Phuket' },
+    })
+  })
+
   it('НЕИЗВЕСТНЫЙ ЧАСОВОЙ ПОЯС НЕ ПРОХОДИТ: ОН ДВИГАЕТ ГРАНИЦУ СУТОК В ОТЧЁТАХ', async () => {
     const response = await put(ownerToken, { ...valid, timezone: 'Asia/Phuket' })
 
