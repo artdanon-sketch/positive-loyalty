@@ -135,7 +135,15 @@ for (const origin of origins) {
 
 // Только origin, без завершающей косой черты: браузер присылает заголовок
 // именно в таком виде, и лишний символ превратит проверку в отказ.
-const corsOrigins = origins.map((o) => new URL(o).origin).join(',')
+//
+// Плюс адреса наших приложений для телефона: из APK запросы приходят не с сайта,
+// а из встроенного окна Capacitor 6 — с https://localhost (Android) и
+// capacitor://localhost (iOS). Без них приложение на телефоне пишет «сервер
+// недоступен», хотя сервер жив: так и вышло 16.10.2026. Строками, а не через
+// new URL(): у схемы capacitor: origin в URL — это «null».
+const NATIVE_APP_ORIGINS = ['https://localhost', 'capacitor://localhost']
+
+const corsOrigins = [...origins.map((o) => new URL(o).origin), ...NATIVE_APP_ORIGINS].join(',')
 
 // ── Секрет подписи ───────────────────────────────────────────────────────────
 //
