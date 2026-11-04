@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
-import type { IntegrationSecret, IntegrationStatus, RotateSecretInput } from '@positive/contracts'
+import type {
+  IntegrationConnected,
+  IntegrationSecret,
+  IntegrationStatus,
+  RotateSecretInput,
+} from '@positive/contracts'
 
 import { useAuth } from '../../shared/auth/auth-context'
 
@@ -14,6 +19,19 @@ export function useIntegration(): UseQueryResult<IntegrationStatus, Error> {
   return useQuery({
     queryKey: INTEGRATION_KEY,
     queryFn: () => authFetch<IntegrationStatus>('/admin/integration'),
+  })
+}
+
+export function useConnectIntegration(): UseMutationResult<IntegrationConnected, Error, void> {
+  const { authFetch } = useAuth()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () =>
+      authFetch<IntegrationConnected>('/admin/integration/connect', { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: INTEGRATION_KEY })
+    },
   })
 }
 

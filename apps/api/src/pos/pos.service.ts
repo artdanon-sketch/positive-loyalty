@@ -434,7 +434,7 @@ export class PosService {
     locationId?: string | undefined
     withoutDiscount?: boolean | undefined
   }): Promise<PreviewResult> {
-    const { tenantId, actorId } = TenantContext.getOrThrow()
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
     const config = await this.loadConfig(tenantId)
 
     if (config.cashierRules.requireReceiptNumber && input.receiptNumber === undefined) {
@@ -446,8 +446,10 @@ export class PosService {
       })
     }
 
+    // Потолок — против суммы, вбитой кассиром руками. Сервер кассы присылает итог
+    // пробитого чека, и банкет выше потолка иначе остался бы без баллов.
     const cap = config.cashierRules.maxManualAmount
-    if (cap !== null && input.amount > cap) {
+    if (cap !== null && role !== 'POS_LINK' && input.amount > cap) {
       throw new BadRequestException({
         error: {
           code: 'AMOUNT_ABOVE_CAP',

@@ -98,6 +98,7 @@ export type AuditAction =
   /** Включён, выключен или изменён автоматический сценарий рассылки. */
   | 'AUTOMATION_CHANGED'
   | 'TENANT_PROFILE_CHANGED'
+  | 'INTEGRATION_CONNECTED'
   | 'INTEGRATION_SECRET_REVEALED'
   | 'INTEGRATION_SECRET_ROTATED'
   | 'CATALOG_ITEM_CHANGED'

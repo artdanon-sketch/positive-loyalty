@@ -5,14 +5,19 @@ import type { IntegrationStatus } from '@positive/contracts'
 import { fill } from '../../../shared/format/fill'
 import { formatDate } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
-import { useIntegration, useRevealSecret, useRotateSecret } from '../integration-hooks'
+import {
+  useConnectIntegration,
+  useIntegration,
+  useRevealSecret,
+  useRotateSecret,
+} from '../integration-hooks'
 
 /**
  * Блок «Касса» на экране настроек. docs/02, раздел 5.16.
  *
- * ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ: подключение заводит касса, а владелец
- * приходит сюда с одним вопросом — «почему чеки не приходят». Поэтому здесь
- * счётчики принятого за неделю и застрявшего, а не поля ввода.
+ * ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ: кроме кнопки «Подключить кассу» здесь
+ * счётчики принятого за неделю и застрявшего, а не поля ввода — владелец приходит
+ * сюда с вопросом «почему чеки не приходят».
  *
  * КЛЮЧ ЗАМАСКИРОВАН, ПОКА НЕ ПОПРОСЯТ. Хвоста хватает, чтобы сверить с тем,
  * что введено в кассе; полный показывается по кнопке и уходит в историю.
@@ -35,6 +40,49 @@ function Rows({ status }: { status: IntegrationStatus }): ReactElement {
         <dd className="broadcast-stats__value">{status.failed}</dd>
       </div>
     </dl>
+  )
+}
+
+/** Что вписать в кассу. Ключ показан один раз: дальше — кнопкой, с записью в историю. */
+function ConnectBlock(): ReactElement {
+  const t = useT()
+  const connect = useConnectIntegration()
+
+  if (connect.data !== undefined) {
+    return (
+      <>
+        <p className="field__hint">{t('integration.connect.done')}</p>
+        <div className="field">
+          <span className="field__label">{t('integration.connect.merchant')}</span>
+          <code className="integration__code">{connect.data.posMerchantId}</code>
+        </div>
+        <div className="field">
+          <span className="field__label">{t('integration.secret')}</span>
+          <code className="integration__code">{connect.data.secret}</code>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <p className="state__hint">{t('integration.none')}</p>
+      {connect.isError ? (
+        <p className="state__hint state__hint--error" role="alert">
+          {connect.error.message}
+        </p>
+      ) : null}
+      <button
+        className="button"
+        disabled={connect.isPending}
+        type="button"
+        onClick={() => {
+          connect.mutate()
+        }}
+      >
+        {t('integration.connect')}
+      </button>
+    </>
   )
 }
 
@@ -71,7 +119,7 @@ export function IntegrationSettingsSection(): ReactElement {
           </button>
         </div>
       ) : !integration.data.connected ? (
-        <p className="state__hint">{t('integration.none')}</p>
+        <ConnectBlock />
       ) : (
         <>
           <p className="field__hint">
