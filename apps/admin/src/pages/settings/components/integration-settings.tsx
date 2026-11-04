@@ -43,26 +43,13 @@ function Rows({ status }: { status: IntegrationStatus }): ReactElement {
   )
 }
 
-/** Что вписать в кассу. Ключ показан один раз: дальше — кнопкой, с записью в историю. */
-function ConnectBlock(): ReactElement {
+/** Кассы нет: одна кнопка. Результат живёт выше — после неё блок сменится на подключённый. */
+function ConnectBlock({
+  connect,
+}: {
+  connect: ReturnType<typeof useConnectIntegration>
+}): ReactElement {
   const t = useT()
-  const connect = useConnectIntegration()
-
-  if (connect.data !== undefined) {
-    return (
-      <>
-        <p className="field__hint">{t('integration.connect.done')}</p>
-        <div className="field">
-          <span className="field__label">{t('integration.connect.merchant')}</span>
-          <code className="integration__code">{connect.data.posMerchantId}</code>
-        </div>
-        <div className="field">
-          <span className="field__label">{t('integration.secret')}</span>
-          <code className="integration__code">{connect.data.secret}</code>
-        </div>
-      </>
-    )
-  }
 
   return (
     <>
@@ -89,8 +76,10 @@ function ConnectBlock(): ReactElement {
 export function IntegrationSettingsSection(): ReactElement {
   const t = useT()
   const integration = useIntegration()
+  const connect = useConnectIntegration()
   const reveal = useRevealSecret()
   const rotate = useRotateSecret()
+  const shownSecret = reveal.data?.secret ?? rotate.data?.secret ?? connect.data?.secret
   const [reason, setReason] = useState('')
   const [rotating, setRotating] = useState(false)
 
@@ -119,9 +108,14 @@ export function IntegrationSettingsSection(): ReactElement {
           </button>
         </div>
       ) : !integration.data.connected ? (
-        <ConnectBlock />
+        <ConnectBlock connect={connect} />
       ) : (
         <>
+          {connect.data === undefined ? null : (
+            <p className="field__hint" role="status">
+              {t('integration.connect.done')}
+            </p>
+          )}
           <p className="field__hint">
             {fill(t('integration.connected'), {
               merchant: integration.data.posMerchantId ?? '—',
@@ -143,10 +137,10 @@ export function IntegrationSettingsSection(): ReactElement {
           <div className="field">
             <span className="field__label">{t('integration.secret')}</span>
             <code className="integration__code">
-              {reveal.data?.secret ?? rotate.data?.secret ?? integration.data.secretMasked ?? '—'}
+              {shownSecret ?? integration.data.secretMasked ?? '—'}
             </code>
             <p className="field__hint">{t('integration.secret.hint')}</p>
-            {reveal.data === undefined && rotate.data === undefined ? (
+            {shownSecret === undefined ? (
               <button
                 className="button"
                 disabled={reveal.isPending}

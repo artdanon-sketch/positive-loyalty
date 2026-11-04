@@ -1305,7 +1305,6 @@
   "integration.hint": "Receipts from POSitive POS arrive here. This block answers one question: why receipts are not coming.",
   "integration.none": "No till connected. Press “Connect till” and enter the ID and key in the POSitive POS settings.",
   "integration.connect": "Connect till",
-  "integration.connect.merchant": "Venue ID",
   "integration.connect.done": "Till connected. Enter these two values in POSitive: Settings → POSitive Loyalty. The key can be shown again by button; that goes to the history.",
   "integration.connected": "Connected to venue {merchant}, since {date}.",
   "integration.inbound": "Receipt intake address",

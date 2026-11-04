@@ -1305,7 +1305,6 @@
   "integration.hint": "Сюда приходят чеки из POSitive POS. Этот блок отвечает на вопрос «почему чеки не приходят».",
   "integration.none": "Касса не подключена. Нажмите «Подключить кассу» и впишите идентификатор и ключ в настройки POSitive POS.",
   "integration.connect": "Подключить кассу",
-  "integration.connect.merchant": "Идентификатор заведения",
   "integration.connect.done": "Касса подключена. Впишите эти два значения в POSitive: Настройки → POSitive Loyalty. Ключ потом можно открыть кнопкой, показ уйдёт в историю.",
   "integration.connected": "Подключено к заведению {merchant}, с {date}.",
   "integration.inbound": "Адрес приёма чеков",
