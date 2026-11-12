@@ -284,8 +284,8 @@ describe('LedgerEntryRecord', () => {
     expect(LedgerEntryRecord.parse(redeemed).amount).toBe(-20_000)
   })
 
-  it('отклоняет отрицательный balanceAfter — баланс в минус не уходит', () => {
-    expect(issuePaths(LedgerEntryRecord, { ...validRecord, balanceAfter: -1 })).toContain(
+  it('принимает отрицательный balanceAfter — так выглядит отмена потраченного (docs/05, 6.6)', () => {
+    expect(issuePaths(LedgerEntryRecord, { ...validRecord, balanceAfter: -1 })).not.toContain(
       'balanceAfter',
     )
   })
