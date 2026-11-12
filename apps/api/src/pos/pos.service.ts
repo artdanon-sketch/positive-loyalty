@@ -46,6 +46,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { evaluateOffers } from '../rules/rules-engine'
 import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
 import { checkout } from './checkout-math'
+import { receiptKey, rewardKey } from './receipt-keys'
 
 /**
  * Касса: найти гостя, посчитать, провести.
@@ -677,7 +678,7 @@ export class PosService {
           membershipId: preview.membershipId,
           amount: preview.redeem,
           basisAmount: preview.amount,
-          idempotencyKey: `pos:redeem:${input.receiptId}`,
+          idempotencyKey: receiptKey(tenantId, 'redeem', input.receiptId),
           // Операции чека связываются номером чека — так задано в docs/01,
           // раздел 4.4: refType принимает receipt | offer_grant | referral | promo.
           // Отдельная сущность «транзакция» не нужна: чек и есть транзакция,
@@ -716,7 +717,7 @@ export class PosService {
           membershipId: preview.membershipId,
           amount: preview.pointsToEarn,
           basisAmount: preview.amountToPay,
-          idempotencyKey: `pos:earn:${input.receiptId}`,
+          idempotencyKey: receiptKey(tenantId, 'earn', input.receiptId),
           // Операции чека связываются номером чека — так задано в docs/01,
           // раздел 4.4: refType принимает receipt | offer_grant | referral | promo.
           // Отдельная сущность «транзакция» не нужна: чек и есть транзакция,
@@ -1118,7 +1119,7 @@ export class PosService {
         {
           membershipId: input.membershipId,
           amount: item.pointsPrice,
-          idempotencyKey: `pos:reward:${input.redemptionId}`,
+          idempotencyKey: rewardKey(tenantId, input.redemptionId),
           refType: 'catalog_item',
           refId: input.itemId,
           source: 'STAFF_MANUAL',
