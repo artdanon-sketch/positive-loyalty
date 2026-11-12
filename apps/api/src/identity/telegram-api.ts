@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 /**
- * Тонкий клиент Telegram Bot API. Только те три метода, которыми мы правда
+ * Тонкий клиент Telegram Bot API. Только те методы, которыми мы правда
  * пользуемся: узнать себя, забрать сообщения, ответить.
  *
  * ГЛАВНОЕ ПРАВИЛО ЭТОГО ФАЙЛА: ключ бота не должен утечь в сообщение об ошибке.
@@ -53,6 +53,20 @@ const Update = z.object({
       from: Sender.optional(),
       chat: z.object({ id: z.number().int(), type: z.string() }),
       text: z.string().optional(),
+    })
+    .optional(),
+  /** Нажатие кнопки под сообщением бота — так гость подтверждает вход. */
+  callback_query: z
+    .object({
+      id: z.string(),
+      from: Sender,
+      data: z.string().optional(),
+      message: z
+        .object({
+          message_id: z.number().int(),
+          chat: z.object({ id: z.number().int(), type: z.string() }),
+        })
+        .optional(),
     })
     .optional(),
 })
@@ -122,6 +136,53 @@ export const parseStart = (update: TelegramUpdate): TelegramStart | null => {
     displayName: name.length > 0 ? name : null,
     locale: toLocale(from.language_code),
     payload: match[1] ?? null,
+  }
+}
+
+/** Префикс данных кнопки «Это я, войти». Код попытки — после двоеточия. */
+export const LOGIN_APPROVE_PREFIX = 'login:'
+
+/** Нажатие «Это я, войти» под вопросом бота. */
+export interface TelegramLoginApproval {
+  readonly updateId: number
+  /** Нужен, чтобы погасить «часики» на кнопке у гостя. */
+  readonly callbackId: string
+  /** Кто нажал. Подтверждает только тот, кто открыл ссылку. */
+  readonly userId: string
+  readonly chatId: string
+  readonly messageId: number
+  /** Код попытки входа из той же ссылки. */
+  readonly nonce: string
+}
+
+/**
+ * Разбирает нажатие кнопки подтверждения входа.
+ *
+ * `null` на всём остальном: чужие кнопки, групповые чаты, нажатия ботов,
+ * данные не нашего вида. Код — тот же алфавит, что у ссылки (base64url).
+ */
+export const parseLoginApproval = (update: TelegramUpdate): TelegramLoginApproval | null => {
+  const query = update.callback_query
+  if (query === undefined || query.from.is_bot || query.message === undefined) {
+    return null
+  }
+
+  if (query.message.chat.type !== 'private') {
+    return null
+  }
+
+  const match = /^login:([A-Za-z0-9_-]{1,60})$/.exec(query.data ?? '')
+  if (match?.[1] === undefined) {
+    return null
+  }
+
+  return {
+    updateId: update.update_id,
+    callbackId: query.id,
+    userId: String(query.from.id),
+    chatId: String(query.message.chat.id),
+    messageId: query.message.message_id,
+    nonce: match[1],
   }
 }
 
@@ -212,9 +273,9 @@ export class TelegramApi {
       {
         ...(offset === null ? {} : { offset }),
         timeout: waitSeconds,
-        // Просим только сообщения. Всё прочее — правки, реакции, участники —
-        // нам не нужно и в очереди только мешает.
-        allowed_updates: ['message'],
+        // Сообщения и нажатия кнопок (подтверждение входа). Всё прочее —
+        // правки, реакции, участники — нам не нужно и в очереди только мешает.
+        allowed_updates: ['message', 'callback_query'],
       },
       // Ждём дольше, чем просили Telegram: разрыв по нашему таймеру раньше
       // срока превратил бы обычное затишье в поток ошибок в логе.
@@ -234,6 +295,37 @@ export class TelegramApi {
   /** Пишет гостю в чат. Ошибку не глушим: молчащий бот — это поломка входа. */
   async sendMessage(chatId: string, text: string): Promise<void> {
     await this.call('sendMessage', { chat_id: chatId, text }, 10_000)
+  }
+
+  /** Вопрос с одной кнопкой, нажатие которой придёт обратно как callback_query. */
+  async sendMessageWithButton(
+    chatId: string,
+    text: string,
+    button: { readonly text: string; readonly data: string },
+  ): Promise<void> {
+    await this.call(
+      'sendMessage',
+      {
+        chat_id: chatId,
+        text,
+        reply_markup: { inline_keyboard: [[{ text: button.text, callback_data: button.data }]] },
+      },
+      10_000,
+    )
+  }
+
+  /** Гасит «часики» на нажатой кнопке и, если нужно, показывает короткую подсказку. */
+  async answerCallbackQuery(callbackId: string, text?: string): Promise<void> {
+    await this.call(
+      'answerCallbackQuery',
+      { callback_query_id: callbackId, ...(text === undefined ? {} : { text }) },
+      10_000,
+    )
+  }
+
+  /** Заменяет текст сообщения и убирает кнопку: нажать второй раз нельзя. */
+  async editMessageText(chatId: string, messageId: number, text: string): Promise<void> {
+    await this.call('editMessageText', { chat_id: chatId, message_id: messageId, text }, 10_000)
   }
 
   /**

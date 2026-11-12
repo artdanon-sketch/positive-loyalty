@@ -14,7 +14,8 @@ import { GuestAuthService } from './guest-auth.service'
 import { TelegramBotService } from './telegram-bot.service'
 import { verifyTelegramInitData } from './telegram-init-data'
 import type { TelegramMiniAppUser } from './telegram-init-data'
-import type { TelegramStart } from './telegram-api'
+import { LOGIN_APPROVE_PREFIX } from './telegram-api'
+import type { TelegramLoginApproval, TelegramStart } from './telegram-api'
 
 /**
  * Вход через Telegram: трёхсторонний обмен, описанный в контракте
@@ -94,6 +95,15 @@ export const decideClaim = (
 
   return 'TAKE'
 }
+
+/** Ответ бота на «Запустить»: текст и, если попытка привязана, данные кнопки входа. */
+export interface TelegramLoginReply {
+  readonly text: string
+  readonly approveData: string | null
+}
+
+const EXPIRED_TEXT =
+  'Ссылка устарела. Вернитесь в приложение и нажмите «Войти через Telegram» ещё раз.'
 
 @Injectable()
 export class TelegramLoginService {
@@ -203,35 +213,41 @@ export class TelegramLoginService {
   }
 
   /**
-   * Подтверждение от бота. Вызывается разбором сообщений, не контроллером.
+   * «Запустить» по ссылке входа. Вызывается разбором сообщений, не контроллером.
    *
-   * Возвращает текст, который бот скажет гостю в ответ. Решение о тексте
-   * принимается здесь, а не в разборе сообщений: только здесь известно,
-   * нашлась ли попытка входа и не протухла ли она.
+   * ВХОД НЕ ПОДТВЕРЖДАЕТСЯ ЗДЕСЬ. Раньше подтверждал сам «Запустить», и это
+   * была дыра: злоумышленник начинал вход у себя, слал ссылку гостю («нажмите —
+   * получите 100 баллов»), гость жал «Запустить» — и сессию его карты забирал
+   * тот, у кого секрет попытки. Теперь «Запустить» только привязывает попытку
+   * к этому Telegram, а вход подтверждает отдельная кнопка «Это я, войти»
+   * под честным предупреждением. Нажать её может только тот же человек.
+   *
+   * Возвращает текст ответа и — если попытка привязана — данные кнопки.
    */
-  async confirm(start: TelegramStart): Promise<string> {
+  async confirm(start: TelegramStart): Promise<TelegramLoginReply> {
     if (start.payload === null) {
-      return (
-        'Это бот программы лояльности POSitive.\n\n' +
-        'Чтобы войти, откройте приложение и нажмите «Войти через Telegram» — ' +
-        'оттуда вы вернётесь сюда по ссылке, и вход завершится сам.'
-      )
+      return {
+        text:
+          'Это бот программы лояльности POSitive.\n\n' +
+          'Чтобы войти, откройте приложение и нажмите «Войти через Telegram» — ' +
+          'оттуда вы вернётесь сюда по ссылке.',
+        approveData: null,
+      }
     }
 
     const now = new Date()
 
-    // Одним запросом: находим по хешу кода И проверяем, что попытка ещё жива
-    // и никем не занята. Пара «прочитать, потом обновить» здесь дала бы
-    // возможность подтвердить одну попытку дважды.
+    // Одним запросом: попытка жива, не занята никем и ещё не привязана.
+    // Второй «Запустить» по той же ссылке — от кого угодно — её не перехватит.
     const { count } = await this.prisma.telegramLoginRequest.updateMany({
       where: {
         nonceHash: hashToken(start.payload),
+        telegramUserId: null,
         confirmedAt: null,
         claimedAt: null,
         expiresAt: { gt: now },
       },
       data: {
-        confirmedAt: now,
         telegramUserId: start.userId,
         displayName: start.displayName,
         locale: start.locale,
@@ -239,7 +255,37 @@ export class TelegramLoginService {
     })
 
     if (count === 0) {
-      return 'Ссылка устарела. Вернитесь в приложение и нажмите «Войти через Telegram» ещё раз.'
+      return { text: EXPIRED_TEXT, approveData: null }
+    }
+
+    return {
+      text:
+        'Вход в карту POSitive на новом устройстве.\n\n' +
+        'Если вход только что начали вы — нажмите «Это я, войти».\n\n' +
+        'Если ссылку вам прислали или просят нажать за баллы — ничего не нажимайте: ' +
+        'так пытаются войти в вашу карту и потратить ваши баллы.',
+      approveData: `${LOGIN_APPROVE_PREFIX}${start.payload}`,
+    }
+  }
+
+  /**
+   * «Это я, войти». Подтверждает попытку, только если нажал тот же Telegram,
+   * что открыл ссылку, и попытка ещё жива.
+   */
+  async approve(approval: TelegramLoginApproval): Promise<string> {
+    const { count } = await this.prisma.telegramLoginRequest.updateMany({
+      where: {
+        nonceHash: hashToken(approval.nonce),
+        telegramUserId: approval.userId,
+        confirmedAt: null,
+        claimedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { confirmedAt: new Date() },
+    })
+
+    if (count === 0) {
+      return EXPIRED_TEXT
     }
 
     // Ни имени, ни идентификатора гостя в лог: это персональные данные
