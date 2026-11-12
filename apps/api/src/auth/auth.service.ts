@@ -40,6 +40,14 @@ interface RefreshClaims {
 /** Refresh высокоэнтропийный и случайный — быстрый хеш здесь уместен, KDF не нужен. */
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 
+/**
+ * Код устройства — половина ключа кассира (вторая — PIN), поэтому в лог идёт
+ * только его хвост: по нему поддержка узнает своё устройство, а перебирать
+ * PIN по чужому коду из логов не получится.
+ */
+const maskDevice = (deviceId: string): string =>
+  deviceId.length <= 4 ? '…' : `…${deviceId.slice(-4)}`
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
@@ -78,60 +86,53 @@ export class AuthService {
     const tenantId = resolved[0]?.tenantId ?? null
 
     if (tenantId === null) {
-      throw this.rejected('устройство не зарегистрировано или отозвано', { deviceId })
+      throw this.rejected('устройство не зарегистрировано или отозвано', {
+        device: maskDevice(deviceId),
+      })
     }
 
-    const attempt = await this.prisma.forTenant(tenantId, async (tx) => {
+    const staff = await this.prisma.forTenant(tenantId, async (tx) => {
       const device = await tx.staffDevice.findFirst({
         where: { deviceId, tenantId, isActive: true, revokedAt: null },
         select: { id: true, staffId: true },
       })
 
       if (device === null) {
-        throw this.rejected('устройство не найдено внутри заведения', { deviceId })
+        throw this.rejected('устройство не найдено внутри заведения', {
+          device: maskDevice(deviceId),
+        })
       }
 
-      const staff = await tx.staff.findFirst({
+      const found = await tx.staff.findFirst({
         where: { id: device.staffId, tenantId, isActive: true },
       })
 
-      if (staff === null || staff.pinHash === null) {
+      if (found === null || found.pinHash === null) {
         throw this.rejected('сотрудник неактивен или у него нет PIN', { staffId: device.staffId })
       }
 
-      if (staff.pinLockedUntil !== null && staff.pinLockedUntil > new Date()) {
-        throw this.rejected('вход временно заблокирован после серии неудач', { staffId: staff.id })
-      }
+      return { ...found, pinHash: found.pinHash }
+    })
 
-      const ok = await verifyPin(pin, staff.pinHash)
+    // Попытка занимает место в счётчике ДО проверки PIN (см. reserveAttempt).
+    const attempts = await this.reserveAttempt(tenantId, staff.id)
 
-      if (!ok) {
-        // ЗАПИСЬ ШТРАФА ЗДЕСЬ НЕ ДЕЛАЕТСЯ, И ЭТО ГЛАВНОЕ В ЭТОМ МЕТОДЕ.
-        //
-        // Мы внутри транзакции forTenant. Любое исключение отсюда откатывает
-        // её целиком — вместе с инкрементом счётчика неудач. Первая версия
-        // так и была написана: счётчик увеличивался, потом throw, потом откат,
-        // и блокировка не наступала НИКОГДА. Десять тысяч вариантов PIN
-        // перебирались бы без единого препятствия.
-        //
-        // Поймано интеграционным тестом: после пяти неудач верный PIN
-        // возвращал 200 вместо 401.
-        //
-        // Поэтому наружу отдаётся признак неудачи, а штраф пишется отдельной
-        // транзакцией уже за пределами этой.
-        return {
-          outcome: 'PIN_MISMATCH' as const,
-          staffId: staff.id,
-          attempts: staff.pinFailedAttempts + 1,
-        }
-      }
+    if (attempts === null) {
+      throw this.rejected('вход временно заблокирован после серии неудач', { staffId: staff.id })
+    }
 
+    if (!(await verifyPin(pin, staff.pinHash))) {
+      await this.settleFailure(tenantId, staff.id, attempts)
+      throw this.rejected('неверный PIN', { staffId: staff.id, attempts })
+    }
+
+    return this.prisma.forTenant(tenantId, async (tx) => {
       await tx.staff.update({
         where: { id: staff.id },
         data: { pinFailedAttempts: 0, pinLockedUntil: null, lastSeenAt: new Date() },
       })
 
-      const tokens = await this.issueTokens(tx, {
+      return this.issueTokens(tx, {
         tenantId,
         staffId: staff.id,
         displayName: staff.displayName,
@@ -140,43 +141,64 @@ export class AuthService {
         familyId: randomUUID(),
         parentId: null,
       })
-
-      return { outcome: 'OK' as const, tokens }
     })
-
-    if (attempt.outcome === 'PIN_MISMATCH') {
-      await this.penalizeFailedPin(tenantId, attempt.staffId, attempt.attempts)
-      throw this.rejected('неверный PIN', {
-        staffId: attempt.staffId,
-        attempts: attempt.attempts,
-      })
-    }
-
-    return attempt.tokens
   }
 
   /**
-   * Записывает неудачную попытку PIN отдельной транзакцией.
+   * Занимает одну попытку входа сотрудника — атомарно, ДО проверки PIN или пароля.
    *
-   * Отдельной — потому что транзакция входа откатывается вместе с отказом,
-   * и штраф, записанный внутри неё, исчезает. Это ровно тот случай, когда
-   * «сделать всё атомарно» даёт противоположный нужному результат: счётчик
-   * неудач обязан пережить отказ, ради которого он и ведётся.
+   * Раньше счётчик читался в транзакции входа, а штраф записывал прочитанное
+   * значение плюс один. Пачка из двухсот одновременных запросов читала одно и то же
+   * число и записывала его же плюс один: блокировка наступала после пяти «раундов»,
+   * то есть через тысячу попыток, и пароль владельца перебирался за часы.
+   *
+   * Теперь каждая попытка прибавляет единицу одним UPDATE с условием «не заблокирован
+   * и меньше пяти». Пятерых пропускает база, шестой получает отказ, сколько бы
+   * запросов ни пришло одновременно. Возвращает номер попытки или null, если
+   * сотрудник заблокирован или попытки кончились.
    */
-  private async penalizeFailedPin(
-    tenantId: string,
-    staffId: string,
-    attempts: number,
-  ): Promise<void> {
-    const locked = attempts >= PIN_MAX_ATTEMPTS
+  private async reserveAttempt(tenantId: string, staffId: string): Promise<number | null> {
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const now = new Date()
+      const { count } = await tx.staff.updateMany({
+        where: {
+          id: staffId,
+          tenantId,
+          pinFailedAttempts: { lt: PIN_MAX_ATTEMPTS },
+          OR: [{ pinLockedUntil: null }, { pinLockedUntil: { lte: now } }],
+        },
+        data: { pinFailedAttempts: { increment: 1 } },
+      })
+
+      if (count === 0) {
+        return null
+      }
+
+      const row = await tx.staff.findFirst({
+        where: { id: staffId, tenantId },
+        select: { pinFailedAttempts: true },
+      })
+
+      return row?.pinFailedAttempts ?? PIN_MAX_ATTEMPTS
+    })
+  }
+
+  /**
+   * Неудачная попытка уже посчитана в reserveAttempt. Если она была последней
+   * из разрешённых — ставим блокировку и обнуляем счётчик: он начнёт заново
+   * после её снятия. Отдельной транзакцией, чтобы пережить отказ.
+   */
+  private async settleFailure(tenantId: string, staffId: string, attempts: number): Promise<void> {
+    if (attempts < PIN_MAX_ATTEMPTS) {
+      return
+    }
 
     await this.prisma.forTenant(tenantId, async (tx) => {
       await tx.staff.updateMany({
         where: { id: staffId, tenantId },
         data: {
-          // При блокировке счётчик обнуляем: он начнёт заново после снятия.
-          pinFailedAttempts: locked ? 0 : attempts,
-          ...(locked ? { pinLockedUntil: new Date(Date.now() + PIN_LOCK_MINUTES * 60_000) } : {}),
+          pinFailedAttempts: 0,
+          pinLockedUntil: new Date(Date.now() + PIN_LOCK_MINUTES * 60_000),
         },
       })
     })
@@ -206,37 +228,35 @@ export class AuthService {
       throw this.rejected('почта не найдена или у сотрудника нет пароля', {})
     }
 
-    const attempt = await this.prisma.forTenant(tenantId, async (tx) => {
-      const staff = await tx.staff.findFirst({
-        where: { email, tenantId, isActive: true },
-      })
+    const staff = await this.prisma.forTenant(tenantId, (tx) =>
+      tx.staff.findFirst({ where: { email, tenantId, isActive: true } }),
+    )
 
-      if (staff === null || staff.passwordHash === null) {
-        return { outcome: 'NO_STAFF' as const }
-      }
+    if (staff === null || staff.passwordHash === null) {
+      // scrypt не считался — выравниваем время, чтобы не выдать, какие почты заведены.
+      await this.burnPassword(password)
+      throw this.rejected('вход по почте отклонён', { outcome: 'NO_STAFF' })
+    }
 
-      if (staff.pinLockedUntil !== null && staff.pinLockedUntil > new Date()) {
-        return { outcome: 'LOCKED' as const, staffId: staff.id }
-      }
+    // Попытка занимает место в счётчике ДО проверки пароля (см. reserveAttempt).
+    const attempts = await this.reserveAttempt(tenantId, staff.id)
 
-      const ok = await verifyPin(password, staff.passwordHash)
+    if (attempts === null) {
+      throw this.rejected('вход по почте отклонён', { outcome: 'LOCKED' })
+    }
 
-      if (!ok) {
-        // Штраф пишется отдельной транзакцией — как у PIN: исключение отсюда
-        // откатило бы инкремент вместе с собой, и блокировка не наступила бы.
-        return {
-          outcome: 'MISMATCH' as const,
-          staffId: staff.id,
-          attempts: staff.pinFailedAttempts + 1,
-        }
-      }
+    if (!(await verifyPin(password, staff.passwordHash))) {
+      await this.settleFailure(tenantId, staff.id, attempts)
+      throw this.rejected('вход по почте отклонён', { outcome: 'MISMATCH' })
+    }
 
+    return this.prisma.forTenant(tenantId, async (tx) => {
       await tx.staff.update({
         where: { id: staff.id },
         data: { pinFailedAttempts: 0, pinLockedUntil: null, lastSeenAt: new Date() },
       })
 
-      const tokens = await this.issueTokens(tx, {
+      return this.issueTokens(tx, {
         tenantId,
         staffId: staff.id,
         displayName: staff.displayName,
@@ -246,24 +266,7 @@ export class AuthService {
         familyId: randomUUID(),
         parentId: null,
       })
-
-      return { outcome: 'OK' as const, tokens }
     })
-
-    if (attempt.outcome === 'OK') {
-      return attempt.tokens
-    }
-
-    if (attempt.outcome === 'MISMATCH') {
-      await this.penalizeFailedPin(tenantId, attempt.staffId, attempt.attempts)
-    }
-
-    // NO_STAFF без пароля scrypt не считал — выравниваем время и здесь.
-    if (attempt.outcome === 'NO_STAFF') {
-      await this.burnPassword(password)
-    }
-
-    throw this.rejected('вход по почте отклонён', { outcome: attempt.outcome })
   }
 
   /**

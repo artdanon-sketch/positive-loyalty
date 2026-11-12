@@ -149,6 +149,38 @@ describe('Вход по PIN', () => {
     expect(locked.pinLockedUntil).not.toBeNull()
     expect(locked.pinLockedUntil!.getTime()).toBeGreaterThan(Date.now())
   })
+
+  it('ОДНОВРЕМЕННЫЙ ПЕРЕБОР НЕ ОБХОДИТ БЛОКИРОВКУ: СОРОК ЗАПРОСОВ РАЗОМ ЗАПИРАЮТ УЧЁТКУ', async () => {
+    // Раньше пачка одновременных запросов читала один и тот же счётчик и писала
+    // его же плюс один: после сорока неверных PIN счётчик стоял на единице,
+    // и блокировка наступала только через пять таких «раундов» — сотни попыток.
+    const hash = await hashPin('7319')
+    const staff = await prisma.staff.create({
+      data: { tenantId, role: 'CASHIER', displayName: 'Кассир под перебором', pinHash: hash },
+      select: { id: true },
+    })
+    const deviceId = `device-burst-${Date.now()}`
+    await prisma.staffDevice.create({
+      data: { tenantId, staffId: staff.id, deviceId, label: 'Тестовое устройство' },
+    })
+
+    const statuses = await Promise.all(
+      Array.from({ length: 40 }, async (_, index) => {
+        const response = await request(server())
+          .post('/v1/auth/staff/pin')
+          .send({ deviceId, pin: String(1000 + index) })
+        return response.status
+      }),
+    )
+
+    expect(statuses.every((status) => status === 401)).toBe(true)
+
+    const after = await prisma.staff.findFirstOrThrow({ where: { id: staff.id } })
+    expect(after.pinLockedUntil).not.toBeNull()
+
+    // Учётка заперта: верный PIN не пускает.
+    await request(server()).post('/v1/auth/staff/pin').send({ deviceId, pin: '7319' }).expect(401)
+  })
 })
 
 describe('Ротация refresh-токенов', () => {
