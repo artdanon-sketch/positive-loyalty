@@ -8,6 +8,7 @@ import helmet from 'helmet'
 import { ZodValidationPipe } from 'nestjs-zod'
 
 import { AppModule } from './app.module'
+import { apiCorsOrigins } from './common/config/api-cors-origins'
 import { assertMigrated } from './common/config/assert-migrated'
 import { getEnv } from './common/config/env'
 import { PrismaService } from './core/prisma.service'
@@ -56,9 +57,10 @@ const bootstrap = async (): Promise<void> => {
   // а её начало пишет сам клиент — то есть подделывается свободно.
   app.set('trust proxy', 1)
 
-  // CORS только по явному списку доменов (docs/05_Безопасность_и_антифрод.md, раздел 9).
+  // CORS только по явному списку доменов (docs/05_Безопасность_и_антифрод.md, раздел 9):
+  // сайты из выкладки плюс наши приложения для телефона (api-cors-origins.ts).
   app.enableCors({
-    origin: env.corsOrigins,
+    origin: apiCorsOrigins(env.corsOrigins),
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
