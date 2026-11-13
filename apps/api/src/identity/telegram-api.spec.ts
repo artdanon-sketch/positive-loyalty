@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseStart } from './telegram-api'
+import { parseLoginApproval, parseStart } from './telegram-api'
 import type { TelegramUpdate } from './telegram-api'
 
 /**
@@ -118,5 +118,51 @@ describe('parseStart', () => {
       parseStart(update({ from: nameless, chat: { id: 1, type: 'private' }, text: '/start код' }))
         ?.displayName,
     ).toBe(null)
+  })
+})
+
+describe('parseLoginApproval', () => {
+  const press = (query: Record<string, unknown>): TelegramUpdate =>
+    ({ update_id: 43, callback_query: query }) as TelegramUpdate
+
+  const base = {
+    id: 'cb-1',
+    from: person,
+    data: 'login:AbC_12-xyz',
+    message: { message_id: 7, chat: privateChat },
+  }
+
+  it('разбирает нажатие «Это я, войти»', () => {
+    expect(parseLoginApproval(press(base))).toEqual({
+      updateId: 43,
+      callbackId: 'cb-1',
+      userId: '778899',
+      chatId: '778899',
+      messageId: 7,
+      nonce: 'AbC_12-xyz',
+    })
+  })
+
+  it('не принимает чужие кнопки и мусор в данных', () => {
+    expect(parseLoginApproval(press({ ...base, data: 'other:abc' }))).toBeNull()
+    expect(parseLoginApproval(press({ ...base, data: 'login:' }))).toBeNull()
+    expect(parseLoginApproval(press({ ...base, data: 'login:a b' }))).toBeNull()
+    expect(parseLoginApproval(press({ ...base, data: undefined }))).toBeNull()
+  })
+
+  it('игнорирует групповые чаты, ботов и нажатия без сообщения', () => {
+    expect(
+      parseLoginApproval(
+        press({ ...base, message: { message_id: 7, chat: { id: -1, type: 'group' } } }),
+      ),
+    ).toBeNull()
+    expect(parseLoginApproval(press({ ...base, from: { ...person, is_bot: true } }))).toBeNull()
+    expect(parseLoginApproval(press({ ...base, message: undefined }))).toBeNull()
+  })
+
+  it('обычное сообщение — не нажатие', () => {
+    expect(
+      parseLoginApproval(update({ from: person, chat: privateChat, text: '/start x' })),
+    ).toBeNull()
   })
 })

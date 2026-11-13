@@ -3,7 +3,8 @@ import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common'
 
 import { getEnv } from '../common/config/env'
 
-import { parseStart } from './telegram-api'
+import { parseLoginApproval, parseStart } from './telegram-api'
+import type { TelegramUpdate } from './telegram-api'
 import { TelegramBotService } from './telegram-bot.service'
 import { TelegramLoginService } from './telegram-login.service'
 
@@ -116,21 +117,47 @@ export class TelegramUpdatesService implements OnApplicationBootstrap, OnModuleD
     return newest === undefined ? null : newest.update_id + 1
   }
 
-  private async handle(update: ReturnType<typeof parseStart>): Promise<void> {
-    if (update === null) {
+  private async handle(update: TelegramUpdate): Promise<void> {
+    const start = parseStart(update)
+
+    if (start !== null) {
+      const reply = await this.login.confirm(start)
+
+      try {
+        if (reply.approveData === null) {
+          await this.bot.api.sendMessage(start.chatId, reply.text)
+        } else {
+          await this.bot.api.sendMessageWithButton(start.chatId, reply.text, {
+            text: 'Это я, войти',
+            data: reply.approveData,
+          })
+        }
+      } catch (error) {
+        // Без вопроса с кнопкой вход не подтвердится — гость начнёт заново.
+        // Это неприятно, но не повод останавливать разбор очереди.
+        this.logger.warn(
+          `Не удалось ответить гостю в Telegram: ${error instanceof Error ? error.message : 'неизвестно'}`,
+        )
+      }
       return
     }
 
-    const reply = await this.login.confirm(update)
+    const approval = parseLoginApproval(update)
+
+    if (approval === null) {
+      return
+    }
+
+    const text = await this.login.approve(approval)
 
     try {
-      await this.bot.api.sendMessage(update.chatId, reply)
+      await this.bot.api.answerCallbackQuery(approval.callbackId)
+      // Кнопку убираем вместе с вопросом: второе нажатие ни к чему.
+      await this.bot.api.editMessageText(approval.chatId, approval.messageId, text)
     } catch (error) {
-      // Вход уже подтверждён, приложение его заберёт. Молчание бота —
-      // неприятно, но не повод считать попытку неудавшейся и тем более
-      // не повод останавливать разбор.
+      // Вход уже подтверждён (или отклонён) в базе; молчание бота его не меняет.
       this.logger.warn(
-        `Не удалось ответить гостю в Telegram: ${error instanceof Error ? error.message : 'неизвестно'}`,
+        `Не удалось ответить на кнопку в Telegram: ${error instanceof Error ? error.message : 'неизвестно'}`,
       )
     }
   }
@@ -159,7 +186,7 @@ export class TelegramUpdatesService implements OnApplicationBootstrap, OnModuleD
           offset = update.update_id + 1
 
           try {
-            await this.handle(parseStart(update))
+            await this.handle(update)
           } catch (error) {
             this.logger.error(
               `Сообщение Telegram не разобрано: ${error instanceof Error ? error.message : 'неизвестно'}`,
