@@ -37,6 +37,7 @@ import { TenantContext } from '../common/tenant/tenant-context'
 import { AlreadyReversedError, InsufficientBalanceError } from '../core/ledger.errors'
 import { BirthdayService } from '../core/birthday.service'
 import { LedgerService } from '../core/ledger.service'
+import { readGiftAttempts } from '../core/first-purchase-gifts'
 import { MembershipRulesService, welcomeKey } from '../core/membership-rules.service'
 import { GrantRedeemError, OfferGrantService } from '../core/offer-grant.service'
 import type { GrantView } from '../core/offer-grant.service'
@@ -850,6 +851,11 @@ export class PosService {
       // Первый вызов мог оборваться после компенсаций, но до промокодов и процентов.
       await this.voidCheckGrants(tenantId, anchor.refId)
       await this.shares.takeBack(tenantId, anchor.membershipId, anchor.refId)
+      await this.rules.takeBackFirstPurchaseGifts(
+        tenantId,
+        anchor.membershipId,
+        await this.loadConfig(tenantId),
+      )
       return alreadyVoided
     }
 
@@ -948,6 +954,15 @@ export class PosService {
     // Проценты пригласившим с этого чека — обратно: иначе «провести и отменить»
     // раздавало бы баллы друзьям без покупки.
     await this.shares.takeBack(tenantId, anchor.membershipId, anchor.refId)
+
+    // Подарки первой покупки — тоже, если это была единственная покупка гостя:
+    // «провести и отменить» не должно дарить приветственные баллы и награду
+    // пригласившему (docs/05, раздел 6.6). Следующая настоящая покупка выдаст их снова.
+    await this.rules.takeBackFirstPurchaseGifts(
+      tenantId,
+      anchor.membershipId,
+      await this.loadConfig(tenantId),
+    )
 
     // Баланс читаем после всех компенсаций: порядок записей чека не обязан
     // совпадать с порядком компенсаций, «последняя строка цикла» — не истина.
@@ -1508,11 +1523,8 @@ export class PosService {
     earnId: string,
   ): Promise<number> {
     return this.prisma.forTenant(tenantId, async (tx) => {
-      const [welcome, earn] = await Promise.all([
-        tx.ledgerEntry.findUnique({
-          where: { idempotencyKey: welcomeKey(membershipId) },
-          select: { amount: true },
-        }),
+      const [{ active: welcome }, earn] = await Promise.all([
+        readGiftAttempts(tx, tenantId, welcomeKey(membershipId)),
         tx.ledgerEntry.findFirst({
           where: { id: earnId, tenantId },
           select: { createdAt: true },

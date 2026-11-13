@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import type { ProgramConfig, Tier } from '@positive/contracts'
 
 import type { Prisma } from '../generated/prisma/client'
+import { giftKey, readGiftAttempts } from './first-purchase-gifts'
 import { IdempotencyKeyReusedError } from './ledger.errors'
 import { LedgerService } from './ledger.service'
 import { PrismaService } from './prisma.service'
@@ -65,7 +66,11 @@ const TRIGGER: Readonly<Record<WelcomeMoment, ProgramConfig['welcomeBonus']['tri
   FIRST_PURCHASE: 'ON_FIRST_PURCHASE',
 }
 
-/** Ключ приветственных баллов: один на участие навсегда. */
+/**
+ * Базовый ключ приветственных баллов. Действующий подарок — один на участие;
+ * после отмены первой покупки следующая выдаётся ключом с номером
+ * (first-purchase-gifts.ts).
+ */
 export const welcomeKey = (membershipId: string): string => `welcome:${membershipId}`
 
 @Injectable()
@@ -234,14 +239,11 @@ export class MembershipRulesService {
     // Подарок уже у гостя. Проверяем заранее, а не повтором журнала: если владелец
     // с тех пор поменял сумму, повтор с новой суммой журнал справедливо счёл бы
     // чужой операцией — и сканирование гостя упало бы.
-    const already = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findUnique({
-        where: { idempotencyKey: welcomeKey(membership.id) },
-        select: { id: true },
-      }),
+    const { active } = await this.prisma.forTenant(tenantId, async (tx) =>
+      readGiftAttempts(tx, tenantId, welcomeKey(membership.id)),
     )
 
-    return already === null ? bonus.amount : 0
+    return active === null ? bonus.amount : 0
   }
 
   async grantWelcome(
@@ -256,7 +258,10 @@ export class MembershipRulesService {
       return null
     }
 
-    const idempotencyKey = welcomeKey(membership.id)
+    const { next } = await this.prisma.forTenant(tenantId, async (tx) =>
+      readGiftAttempts(tx, tenantId, welcomeKey(membership.id)),
+    )
+    const idempotencyKey = giftKey(welcomeKey(membership.id), next)
 
     try {
       const result = await this.ledger.grant(
@@ -313,16 +318,15 @@ export class MembershipRulesService {
       return
     }
 
-    const idempotencyKey = referralRewardKey(friend.id)
-
     const state = await this.prisma.forTenant(tenantId, async (tx) => {
-      const [already, inviter, rewarded] = await Promise.all([
-        tx.ledgerEntry.findUnique({ where: { idempotencyKey }, select: { id: true } }),
+      const [attempts, inviter, rewarded] = await Promise.all([
+        readGiftAttempts(tx, tenantId, referralRewardKey(friend.id)),
         tx.membership.findFirst({
           where: { id: inviterId, tenantId },
           select: { isControlGroup: true },
         }),
         // Только разовые награды: проценты с покупок друзей лимит не съедают.
+        // Отменённые тоже не съедают: друг, чью покупку отменили, никого не привёл.
         tx.ledgerEntry.count({
           where: {
             tenantId,
@@ -330,15 +334,18 @@ export class MembershipRulesService {
             type: 'GRANT',
             refType: 'referral',
             idempotencyKey: { startsWith: REFERRAL_REWARD_KEY_PREFIX },
+            reversedBy: { is: null },
           },
         }),
       ])
 
-      return { already, inviter, rewarded }
+      return { attempts, inviter, rewarded }
     })
 
+    const idempotencyKey = giftKey(referralRewardKey(friend.id), state.attempts.next)
+
     if (
-      state.already !== null ||
+      state.attempts.active !== null ||
       state.inviter === null ||
       state.inviter.isControlGroup ||
       state.rewarded >= referral.limit
@@ -367,6 +374,77 @@ export class MembershipRulesService {
       }
 
       throw error
+    }
+  }
+
+  /**
+   * Отменили чек — и у гостя не осталось ни одной настоящей покупки: подарки
+   * первой покупки возвращаются. docs/05, раздел 6.6 · first-purchase-gifts.ts.
+   *
+   * Вызывается ПОСЛЕ компенсации записей чека, с кассы и из вебхука одинаково.
+   * Пока у гостя есть хоть одна неотменённая покупка, подарки остаются: их
+   * заработала она, а не отменённый чек.
+   *
+   * Приветственные баллы забираются, только если заведение дарит их за первую
+   * покупку. Подаренные при вступлении — не за покупку, отмена чека их не касается.
+   * Если владелец переключил момент подарка уже после того, как гость его получил,
+   * подарок будет забран и выдан снова следующей покупкой — гость не теряет ничего.
+   *
+   * Повтор отмены безопасен: компенсация пишется ключом от отменяемой записи,
+   * а уже отменённый подарок не считается действующим.
+   */
+  async takeBackFirstPurchaseGifts(
+    tenantId: string,
+    membershipId: string,
+    config: ProgramConfig,
+  ): Promise<void> {
+    const state = await this.prisma.forTenant(tenantId, async (tx) => {
+      const purchases = await tx.ledgerEntry.count({
+        where: {
+          tenantId,
+          membershipId,
+          type: 'EARN',
+          refType: 'receipt',
+          reversedBy: { is: null },
+        },
+      })
+
+      if (purchases > 0) {
+        return null
+      }
+
+      const [welcome, referral] = await Promise.all([
+        readGiftAttempts(tx, tenantId, welcomeKey(membershipId)),
+        readGiftAttempts(tx, tenantId, referralRewardKey(membershipId)),
+      ])
+
+      return { welcome, referral }
+    })
+
+    if (state === null) {
+      return
+    }
+
+    const gifts = [
+      config.welcomeBonus.trigger === TRIGGER.FIRST_PURCHASE ? state.welcome.active : null,
+      state.referral.active,
+    ]
+
+    for (const gift of gifts) {
+      if (gift === null) {
+        continue
+      }
+
+      await this.ledger.reverse(
+        {
+          entryId: gift.id,
+          idempotencyKey: `void-gift:${gift.id}`,
+          reason: 'RECEIPT_VOIDED',
+          source: 'SYSTEM',
+          actorType: 'SYSTEM',
+        },
+        { tenantId },
+      )
     }
   }
 
