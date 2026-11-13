@@ -220,10 +220,23 @@ export class PosWebhookService {
     )
     const amount = Math.floor((envelope.receipt.total * rates.earnRate) / 100)
 
-    // Приветственные баллы за первую покупку — до начисления, как и на кассе.
-    await this.rules.grantWelcome(tenantId, membership, config, 'FIRST_PURCHASE')
-    // И награда пригласившему за первую покупку друга — тоже до начисления.
-    await this.rules.grantReferral(tenantId, membership, config)
+    // Чек уже проведён — это повтор (касса дослала его ещё раз, в том числе после
+    // отмены). Подарки первой покупки повтору не положены: после отмены счётчик
+    // визитов снова ноль, и без этой проверки повтор отменённого чека выдал бы их
+    // заново без покупки. Само начисление ниже повторится по своему ключу.
+    const replay = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findUnique({
+        where: { idempotencyKey: receiptKey(tenantId, 'earn', envelope.receipt.id) },
+        select: { id: true },
+      }),
+    )
+
+    if (replay === null) {
+      // Приветственные баллы за первую покупку — до начисления, как и на кассе.
+      await this.rules.grantWelcome(tenantId, membership, config, 'FIRST_PURCHASE')
+      // И награда пригласившему за первую покупку друга — тоже до начисления.
+      await this.rules.grantReferral(tenantId, membership, config)
+    }
 
     await this.ledger.earn(
       {
@@ -306,6 +319,12 @@ export class PosWebhookService {
     const buyerId = legs[0]?.membershipId
     if (buyerId !== undefined) {
       await this.shares.takeBack(tenantId, buyerId, envelope.receipt.id)
+      // И подарки первой покупки, если других покупок у гостя не осталось.
+      await this.rules.takeBackFirstPurchaseGifts(
+        tenantId,
+        buyerId,
+        await this.loadConfig(tenantId),
+      )
     }
 
     return 'PROCESSED'
