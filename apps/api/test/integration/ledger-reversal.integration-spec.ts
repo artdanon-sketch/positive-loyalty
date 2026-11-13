@@ -214,7 +214,7 @@ describe('LedgerService — компенсация возврата', () => {
     })
   })
 
-  it('отмена начисления, баллы по которому уже потрачены, не уводит баланс в минус', async () => {
+  it('ОТМЕНА ПОТРАЧЕННОГО НАЧИСЛЕНИЯ УВОДИТ В МИНУС, СЛЕДУЮЩАЯ ПОКУПКА ГАСИТ ДОЛГ', async () => {
     const entryId = await earnOnce(500, 70_000)
 
     await context.ledger.redeem(
@@ -227,16 +227,36 @@ describe('LedgerService — компенсация возврата', () => {
       fixture.scope,
     )
 
-    // docs/05, схема 6.6: политика «уводить в минус или обнулять» принадлежит
-    // ProgramConfig и приедет с движком правил. До тех пор ledger просто отказывает.
+    // Решение владельца 13.11.2026 (docs/05, раздел 6.6): отмена проводится всегда,
+    // потраченное становится долгом гостя.
+    const reversal = await context.ledger.reverse(
+      reversalInput(entryId, 'reverse-spent'),
+      fixture.scope,
+    )
+
+    expect(reversal.entry.balanceAfter).toBe(-500)
+    expect(await readBalance(context.prisma, fixture.membershipId)).toBe(-500)
+    expect(await readLedgerSum(context.prisma, fixture.membershipId)).toBe(-500)
+
+    // При минусе списать нечего, а следующее начисление гасит долг первым.
     await expectLedgerError(
-      () => context.ledger.reverse(reversalInput(entryId, 'reverse-spent'), fixture.scope),
+      () =>
+        context.ledger.redeem(
+          {
+            membershipId: fixture.membershipId,
+            amount: 1,
+            idempotencyKey: idempotencyKey('redeem-in-debt'),
+            ...POS_ORIGIN,
+          },
+          fixture.scope,
+        ),
       'INSUFFICIENT_BALANCE',
     )
 
-    expect(await countEntries(context.prisma, fixture.membershipId)).toBe(2)
-    expect(await readBalance(context.prisma, fixture.membershipId)).toBe(0)
-    expect(await readLedgerSum(context.prisma, fixture.membershipId)).toBe(0)
+    await earnOnce(800, 90_000)
+
+    expect(await readBalance(context.prisma, fixture.membershipId)).toBe(300)
+    expect(await readLedgerSum(context.prisma, fixture.membershipId)).toBe(300)
   })
 
   it('запись соседнего тенанта не находится и не отменяется', async () => {

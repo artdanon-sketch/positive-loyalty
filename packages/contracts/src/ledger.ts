@@ -361,7 +361,11 @@ export const LedgerEntryRecord = z
     /** ЗНАКОВОЕ: плюс — начисление, минус — списание. */
     amount: z.number().int().min(INT32_MIN).max(INT32_MAX),
     /** Снапшот баланса после операции. В минус баланс не уходит. */
-    balanceAfter: MinorUnits,
+    /**
+     * Снапшот баланса после операции. Может быть отрицательным только после
+     * отмены начисления, баллы которого уже потрачены (docs/05, раздел 6.6).
+     */
+    balanceAfter: z.number().int().min(INT32_MIN).max(INT32_MAX),
 
     basisAmount: MinorUnits.nullable(),
     currency: CurrencyCode,
