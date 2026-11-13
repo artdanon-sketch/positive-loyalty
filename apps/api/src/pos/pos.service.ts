@@ -856,6 +856,19 @@ export class PosService {
     const ageMs = Date.now() - (legs[0]?.createdAt.getTime() ?? 0)
     const isCashier = role === 'CASHIER'
 
+    // Кассир отменяет только СВОЙ чек. Иначе пятнадцать минут окна — это
+    // пятнадцать минут, за которые любой кассир смены снимает чужие чеки:
+    // начисление уходит, а в журнале отмены стоит его имя, не того, кто
+    // принимал гостя. Чужой чек — к менеджеру, с комментарием (docs/05, раздел 6.6).
+    if (isCashier && legs.some((leg) => leg.actorId !== actorId)) {
+      throw new ForbiddenException({
+        error: {
+          code: 'VOID_NOT_OWN_RECEIPT',
+          message: 'Чек проводил другой сотрудник — отменить его может менеджер',
+        },
+      })
+    }
+
     if (isCashier && ageMs > VOID_WINDOW_MINUTES * 60_000) {
       // 403, а не 404: операция своя и существует, не хватает именно прав.
       throw new ForbiddenException({

@@ -269,7 +269,12 @@ export class PosController {
     summary: 'Отменить проведённый чек',
     description:
       'Компенсирует записи чека. Кассиру доступно 15 минут; менеджеру и владельцу — ' +
-      'без окна, но только с комментарием. Повтор отмены возвращает прежний результат.',
+      'без окна, но только с комментарием. Кассир отменяет только свой чек. ' +
+      'Повтор отмены возвращает прежний результат.',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'VOID_WINDOW_EXPIRED — окно кассира истекло; VOID_NOT_OWN_RECEIPT — чек проводил другой сотрудник',
   })
   async voidTransaction(
     @Param('transactionId', ParseUUIDPipe) transactionId: string,
