@@ -10,6 +10,7 @@ import { PrismaService } from '../core/prisma.service'
 import { ReferralSharesService } from '../core/referral-shares.service'
 import { verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
+import { receiptKey } from '../pos/receipt-keys'
 import { parseProgramConfig } from '@positive/contracts'
 import type { ProgramConfig } from '@positive/contracts'
 
@@ -231,7 +232,7 @@ export class PosWebhookService {
         basisAmount: envelope.receipt.total,
         // Ключ — идентификатор чека кассы: повтор того же чека любым путём
         // (вебхук, ручной ввод, досылка смены) не начислит второй раз.
-        idempotencyKey: `pos:earn:${envelope.receipt.id}`,
+        idempotencyKey: receiptKey(tenantId, 'earn', envelope.receipt.id),
         refType: 'receipt',
         refId: envelope.receipt.id,
         // Время СОБЫТИЯ: вебхук опаздывает, а чек закрыт тогда, когда закрыт.
