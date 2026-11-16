@@ -314,6 +314,35 @@ export const AdjustInput = z
 export type AdjustInput = z.infer<typeof AdjustInput>
 
 /**
+ * Вход LedgerService.refundReceiptPart — доля чека при частичном возврате.
+ *
+ * Запись типа ADJUST, но привязанная к чеку (refType = receipt): по `refId`
+ * её находит полная отмена того же чека и компенсирует вместе с ногами чека.
+ * Знак — у вызывающего: плюс возвращает гостю потраченные баллы, минус снимает
+ * начисленные. Сумму считает касса-сервис (`PosService.refundTransaction`) из
+ * ног чека, а не берёт снаружи как есть.
+ */
+export const ReceiptPartInput = z
+  .object({
+    membershipId: z.uuid(),
+    amount: z
+      .number()
+      .int()
+      .min(-INT32_MAX)
+      .max(INT32_MAX)
+      .refine((value) => value !== 0, 'Правка на ноль ничего не меняет'),
+    idempotencyKey: IdempotencyKey,
+    /** Номер чека — тот же refId, что у его начисления и списания. */
+    refId: z.string().trim().min(1).max(64),
+    /** Сколько денег чека вернули этим возвратом (для выписки), минорные. */
+    basisAmount: MinorUnits.optional(),
+    ...originShape,
+  })
+  .strict()
+
+export type ReceiptPartInput = z.infer<typeof ReceiptPartInput>
+
+/**
  * Вход LedgerService.reverse — компенсация ранее проведённой операции.
  *
  * Суммы во входе нет намеренно. Компенсация равна исходной записи с обратным знаком,
