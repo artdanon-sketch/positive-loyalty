@@ -1,11 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import type { ProgramConfig } from '@positive/contracts'
 
-import {
-  AlreadyReversedError,
-  IdempotencyKeyReusedError,
-  InsufficientBalanceError,
-} from './ledger.errors'
+import { AlreadyReversedError, IdempotencyKeyReusedError } from './ledger.errors'
 import { LedgerService } from './ledger.service'
 import { PrismaService } from './prisma.service'
 import { referralShareAmount, referralShareKey, referralSharePrefix } from './referral-shares'
@@ -40,14 +36,11 @@ export interface ShareBuyer {
  *
  * Ключ — друг, чек и круг (referral-shares.ts): повтор чека не платит дважды.
  * Отмена чека забирает проценты обратно. Если пригласивший уже потратил их,
- * журнал в минус не уходит (ledger.service.ts) — процент остаётся у него,
- * и это пишется в лог: политика «уводить в минус» принадлежит настройкам
- * программы, а не отмене чека.
+ * его баланс уходит в минус (решение владельца 13.11.2026, docs/05, раздел 6.6):
+ * заведение не платит процент за покупку, которой не было.
  */
 @Injectable()
 export class ReferralSharesService {
-  private readonly logger = new Logger(ReferralSharesService.name)
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
@@ -136,13 +129,6 @@ export class ReferralSharesService {
         )
       } catch (error) {
         if (error instanceof AlreadyReversedError) {
-          continue
-        }
-
-        if (error instanceof InsufficientBalanceError) {
-          this.logger.warn(
-            `Процент за друга ${share.id} не забран при отмене чека: баллы уже потрачены`,
-          )
           continue
         }
 

@@ -1,4 +1,5 @@
 import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 
 import type { INestApplication } from '@nestjs/common'
 import { Test, type TestingModule } from '@nestjs/testing'
@@ -148,6 +149,48 @@ describe('Вход по PIN', () => {
     const locked = await prisma.staff.findFirstOrThrow({ where: { id: staff.id } })
     expect(locked.pinLockedUntil).not.toBeNull()
     expect(locked.pinLockedUntil!.getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('ОДНОВРЕМЕННЫЙ ПЕРЕБОР НЕ ОБХОДИТ БЛОКИРОВКУ: СОРОК ЗАПРОСОВ РАЗОМ ЗАПИРАЮТ УЧЁТКУ', async () => {
+    // Раньше пачка одновременных запросов читала один и тот же счётчик и писала
+    // его же плюс один: после сорока неверных PIN счётчик стоял на единице,
+    // и блокировка наступала только через пять таких «раундов» — сотни попыток.
+    const hash = await hashPin('7319')
+    const staff = await prisma.staff.create({
+      data: { tenantId, role: 'CASHIER', displayName: 'Кассир под перебором', pinHash: hash },
+      select: { id: true },
+    })
+    const deviceId = `device-burst-${Date.now()}`
+    await prisma.staffDevice.create({
+      data: { tenantId, staffId: staff.id, deviceId, label: 'Тестовое устройство' },
+    })
+
+    // Один запущенный сервер на все сорок запросов. Если отдать supertest
+    // незапущенный, он поднимает отдельный порт под каждый запрос, и под такой
+    // пачкой CI ловил ECONNRESET вместо ответа.
+    const http = server()
+    if (!http.listening) {
+      await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve))
+    }
+    const { port } = http.address() as AddressInfo
+    const base = `http://127.0.0.1:${port}`
+
+    const statuses = await Promise.all(
+      Array.from({ length: 40 }, async (_, index) => {
+        const response = await request(base)
+          .post('/v1/auth/staff/pin')
+          .send({ deviceId, pin: String(1000 + index) })
+        return response.status
+      }),
+    )
+
+    expect(statuses.every((status) => status === 401)).toBe(true)
+
+    const after = await prisma.staff.findFirstOrThrow({ where: { id: staff.id } })
+    expect(after.pinLockedUntil).not.toBeNull()
+
+    // Учётка заперта: верный PIN не пускает.
+    await request(server()).post('/v1/auth/staff/pin').send({ deviceId, pin: '7319' }).expect(401)
   })
 })
 

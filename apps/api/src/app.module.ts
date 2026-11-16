@@ -1,9 +1,10 @@
 import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD } from '@nestjs/core'
 
 import { AdminModule } from './admin/admin.module'
 import { AuthModule } from './auth/auth.module'
+import { LedgerExceptionFilter } from './common/errors/ledger-exception.filter'
 import { TenantContextMiddleware } from './common/tenant/tenant-context.middleware'
 import { RolesGuard } from './common/tenant/roles.guard'
 import { TenantGuard } from './common/tenant/tenant.guard'
@@ -58,6 +59,12 @@ import { PosModule } from './pos/pos.module'
       // в порядке объявления.
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      // Ошибки журнала баллов — своим кодом и статусом, а не голым 500
+      // (common/errors/ledger-exception.filter.ts).
+      provide: APP_FILTER,
+      useClass: LedgerExceptionFilter,
     },
   ],
 })
