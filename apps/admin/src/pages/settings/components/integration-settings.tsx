@@ -5,14 +5,19 @@ import type { IntegrationStatus } from '@positive/contracts'
 import { fill } from '../../../shared/format/fill'
 import { formatDate } from '../../../shared/format/format'
 import { useT } from '../../../shared/i18n'
-import { useIntegration, useRevealSecret, useRotateSecret } from '../integration-hooks'
+import {
+  useConnectIntegration,
+  useIntegration,
+  useRevealSecret,
+  useRotateSecret,
+} from '../integration-hooks'
 
 /**
  * Блок «Касса» на экране настроек. docs/02, раздел 5.16.
  *
- * ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ: подключение заводит касса, а владелец
- * приходит сюда с одним вопросом — «почему чеки не приходят». Поэтому здесь
- * счётчики принятого за неделю и застрявшего, а не поля ввода.
+ * ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ: кроме кнопки «Подключить кассу» здесь
+ * счётчики принятого за неделю и застрявшего, а не поля ввода — владелец приходит
+ * сюда с вопросом «почему чеки не приходят».
  *
  * КЛЮЧ ЗАМАСКИРОВАН, ПОКА НЕ ПОПРОСЯТ. Хвоста хватает, чтобы сверить с тем,
  * что введено в кассе; полный показывается по кнопке и уходит в историю.
@@ -38,11 +43,43 @@ function Rows({ status }: { status: IntegrationStatus }): ReactElement {
   )
 }
 
+/** Кассы нет: одна кнопка. Результат живёт выше — после неё блок сменится на подключённый. */
+function ConnectBlock({
+  connect,
+}: {
+  connect: ReturnType<typeof useConnectIntegration>
+}): ReactElement {
+  const t = useT()
+
+  return (
+    <>
+      <p className="state__hint">{t('integration.none')}</p>
+      {connect.isError ? (
+        <p className="state__hint state__hint--error" role="alert">
+          {connect.error.message}
+        </p>
+      ) : null}
+      <button
+        className="button"
+        disabled={connect.isPending}
+        type="button"
+        onClick={() => {
+          connect.mutate()
+        }}
+      >
+        {t('integration.connect')}
+      </button>
+    </>
+  )
+}
+
 export function IntegrationSettingsSection(): ReactElement {
   const t = useT()
   const integration = useIntegration()
+  const connect = useConnectIntegration()
   const reveal = useRevealSecret()
   const rotate = useRotateSecret()
+  const shownSecret = reveal.data?.secret ?? rotate.data?.secret ?? connect.data?.secret
   const [reason, setReason] = useState('')
   const [rotating, setRotating] = useState(false)
 
@@ -71,9 +108,14 @@ export function IntegrationSettingsSection(): ReactElement {
           </button>
         </div>
       ) : !integration.data.connected ? (
-        <p className="state__hint">{t('integration.none')}</p>
+        <ConnectBlock connect={connect} />
       ) : (
         <>
+          {connect.data === undefined ? null : (
+            <p className="field__hint" role="status">
+              {t('integration.connect.done')}
+            </p>
+          )}
           <p className="field__hint">
             {fill(t('integration.connected'), {
               merchant: integration.data.posMerchantId ?? '—',
@@ -95,10 +137,10 @@ export function IntegrationSettingsSection(): ReactElement {
           <div className="field">
             <span className="field__label">{t('integration.secret')}</span>
             <code className="integration__code">
-              {reveal.data?.secret ?? rotate.data?.secret ?? integration.data.secretMasked ?? '—'}
+              {shownSecret ?? integration.data.secretMasked ?? '—'}
             </code>
             <p className="field__hint">{t('integration.secret.hint')}</p>
-            {reveal.data === undefined && rotate.data === undefined ? (
+            {shownSecret === undefined ? (
               <button
                 className="button"
                 disabled={reveal.isPending}

@@ -3,10 +3,10 @@ import { z } from 'zod'
 /**
  * Экран интеграции с кассой. docs/02, раздел 5.16.
  *
- * ЭТО ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ. Подключение заводит касса, когда
- * заведение к ней подключают; отсюда владелец отвечает на один вопрос — «почему
- * чеки не приходят». Поэтому здесь адреса, ключ и счётчики принятого, а не поля
- * ввода.
+ * ЭТО ЭКРАН ДЛЯ РАЗБОРА, А НЕ ДЛЯ НАСТРОЙКИ. Одно исключение — кнопка «Подключить
+ * кассу»: связку заводит владелец, а идентификатор и ключ вписывает в кассу сам.
+ * В остальном отсюда отвечают на один вопрос — «почему чеки не приходят».
+ * Поэтому здесь адреса, ключ и счётчики принятого, а не поля ввода.
  *
  * КЛЮЧ ПОКАЗЫВАЕТСЯ ПО ОТДЕЛЬНОЙ ПРОСЬБЕ И УХОДИТ В ИСТОРИЮ. Им подписывают
  * чеки: кто им владеет, начисляет баллы от имени заведения. Открытый на экране
@@ -58,3 +58,33 @@ export const RotateSecretInput = z
   .strict()
 
 export type RotateSecretInput = z.infer<typeof RotateSecretInput>
+
+/**
+ * Что вписать в настройки кассы. Отдаётся один раз — при подключении.
+ *
+ * Адрес сервера здесь же: заведению незачем знать, где мы живём, а кассе нужен
+ * ровно этот адрес. Пусто — `PUBLIC_API_URL` не настроен.
+ */
+export const IntegrationConnected = z
+  .object({
+    posMerchantId: z.string(),
+    secret: z.string(),
+    apiUrl: z.string(),
+  })
+  .strict()
+
+export type IntegrationConnected = z.infer<typeof IntegrationConnected>
+
+/** Просьба кассы о токене: тело подписывается ключом связки (docs/02, раздел 3.10). */
+export const PosLinkTokenInput = z.object({ posMerchantId: z.string().min(1).max(128) }).strict()
+export type PosLinkTokenInput = z.infer<typeof PosLinkTokenInput>
+
+export const PosLinkToken = z
+  .object({
+    accessToken: z.string(),
+    /** Сколько секунд он живёт. Касса берёт новый заранее, а не ловит 401. */
+    expiresIn: z.number().int().positive(),
+  })
+  .strict()
+
+export type PosLinkToken = z.infer<typeof PosLinkToken>

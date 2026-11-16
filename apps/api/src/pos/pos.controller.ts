@@ -54,10 +54,11 @@ import { PosService } from './pos.service'
  *
  * Доступно кассиру, менеджеру и владельцу: за кассу встают все трое.
  * Бэк-офис при этом кассиру закрыт — права разные, и это не симметрично.
+ * `POS_LINK` — сервер кассы POSitive POS, у него чек пробит, а не введён руками.
  */
 @ApiTags('pos')
 @Controller('pos')
-@Roles('CASHIER', 'MANAGER', 'OWNER')
+@Roles('CASHIER', 'MANAGER', 'OWNER', 'POS_LINK')
 export class PosController {
   constructor(
     private readonly posService: PosService,

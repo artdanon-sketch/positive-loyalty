@@ -1,6 +1,6 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common'
 import { PosWebhookEnvelope } from '@positive/contracts'
-import type { PosWebhookAccepted } from '@positive/contracts'
+import type { PosLinkToken, PosWebhookAccepted } from '@positive/contracts'
 
 import { verifyWebhookSignature } from './webhook-signature'
 import { LedgerService } from '../core/ledger.service'
@@ -8,7 +8,7 @@ import { MEMBERSHIP_RULES_SELECT, MembershipRulesService } from '../core/members
 import type { MembershipSnapshot, ReferralFacts } from '../core/membership-rules.service'
 import { PrismaService } from '../core/prisma.service'
 import { ReferralSharesService } from '../core/referral-shares.service'
-import { verifyGuestQrToken } from '../common/tenant/access-token'
+import { signAccessToken, verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
 import { receiptKey } from '../pos/receipt-keys'
 import { parseProgramConfig } from '@positive/contracts'
@@ -36,6 +36,15 @@ import type { ProgramConfig } from '@positive/contracts'
 /** Сколько раз пробуем обработать событие, прежде чем позвать человека. */
 const MAX_ATTEMPTS = 5
 
+/**
+ * Сколько живёт токен сервера кассы.
+ *
+ * Перевыпуск ключа и отключение связки его не отзывают: в токене нет сотрудника,
+ * и проверить по базе нечего. Поэтому срок короткий — десять минут и есть время,
+ * за которое подпись старым ключом перестаёт что-либо значить.
+ */
+const POS_LINK_TOKEN_SECONDS = 600
+
 @Injectable()
 export class PosWebhookService {
   private readonly logger = new Logger(PosWebhookService.name)
@@ -46,6 +55,51 @@ export class PosWebhookService {
     private readonly rules: MembershipRulesService,
     private readonly shares: ReferralSharesService,
   ) {}
+
+  /**
+   * Выдаёт токен серверу кассы. docs/02, раздел 3.10.
+   *
+   * Заведение берётся из связки, найденной по подписанному идентификатору, —
+   * снаружи его не назвать (железное правило 2). Отказы те же, что у вебхука.
+   */
+  async issuePosToken(input: {
+    rawBody: Buffer
+    signature: string | undefined
+    timestamp: string | undefined
+  }): Promise<PosLinkToken> {
+    const merchantId = readMerchantId(input.rawBody)
+
+    if (merchantId === null) {
+      throw this.rejected('MALFORMED_BODY')
+    }
+
+    const link = await this.findLink(merchantId)
+
+    if (link === null) {
+      throw this.rejected('UNKNOWN_MERCHANT')
+    }
+
+    const check = verifyWebhookSignature({
+      rawBody: input.rawBody,
+      signatureHeader: input.signature,
+      timestampHeader: input.timestamp,
+      secret: link.webhookSecret,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    })
+
+    if (!check.ok) {
+      throw this.rejected(check.reason)
+    }
+
+    return {
+      accessToken: signAccessToken(
+        { tenantId: link.tenantId, actorId: null, role: 'POS_LINK' },
+        getEnv().accessTokenSecret,
+        POS_LINK_TOKEN_SECONDS,
+      ),
+      expiresIn: POS_LINK_TOKEN_SECONDS,
+    }
+  }
 
   /**
    * Принимает событие: проверяет подпись, дедуплицирует, кладёт в очередь.

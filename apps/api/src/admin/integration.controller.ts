@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Post } from '@nestjs/common'
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -8,7 +9,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger'
 import { RotateSecretInput } from '@positive/contracts'
-import type { IntegrationSecret, IntegrationStatus } from '@positive/contracts'
+import type {
+  IntegrationConnected,
+  IntegrationSecret,
+  IntegrationStatus,
+} from '@positive/contracts'
 
 import { Roles } from '../common/tenant/roles.decorator'
 
@@ -35,6 +40,21 @@ export class IntegrationController {
   @ApiForbiddenResponse({ description: 'Только владелец' })
   async status(): Promise<IntegrationStatus> {
     return this.integration.status()
+  }
+
+  @Post('connect')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Подключить кассу',
+    description:
+      'Заводит связку и один раз отдаёт идентификатор заведения и ключ: их вписывают ' +
+      'в настройки POSitive POS. Вторую связку не заводит.',
+  })
+  @ApiOkResponse({ description: 'Что вписать в кассу' })
+  @ApiConflictResponse({ description: 'Касса уже подключена' })
+  @ApiForbiddenResponse({ description: 'Только владелец' })
+  async connect(): Promise<IntegrationConnected> {
+    return this.integration.connect()
   }
 
   @Post('secret/reveal')

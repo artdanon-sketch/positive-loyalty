@@ -6,7 +6,11 @@ import { z } from 'zod'
  */
 
 /** Роли из docs/05, раздел 3. Матрица прав — там же. */
-export const Role = z.enum(['CASHIER', 'MANAGER', 'OWNER', 'PLATFORM_ADMIN'])
+/**
+ * `POS_LINK` — не человек, а сервер кассы POSitive POS: токен выдаётся по подписи
+ * ключом связки (docs/02, раздел 3.10). Пускается только в `/v1/pos/*`.
+ */
+export const Role = z.enum(['CASHIER', 'MANAGER', 'OWNER', 'PLATFORM_ADMIN', 'POS_LINK'])
 export type Role = z.infer<typeof Role>
 
 /**

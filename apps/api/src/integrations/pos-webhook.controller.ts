@@ -2,11 +2,12 @@ import { Controller, Headers, HttpCode, HttpStatus, Post, Req } from '@nestjs/co
 import type { RawBodyRequest } from '@nestjs/common'
 import {
   ApiAcceptedResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger'
-import type { PosWebhookAccepted } from '@positive/contracts'
+import type { PosLinkToken, PosWebhookAccepted } from '@positive/contracts'
 import type { Request } from 'express'
 
 import { Public } from '../common/tenant/public.decorator'
@@ -65,6 +66,30 @@ export class PosWebhookController {
     @Headers('x-idempotency-key') idempotencyKey?: string,
   ): Promise<PosWebhookAccepted> {
     return this.accept(request, signature, timestamp, idempotencyKey)
+  }
+
+  /**
+   * Токен для сервера кассы. docs/02, раздел 3.10.
+   *
+   * Здесь, а не в `auth/`: доказательство то же, что у вебхука, — подпись ключом
+   * связки, и проверять её второй раз в другом месте значит однажды проверить иначе.
+   */
+  @Post('token')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Токен сервера кассы по подписи ключом связки' })
+  @ApiOkResponse({ description: 'Короткоживущий токен для /v1/pos/*' })
+  @ApiUnauthorizedResponse({ description: 'Подпись или отправитель не приняты' })
+  async token(
+    @Req() request: RawBodyRequest<Request>,
+    @Headers('x-positive-signature') signature?: string,
+    @Headers('x-positive-timestamp') timestamp?: string,
+  ): Promise<PosLinkToken> {
+    return this.webhooks.issuePosToken({
+      rawBody: request.rawBody ?? Buffer.alloc(0),
+      signature,
+      timestamp,
+    })
   }
 
   private async accept(

@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { randomBytes } from 'node:crypto'
 
-import type { IntegrationSecret, IntegrationStatus, RotateSecretInput } from '@positive/contracts'
+import type {
+  IntegrationConnected,
+  IntegrationSecret,
+  IntegrationStatus,
+  RotateSecretInput,
+} from '@positive/contracts'
 
 import { getEnv } from '../common/config/env'
 import { TenantContext } from '../common/tenant/tenant-context'
@@ -77,6 +82,56 @@ export class IntegrationService {
       failed,
       lastEventAt: last?.receivedAt.toISOString() ?? null,
     }
+  }
+
+  /**
+   * Подключить кассу: завести связку и отдать то, что вписывают в настройки кассы.
+   *
+   * Заводит заведение здесь, а не касса у нас: у кассы нет права создавать связку —
+   * ключ, выданный по её просьбе, был бы выдан кому угодно. Владелец вошёл, значит
+   * заведение его, и он сам переносит два значения на вторую сторону.
+   *
+   * Вторую связку не заводим: подпись сверяется по идентификатору из тела, и две
+   * живые связки значили бы две кассы, начисляющие от имени одного заведения.
+   */
+  async connect(): Promise<IntegrationConnected> {
+    const { tenantId, actorId, role } = TenantContext.getOrThrow()
+
+    const posMerchantId = `pm_${randomBytes(9).toString('base64url')}`
+    const secret = randomBytes(24).toString('base64url')
+
+    const link = await this.prisma.forTenant(tenantId, async (tx) => {
+      const current = await tx.posLink.findFirst({
+        where: { tenantId, isActive: true },
+        select: { id: true },
+      })
+
+      if (current !== null) {
+        return null
+      }
+
+      return tx.posLink.create({
+        data: { tenantId, posMerchantId, webhookSecret: secret },
+        select: { id: true },
+      })
+    })
+
+    if (link === null) {
+      throw new ConflictException({
+        error: { code: 'ALREADY_CONNECTED', message: 'Касса уже подключена' },
+      })
+    }
+
+    await this.audit.write({
+      action: 'INTEGRATION_CONNECTED',
+      actorType: (role ?? 'OWNER') as AuditActorType,
+      actorId,
+      tenantId,
+      entityType: 'PosLink',
+      entityId: link.id,
+    })
+
+    return { posMerchantId, secret, apiUrl: getEnv().publicApiUrl }
   }
 
   /**
