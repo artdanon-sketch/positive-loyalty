@@ -75,6 +75,10 @@ afterAll(async () => {
   await app.close()
 })
 
+type Connected = { posMerchantId: string; secret: string }
+type Issued = { accessToken: string; expiresIn: number }
+type Failed = { error: { code: string } }
+
 describe('подключение кассы', () => {
   it('менеджеру нельзя: ключ начисляет баллы от имени заведения', async () => {
     const response = await connect(managerToken)
@@ -86,13 +90,13 @@ describe('подключение кассы', () => {
     const first = await connect(ownerToken)
 
     expect(first.status).toBe(200)
-    expect(first.body.posMerchantId).toMatch(/^pm_/)
-    expect(first.body.secret.length).toBeGreaterThanOrEqual(32)
+    expect((first.body as Connected).posMerchantId).toMatch(/^pm_/)
+    expect((first.body as Connected).secret.length).toBeGreaterThanOrEqual(32)
 
     const second = await connect(ownerToken)
 
     expect(second.status).toBe(409)
-    expect(second.body.error.code).toBe('ALREADY_CONNECTED')
+    expect((second.body as Failed).error.code).toBe('ALREADY_CONNECTED')
 
     const links = await prisma.posLink.count({ where: { tenantId } })
 
@@ -115,11 +119,11 @@ describe('токен сервера кассы', () => {
     const issued = await askToken(merchantId, secret)
 
     expect(issued.status).toBe(200)
-    expect(issued.body.expiresIn).toBe(600)
+    expect((issued.body as Issued).expiresIn).toBe(600)
 
     await request(server())
       .get('/v1/pos/config')
-      .set('Authorization', `Bearer ${issued.body.accessToken}`)
+      .set('Authorization', `Bearer ${(issued.body as Issued).accessToken}`)
       .expect(200)
   })
 
@@ -128,7 +132,7 @@ describe('токен сервера кассы', () => {
 
     await request(server())
       .get('/v1/admin/integration')
-      .set('Authorization', `Bearer ${issued.body.accessToken}`)
+      .set('Authorization', `Bearer ${(issued.body as Issued).accessToken}`)
       .expect(403)
   })
 
@@ -138,13 +142,13 @@ describe('токен сервера кассы', () => {
 
     expect(wrongKey.status).toBe(401)
     expect(unknown.status).toBe(401)
-    expect(wrongKey.body.error.code).toBe(unknown.body.error.code)
+    expect((wrongKey.body as Failed).error.code).toBe((unknown.body as Failed).error.code)
   })
 
   it('ключ соседа не даёт токена на наше заведение', async () => {
     const neighbour = await connect(otherOwnerToken)
 
-    const response = await askToken(merchantId, neighbour.body.secret as string)
+    const response = await askToken(merchantId, (neighbour.body as Connected).secret)
 
     expect(response.status).toBe(401)
   })
