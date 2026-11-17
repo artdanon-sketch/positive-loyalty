@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -15,6 +16,8 @@ import type {
   RedeemRewardInput,
   RedeemRewardResult,
   PosRewards,
+  PosRefundInput,
+  PosRefundResult,
   PosVoidResult,
   PreviewResult,
   RedeemGrantResult,
@@ -151,6 +154,18 @@ const loadOfferCandidates = async (
     reward: offer.reward,
     issued: { total: count(total, offer.id), toGuest: count(toGuest, offer.id) },
   }))
+}
+
+/**
+ * Сколько начисленного снять, когда вернули `refundedMoney` из `basis` денег чека.
+ * Целочисленно (BigInt: сатанги × баллы не влезают в 2^53), к ближайшему,
+ * не больше начисленного.
+ */
+export const partOfEarned = (earned: number, basis: number, refundedMoney: number): number => {
+  if (earned <= 0 || basis <= 0 || refundedMoney <= 0) return 0
+  const money = BigInt(Math.min(refundedMoney, basis))
+  const share = (2n * BigInt(earned) * money + BigInt(basis)) / (2n * BigInt(basis))
+  return Math.min(earned, Number(share))
 }
 
 const tenantTimezone = async (tx: Tx, tenantId: string): Promise<string> => {
@@ -828,7 +843,10 @@ export class PosService {
           membershipId: anchor.membershipId,
           refType: 'receipt',
           refId: anchor.refId,
-          type: { in: ['EARN', 'REDEEM'] },
+          // ADJUST по чеку — доли частичных возвратов (`refundTransaction`).
+          // Отмена гасит и их: иначе после «вернули блюдо, потом весь чек»
+          // гостю дважды вернулись бы баллы за то блюдо.
+          type: { in: ['EARN', 'REDEEM', 'ADJUST'] },
         },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
@@ -949,6 +967,156 @@ export class PosService {
     })
 
     return { transactionId, reversals, newBalance: balanceNow, replayed }
+  }
+
+  /**
+   * Частичный возврат чека: доля баллов — назад гостю, доля начисленного — снять.
+   *
+   * Решение владельца 17.11.2026 на «что делать с баллами при частичном
+   * возврате»: «Пересчитывать сами». До этого касса оставляла задачу человеку
+   * («поправить баллы на ฿…») и начисленное не трогала вовсе.
+   *
+   * РАСЧЁТ. Вход — НАКОПЛЕННЫЕ по чеку суммы возврата (деньгами и баллами).
+   *   • вернуть баллами — ровно `refundedPoints`, но не больше списанного чеком:
+   *     сколько оплаты баллами отдали гостю, столько баллов и вернулось;
+   *   • снять — начисление × refundedMoney / база начисления (деньги чека),
+   *     к ближайшему, не больше начисленного. Начисляли с денег (5% с денежной
+   *     части) — с возвращённых денег и снимаем.
+   * В журнал пишется только разница с уже записанным: опоздавший из очереди
+   * старый возврат ничего не делает, повтор — тоже.
+   *
+   * КЛЮЧ — от цели, а не от номера возврата: `…:p<всего вернуть>` и
+   * `…:e<всего снять>`. Два одновременных досыла одного возврата (сразу и из
+   * очереди) считают одну цель и упираются в один ключ — вторая строка не
+   * появится. Номер возврата уходит в лог.
+   *
+   * ЧТО НЕ ТРОГАЕМ: визит (часть чека оплачена), подарок за первую покупку,
+   * проценты пригласившим и промокоды за чек — всё это забирает только
+   * полная отмена. Без окна и без комментария: возврат приходит от сервера
+   * кассы, где его уже провёл человек со своими правами.
+   */
+  async refundTransaction(transactionId: string, input: PosRefundInput): Promise<PosRefundResult> {
+    const { tenantId, actorId, requestId } = TenantContext.getOrThrow()
+
+    const anchor = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findFirst({ where: { id: transactionId, tenantId } }),
+    )
+
+    if (anchor === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+
+    if (anchor.refType !== 'receipt' || anchor.refId === null) {
+      throw new BadRequestException({
+        error: {
+          code: 'NOT_A_RECEIPT',
+          message: 'Возвращать можно только операции, проведённые чеком',
+        },
+      })
+    }
+
+    const receiptId = anchor.refId
+    const entries = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findMany({
+        where: {
+          tenantId,
+          membershipId: anchor.membershipId,
+          refType: 'receipt',
+          refId: receiptId,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    )
+
+    const earn = entries.find((entry) => entry.type === 'EARN')
+    const redeem = entries.find((entry) => entry.type === 'REDEEM')
+    const reversed = new Set(entries.map((entry) => entry.reversalOfId))
+
+    if (earn === undefined && redeem === undefined) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+
+    if ((earn && reversed.has(earn.id)) || (redeem && reversed.has(redeem.id))) {
+      // Чек уже отменён целиком: вернулось всё, долей больше нет.
+      throw new ConflictException({
+        error: { code: 'ALREADY_VOIDED', message: 'Чек уже отменён целиком' },
+      })
+    }
+
+    const parts = entries.filter((entry) => entry.type === 'ADJUST' && !reversed.has(entry.id))
+    const returnedBefore = parts.reduce((sum, e) => sum + Math.max(0, e.amount), 0)
+    const takenBefore = parts.reduce((sum, e) => sum + Math.max(0, -e.amount), 0)
+
+    const targetReturn = Math.min(-(redeem?.amount ?? 0), input.refundedPoints)
+    const targetTake = partOfEarned(earn?.amount ?? 0, earn?.basisAmount ?? 0, input.refundedMoney)
+    const toReturn = Math.max(0, targetReturn - returnedBefore)
+    const toTake = Math.max(0, targetTake - takenBefore)
+
+    const scope = { tenantId }
+    const origin = {
+      source: 'STAFF_MANUAL' as const,
+      actorType: 'STAFF' as const,
+      ...(actorId === null ? {} : { actorId }),
+    }
+    // Ключ привязан к первой записи чека: номер чека длиной до 64 не влез бы в 128.
+    const keyBase = `pos:${tenantId}:part:${(earn ?? redeem ?? anchor).id}`
+
+    if (toReturn > 0 || toTake > 0) {
+      this.logger.log(
+        `Частичный возврат ${input.refundId} по чеку ${receiptId}: вернуть ${toReturn}, снять ${toTake}, requestId ${requestId}`,
+      )
+    }
+
+    // Сначала вернуть, потом снять: так баланс реже проходит через минус.
+    if (toReturn > 0) {
+      await this.ledger.refundReceiptPart(
+        {
+          membershipId: anchor.membershipId,
+          amount: toReturn,
+          idempotencyKey: `${keyBase}:p${targetReturn}`,
+          refId: receiptId,
+          ...origin,
+        },
+        scope,
+      )
+    }
+
+    if (toTake > 0) {
+      await this.ledger.refundReceiptPart(
+        {
+          membershipId: anchor.membershipId,
+          amount: -toTake,
+          idempotencyKey: `${keyBase}:e${targetTake}`,
+          refId: receiptId,
+          basisAmount: Math.min(input.refundedMoney, earn?.basisAmount ?? 0),
+          ...origin,
+        },
+        scope,
+      )
+    }
+
+    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: anchor.membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+      return membership?.pointsBalance ?? 0
+    })
+
+    return {
+      transactionId,
+      refundId: input.refundId,
+      pointsReturned: toReturn,
+      pointsTakenBack: toTake,
+      totalReturned: Math.max(returnedBefore, targetReturn),
+      totalTakenBack: Math.max(takenBefore, targetTake),
+      newBalance: balanceNow,
+      replayed: toReturn === 0 && toTake === 0,
+    }
   }
 
   /**

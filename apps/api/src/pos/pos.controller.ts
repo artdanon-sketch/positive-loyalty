@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -23,6 +24,7 @@ import {
   PosGuestQuery,
   PosTagInput,
   RedeemRewardInput,
+  PosRefundInput,
   PosVoidInput,
   PreviewInput,
   RedeemGrantInput,
@@ -36,6 +38,7 @@ import type {
   CommitResult,
   PosConfig,
   PosGuest,
+  PosRefundResult,
   PosVoidResult,
   PreviewResult,
   PosRewards,
@@ -289,6 +292,37 @@ export class PosController {
     }
 
     return this.posService.voidTransaction(transactionId, parsed.data.reason, parsed.data.comment)
+  }
+
+  @Post('transactions/:transactionId/refund')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Частичный возврат проведённого чека',
+    description:
+      'Возвращает гостю долю оплаты баллами и снимает долю начисленного за возвращённые ' +
+      'деньги. Суммы — накопленные по чеку: повтор и опоздавший возврат ничего не задваивают.',
+  })
+  @ApiOkResponse({ description: 'Возврат учтён (или уже был учтён раньше)' })
+  @ApiBadRequestResponse({ description: 'VALIDATION_FAILED, NOT_A_RECEIPT' })
+  @ApiNotFoundResponse({ description: 'NOT_FOUND — операции нет у этого заведения' })
+  @ApiConflictResponse({ description: 'ALREADY_VOIDED — чек уже отменён целиком' })
+  async refundTransaction(
+    @Param('transactionId', ParseUUIDPipe) transactionId: string,
+    @Body() body: unknown,
+  ): Promise<PosRefundResult> {
+    const parsed = PosRefundInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.refundTransaction(transactionId, parsed.data)
   }
 
   @Get('invite')

@@ -318,6 +318,52 @@ export const PosVoidResult = z
 export type PosVoidResult = z.infer<typeof PosVoidResult>
 
 /**
+ * Частичный возврат чека. `POST /v1/pos/transactions/:transactionId/refund`.
+ *
+ * Суммы — НАКОПЛЕННЫЕ по чеку, а не доля этого возврата: касса досылает
+ * возвраты из очереди, и они могут прийти не по порядку или дважды. Сервис
+ * дописывает в журнал только разницу между тем, что должно быть снято
+ * и возвращено при таких суммах, и тем, что уже снято и возвращено. Опоздавший
+ * старый возврат тогда ничего не делает, а не задваивает.
+ */
+export const PosRefundInput = z
+  .object({
+    /** Номер возврата на кассе. Ключ идемпотентности этого вызова. */
+    refundId: z.string().trim().min(1).max(64),
+    /** Сколько денег чека (не баллами) возвращено гостю всего, минорные. */
+    refundedMoney: z.number().int().nonnegative().max(2_147_483_647),
+    /** Сколько оплаты баллами чека возвращено всего — баллы, те же минорные. */
+    refundedPoints: z.number().int().nonnegative().max(2_147_483_647),
+    comment: z.string().trim().min(3).max(300).optional(),
+  })
+  .strict()
+  .refine((value) => value.refundedMoney + value.refundedPoints > 0, {
+    error: 'возврат на ноль ничего не меняет',
+    path: ['refundedMoney'],
+  })
+
+export type PosRefundInput = z.infer<typeof PosRefundInput>
+
+export const PosRefundResult = z
+  .object({
+    transactionId: z.uuid(),
+    refundId: z.string(),
+    /** Баллы, возвращённые гостю ЭТИМ вызовом (доля оплаты баллами). */
+    pointsReturned: z.number().int().nonnegative(),
+    /** Баллы, снятые ЭТИМ вызовом (доля начисленного за возвращённые деньги). */
+    pointsTakenBack: z.number().int().nonnegative(),
+    /** Всего по чеку после вызова. */
+    totalReturned: z.number().int().nonnegative(),
+    totalTakenBack: z.number().int().nonnegative(),
+    newBalance: z.number().int(),
+    /** true — этот возврат уже проводили: повтор вернул прежний итог. */
+    replayed: z.boolean(),
+  })
+  .strict()
+
+export type PosRefundResult = z.infer<typeof PosRefundResult>
+
+/**
  * Приложение кассира: вкладки сверх «Счёта». docs/02, раздел 3.9.
  *
  * ЧТО ИЗ ЭТОГО ВИДНО — РЕШАЕТ ВЛАДЕЛЕЦ. Флаги приезжают в `PosConfig`, и касса

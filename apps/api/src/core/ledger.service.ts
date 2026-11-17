@@ -4,6 +4,7 @@ import {
   ExpireInput,
   EarnInput,
   GrantInput,
+  ReceiptPartInput,
   RedeemInput,
   ReverseInput,
   LedgerOperationResult,
@@ -693,6 +694,67 @@ export class LedgerService {
         })
 
         // Только баланс: визит и оборот двигает покупка, а не правка.
+        await tx.membership.update({
+          where: { id: membership.id },
+          data: { pointsBalance: balanceAfter },
+        })
+
+        return row
+      },
+    })
+  }
+
+  /**
+   * Доля чека при частичном возврате: вернуть часть потраченных баллов (+)
+   * или снять часть начисленных (−). Решение владельца 17.11.2026 —
+   * «Пересчитывать сами» вместо задачи человеку.
+   *
+   * Тип ADJUST, но с `refType = receipt`: полная отмена того же чека находит
+   * эти строки по номеру и компенсирует вместе с начислением и списанием.
+   *
+   * В МИНУС ПУСКАЕТ, как и отмена чека (решение владельца 13.11.2026, см. `reverse`):
+   * гость мог уже потратить баллы, начисленные за возвращённое блюдо, и отказ
+   * здесь оставил бы возврат без пересчёта навсегда. Минус — долг гостя,
+   * следующие покупки гасят его первыми.
+   *
+   * Визит и оборот не двигаются: визит остался (часть чека оплачена), а
+   * spentTotal полная отмена уменьшает на всю сумму чека разом.
+   */
+  async refundReceiptPart(
+    input: ReceiptPartInput,
+    scope: TenantScope,
+  ): Promise<LedgerOperationResult> {
+    const parsed = parseInput(ReceiptPartInput, input, 'refund-part')
+
+    return this.commit({
+      operation: 'refund-part',
+      idempotencyKey: parsed.idempotencyKey,
+      tenantId: scope.tenantId,
+      expectation: { type: 'ADJUST', membershipId: parsed.membershipId, amount: parsed.amount },
+      write: async (tx) => {
+        const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
+        const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
+
+        const row = await tx.ledgerEntry.create({
+          data: {
+            tenantId: membership.tenantId,
+            guestId: membership.guestId,
+            membershipId: membership.id,
+            type: 'ADJUST',
+            amount: parsed.amount,
+            balanceAfter,
+            basisAmount: parsed.basisAmount ?? null,
+            currency: membership.tenant.currency,
+            refType: 'receipt',
+            refId: parsed.refId,
+            idempotencyKey: parsed.idempotencyKey,
+            offerId: null,
+            saleKindId: null,
+            occurredAt: null,
+            ...originColumns(parsed),
+          },
+        })
+
         await tx.membership.update({
           where: { id: membership.id },
           data: { pointsBalance: balanceAfter },
