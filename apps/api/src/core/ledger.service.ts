@@ -653,54 +653,11 @@ export class LedgerService {
   async adjust(input: AdjustInput, scope: TenantScope): Promise<LedgerOperationResult> {
     const parsed = parseInput(AdjustInput, input, 'adjust')
 
-    return this.commit({
-      operation: 'adjust',
-      idempotencyKey: parsed.idempotencyKey,
-      tenantId: scope.tenantId,
-      expectation: { type: 'ADJUST', membershipId: parsed.membershipId, amount: parsed.amount },
-      write: async (tx) => {
-        const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
-
-        // Проверка достаточности — ВНУТРИ транзакции, как у redeem: снаружи её
-        // обгоняет параллельное списание.
-        if (membership.pointsBalance + parsed.amount < 0) {
-          throw new InsufficientBalanceError(
-            membership.id,
-            membership.pointsBalance,
-            -parsed.amount,
-          )
-        }
-
-        const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
-
-        const row = await tx.ledgerEntry.create({
-          data: {
-            tenantId: membership.tenantId,
-            guestId: membership.guestId,
-            membershipId: membership.id,
-            type: 'ADJUST',
-            amount: parsed.amount,
-            balanceAfter,
-            basisAmount: null,
-            currency: parsed.currency ?? membership.tenant.currency,
-            refType: null,
-            refId: null,
-            idempotencyKey: parsed.idempotencyKey,
-            offerId: null,
-            saleKindId: null,
-            occurredAt: null,
-            ...originColumns(parsed),
-          },
-        })
-
-        // Только баланс: визит и оборот двигает покупка, а не правка.
-        await tx.membership.update({
-          where: { id: membership.id },
-          data: { pointsBalance: balanceAfter },
-        })
-
-        return row
-      },
+    return this.writeAdjust('adjust', parsed, scope, {
+      allowNegative: false,
+      currency: parsed.currency,
+      refId: null,
+      basisAmount: null,
     })
   }
 
@@ -726,13 +683,47 @@ export class LedgerService {
   ): Promise<LedgerOperationResult> {
     const parsed = parseInput(ReceiptPartInput, input, 'refund-part')
 
+    return this.writeAdjust('refund-part', parsed, scope, {
+      allowNegative: true,
+      currency: undefined,
+      refId: parsed.refId,
+      basisAmount: parsed.basisAmount ?? null,
+    })
+  }
+
+  /**
+   * Строка ADJUST — общая для ручной правки и доли чека. Отличаются они
+   * только тем, пускают ли в минус и привязаны ли к чеку (`refId`).
+   */
+  private writeAdjust(
+    operation: string,
+    parsed: OriginInput & { membershipId: string; amount: number; idempotencyKey: string },
+    scope: TenantScope,
+    opts: {
+      allowNegative: boolean
+      currency: string | undefined
+      refId: string | null
+      basisAmount: number | null
+    },
+  ): Promise<LedgerOperationResult> {
     return this.commit({
-      operation: 'refund-part',
+      operation,
       idempotencyKey: parsed.idempotencyKey,
       tenantId: scope.tenantId,
       expectation: { type: 'ADJUST', membershipId: parsed.membershipId, amount: parsed.amount },
       write: async (tx) => {
         const membership = await loadMembership(tx, parsed.membershipId, scope.tenantId)
+
+        // Проверка достаточности — ВНУТРИ транзакции, как у redeem: снаружи её
+        // обгоняет параллельное списание.
+        if (!opts.allowNegative && membership.pointsBalance + parsed.amount < 0) {
+          throw new InsufficientBalanceError(
+            membership.id,
+            membership.pointsBalance,
+            -parsed.amount,
+          )
+        }
+
         const balanceAfter = shiftBalance(membership.pointsBalance, parsed.amount, membership.id)
 
         const row = await tx.ledgerEntry.create({
@@ -743,10 +734,10 @@ export class LedgerService {
             type: 'ADJUST',
             amount: parsed.amount,
             balanceAfter,
-            basisAmount: parsed.basisAmount ?? null,
-            currency: membership.tenant.currency,
-            refType: 'receipt',
-            refId: parsed.refId,
+            basisAmount: opts.basisAmount,
+            currency: opts.currency ?? membership.tenant.currency,
+            refType: opts.refId === null ? null : 'receipt',
+            refId: opts.refId,
             idempotencyKey: parsed.idempotencyKey,
             offerId: null,
             saleKindId: null,
@@ -755,6 +746,7 @@ export class LedgerService {
           },
         })
 
+        // Только баланс: визит и оборот двигает покупка, а не правка.
         await tx.membership.update({
           where: { id: membership.id },
           data: { pointsBalance: balanceAfter },

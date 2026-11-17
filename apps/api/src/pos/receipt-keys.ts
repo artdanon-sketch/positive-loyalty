@@ -19,3 +19,11 @@ export const receiptKey = (tenantId: string, leg: ReceiptLeg, receiptId: string)
 /** Награда из витрины: номер выдачи придумывает касса — тоже в рамках заведения. */
 export const rewardKey = (tenantId: string, redemptionId: string): string =>
   `pos:${tenantId}:reward:${redemptionId}`
+
+/**
+ * Записи журнала, из которых состоит чек и которые гасит его отмена — касса
+ * (`PosService.voidTransaction`) и вебхук (`applyVoid`) берут список отсюда.
+ * ADJUST по чеку — доли частичных возвратов (`refundTransaction`): без них
+ * «вернули блюдо, потом весь чек» вернуло бы гостю баллы за блюдо дважды.
+ */
+export const RECEIPT_LEG_TYPES = ['EARN', 'REDEEM', 'ADJUST'] as const

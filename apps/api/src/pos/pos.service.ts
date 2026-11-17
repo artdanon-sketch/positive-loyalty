@@ -49,7 +49,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { evaluateOffers } from '../rules/rules-engine'
 import type { OfferCandidate, RulesOutcome } from '../rules/rules-engine'
 import { checkout } from './checkout-math'
-import { receiptKey, rewardKey } from './receipt-keys'
+import { RECEIPT_LEG_TYPES, receiptKey, rewardKey } from './receipt-keys'
 
 /**
  * Касса: найти гостя, посчитать, провести.
@@ -161,6 +161,13 @@ const loadOfferCandidates = async (
  * Целочисленно (BigInt: сатанги × баллы не влезают в 2^53), к ближайшему,
  * не больше начисленного.
  */
+/** Происхождение записи, сделанной кассиром или сервером кассы. */
+const staffOrigin = (actorId: string | null) => ({
+  source: 'STAFF_MANUAL' as const,
+  actorType: 'STAFF' as const,
+  ...(actorId === null ? {} : { actorId }),
+})
+
 export const partOfEarned = (earned: number, basis: number, refundedMoney: number): number => {
   if (earned <= 0 || basis <= 0 || refundedMoney <= 0) return 0
   const money = BigInt(Math.min(refundedMoney, basis))
@@ -817,39 +824,9 @@ export class PosService {
   ): Promise<PosVoidResult> {
     const { tenantId, role, actorId, requestId } = TenantContext.getOrThrow()
 
-    const anchor = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findFirst({ where: { id: transactionId, tenantId } }),
-    )
-
-    if (anchor === null) {
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
-      })
-    }
-
-    if (anchor.refType !== 'receipt' || anchor.refId === null) {
-      throw new BadRequestException({
-        error: {
-          code: 'NOT_A_RECEIPT',
-          message: 'Отменять можно только операции, проведённые чеком',
-        },
-      })
-    }
-
-    const legs = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findMany({
-        where: {
-          tenantId,
-          membershipId: anchor.membershipId,
-          refType: 'receipt',
-          refId: anchor.refId,
-          // ADJUST по чеку — доли частичных возвратов (`refundTransaction`).
-          // Отмена гасит и их: иначе после «вернули блюдо, потом весь чек»
-          // гостю дважды вернулись бы баллы за то блюдо.
-          type: { in: ['EARN', 'REDEEM', 'ADJUST'] },
-        },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      }),
+    const { anchor, entries } = await this.loadReceipt(tenantId, transactionId, 'Отменять')
+    const legs = entries.filter((entry) =>
+      (RECEIPT_LEG_TYPES as readonly string[]).includes(entry.type),
     )
 
     if (legs.length === 0) {
@@ -903,11 +880,7 @@ export class PosService {
     }
 
     const scope = { tenantId }
-    const origin = {
-      source: 'STAFF_MANUAL' as const,
-      actorType: 'STAFF' as const,
-      ...(actorId === null ? {} : { actorId }),
-    }
+    const origin = staffOrigin(actorId)
 
     await this.voidCheckGrants(tenantId, anchor.refId)
 
@@ -958,13 +931,7 @@ export class PosService {
 
     // Баланс читаем после всех компенсаций: порядок записей чека не обязан
     // совпадать с порядком компенсаций, «последняя строка цикла» — не истина.
-    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
-      const membership = await tx.membership.findFirst({
-        where: { id: anchor.membershipId, tenantId },
-        select: { pointsBalance: true },
-      })
-      return membership?.pointsBalance ?? 0
-    })
+    const balanceNow = await this.readBalance(tenantId, anchor.membershipId)
 
     return { transactionId, reversals, newBalance: balanceNow, replayed }
   }
@@ -997,48 +964,12 @@ export class PosService {
    */
   async refundTransaction(transactionId: string, input: PosRefundInput): Promise<PosRefundResult> {
     const { tenantId, actorId, requestId } = TenantContext.getOrThrow()
-
-    const anchor = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findFirst({ where: { id: transactionId, tenantId } }),
-    )
-
-    if (anchor === null) {
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
-      })
-    }
-
-    if (anchor.refType !== 'receipt' || anchor.refId === null) {
-      throw new BadRequestException({
-        error: {
-          code: 'NOT_A_RECEIPT',
-          message: 'Возвращать можно только операции, проведённые чеком',
-        },
-      })
-    }
-
+    const { anchor, entries } = await this.loadReceipt(tenantId, transactionId, 'Возвращать')
     const receiptId = anchor.refId
-    const entries = await this.prisma.forTenant(tenantId, async (tx) =>
-      tx.ledgerEntry.findMany({
-        where: {
-          tenantId,
-          membershipId: anchor.membershipId,
-          refType: 'receipt',
-          refId: receiptId,
-        },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      }),
-    )
 
     const earn = entries.find((entry) => entry.type === 'EARN')
     const redeem = entries.find((entry) => entry.type === 'REDEEM')
     const reversed = new Set(entries.map((entry) => entry.reversalOfId))
-
-    if (earn === undefined && redeem === undefined) {
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
-      })
-    }
 
     if ((earn && reversed.has(earn.id)) || (redeem && reversed.has(redeem.id))) {
       // Чек уже отменён целиком: вернулось всё, долей больше нет.
@@ -1047,6 +978,7 @@ export class PosService {
       })
     }
 
+    // Доли — ADJUST по чеку: «+» вернули баллы, «−» сняли начисленное.
     const parts = entries.filter((entry) => entry.type === 'ADJUST' && !reversed.has(entry.id))
     const returnedBefore = parts.reduce((sum, e) => sum + Math.max(0, e.amount), 0)
     const takenBefore = parts.reduce((sum, e) => sum + Math.max(0, -e.amount), 0)
@@ -1055,57 +987,39 @@ export class PosService {
     const targetTake = partOfEarned(earn?.amount ?? 0, earn?.basisAmount ?? 0, input.refundedMoney)
     const toReturn = Math.max(0, targetReturn - returnedBefore)
     const toTake = Math.max(0, targetTake - takenBefore)
-
-    const scope = { tenantId }
-    const origin = {
-      source: 'STAFF_MANUAL' as const,
-      actorType: 'STAFF' as const,
-      ...(actorId === null ? {} : { actorId }),
-    }
     // Ключ привязан к первой записи чека: номер чека длиной до 64 не влез бы в 128.
     const keyBase = `pos:${tenantId}:part:${(earn ?? redeem ?? anchor).id}`
+    // Сначала вернуть, потом снять: так баланс реже проходит через минус.
+    const steps = [
+      { amount: toReturn, key: `${keyBase}:p${targetReturn}` },
+      {
+        amount: -toTake,
+        key: `${keyBase}:e${targetTake}`,
+        basisAmount: Math.min(input.refundedMoney, earn?.basisAmount ?? 0),
+      },
+    ].filter((step) => step.amount !== 0)
 
-    if (toReturn > 0 || toTake > 0) {
+    let newBalance: number | null = null
+    for (const step of steps) {
+      const result = await this.ledger.refundReceiptPart(
+        {
+          membershipId: anchor.membershipId,
+          amount: step.amount,
+          idempotencyKey: step.key,
+          refId: receiptId,
+          ...(step.basisAmount === undefined ? {} : { basisAmount: step.basisAmount }),
+          ...staffOrigin(actorId),
+        },
+        { tenantId },
+      )
+      newBalance = result.entry.balanceAfter
+    }
+
+    if (steps.length > 0) {
       this.logger.log(
         `Частичный возврат ${input.refundId} по чеку ${receiptId}: вернуть ${toReturn}, снять ${toTake}, requestId ${requestId}`,
       )
     }
-
-    // Сначала вернуть, потом снять: так баланс реже проходит через минус.
-    if (toReturn > 0) {
-      await this.ledger.refundReceiptPart(
-        {
-          membershipId: anchor.membershipId,
-          amount: toReturn,
-          idempotencyKey: `${keyBase}:p${targetReturn}`,
-          refId: receiptId,
-          ...origin,
-        },
-        scope,
-      )
-    }
-
-    if (toTake > 0) {
-      await this.ledger.refundReceiptPart(
-        {
-          membershipId: anchor.membershipId,
-          amount: -toTake,
-          idempotencyKey: `${keyBase}:e${targetTake}`,
-          refId: receiptId,
-          basisAmount: Math.min(input.refundedMoney, earn?.basisAmount ?? 0),
-          ...origin,
-        },
-        scope,
-      )
-    }
-
-    const balanceNow = await this.prisma.forTenant(tenantId, async (tx) => {
-      const membership = await tx.membership.findFirst({
-        where: { id: anchor.membershipId, tenantId },
-        select: { pointsBalance: true },
-      })
-      return membership?.pointsBalance ?? 0
-    })
 
     return {
       transactionId,
@@ -1114,9 +1028,66 @@ export class PosService {
       pointsTakenBack: toTake,
       totalReturned: Math.max(returnedBefore, targetReturn),
       totalTakenBack: Math.max(takenBefore, targetTake),
-      newBalance: balanceNow,
-      replayed: toReturn === 0 && toTake === 0,
+      // Записали — баланс в последней строке; повтор — читаем.
+      newBalance: newBalance ?? (await this.readBalance(tenantId, anchor.membershipId)),
+      replayed: steps.length === 0,
     }
+  }
+
+  /**
+   * Чек по любой его записи: сама запись и все записи чека этого гостя.
+   * `verb` — в текст отказа: «Отменять / Возвращать можно только…».
+   * Одна транзакция `forTenant` вместо двух подряд.
+   */
+  private async loadReceipt(tenantId: string, transactionId: string, verb: string) {
+    const found = await this.prisma.forTenant(tenantId, async (tx) => {
+      const anchor = await tx.ledgerEntry.findFirst({ where: { id: transactionId, tenantId } })
+      if (anchor === null || anchor.refType !== 'receipt' || anchor.refId === null) {
+        return { anchor, entries: [] }
+      }
+      const entries = await tx.ledgerEntry.findMany({
+        where: {
+          tenantId,
+          membershipId: anchor.membershipId,
+          refType: 'receipt',
+          refId: anchor.refId,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      })
+      return { anchor, entries }
+    })
+
+    const { anchor, entries } = found
+    if (anchor === null) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+    if (anchor.refType !== 'receipt' || anchor.refId === null) {
+      throw new BadRequestException({
+        error: {
+          code: 'NOT_A_RECEIPT',
+          message: `${verb} можно только операции, проведённые чеком`,
+        },
+      })
+    }
+    if (!entries.some((entry) => entry.type === 'EARN' || entry.type === 'REDEEM')) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Операция не найдена' },
+      })
+    }
+    return { anchor: { ...anchor, refId: anchor.refId }, entries }
+  }
+
+  /** Баланс участия сейчас — после записей, порядок которых не обязан совпадать с циклом. */
+  private async readBalance(tenantId: string, membershipId: string): Promise<number> {
+    return this.prisma.forTenant(tenantId, async (tx) => {
+      const membership = await tx.membership.findFirst({
+        where: { id: membershipId, tenantId },
+        select: { pointsBalance: true },
+      })
+      return membership?.pointsBalance ?? 0
+    })
   }
 
   /**
