@@ -313,6 +313,16 @@ export const AdjustInput = z
 
 export type AdjustInput = z.infer<typeof AdjustInput>
 
+/** Вход LedgerService.refundReceiptPart — те же поля, что у правки, плюс чек. */
+export const ReceiptPartInput = AdjustInput.omit({ currency: true }).extend({
+  /** Номер чека — тот же refId, что у его начисления и списания. */
+  refId: z.string().trim().min(1).max(64),
+  /** Сколько денег чека вернули этим возвратом (для выписки), минорные. */
+  basisAmount: MinorUnits.optional(),
+})
+
+export type ReceiptPartInput = z.infer<typeof ReceiptPartInput>
+
 /**
  * Вход LedgerService.refundReceiptPart — доля чека при частичном возврате.
  *
@@ -322,26 +332,6 @@ export type AdjustInput = z.infer<typeof AdjustInput>
  * начисленные. Сумму считает касса-сервис (`PosService.refundTransaction`) из
  * ног чека, а не берёт снаружи как есть.
  */
-export const ReceiptPartInput = z
-  .object({
-    membershipId: z.uuid(),
-    amount: z
-      .number()
-      .int()
-      .min(-INT32_MAX)
-      .max(INT32_MAX)
-      .refine((value) => value !== 0, 'Правка на ноль ничего не меняет'),
-    idempotencyKey: IdempotencyKey,
-    /** Номер чека — тот же refId, что у его начисления и списания. */
-    refId: z.string().trim().min(1).max(64),
-    /** Сколько денег чека вернули этим возвратом (для выписки), минорные. */
-    basisAmount: MinorUnits.optional(),
-    ...originShape,
-  })
-  .strict()
-
-export type ReceiptPartInput = z.infer<typeof ReceiptPartInput>
-
 /**
  * Вход LedgerService.reverse — компенсация ранее проведённой операции.
  *

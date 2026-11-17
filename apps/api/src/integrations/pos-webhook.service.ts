@@ -10,7 +10,7 @@ import { PrismaService } from '../core/prisma.service'
 import { ReferralSharesService } from '../core/referral-shares.service'
 import { signAccessToken, verifyGuestQrToken } from '../common/tenant/access-token'
 import { getEnv } from '../common/config/env'
-import { receiptKey } from '../pos/receipt-keys'
+import { RECEIPT_LEG_TYPES, receiptKey } from '../pos/receipt-keys'
 import { parseProgramConfig } from '@positive/contracts'
 import type { ProgramConfig } from '@positive/contracts'
 
@@ -331,7 +331,7 @@ export class PosWebhookService {
           tenantId,
           refType: 'receipt',
           refId: envelope.receipt.id,
-          type: { in: ['EARN', 'REDEEM'] },
+          type: { in: [...RECEIPT_LEG_TYPES] },
         },
         select: { id: true, idempotencyKey: true, membershipId: true },
       }),

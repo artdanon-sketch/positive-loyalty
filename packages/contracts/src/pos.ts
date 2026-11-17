@@ -334,7 +334,6 @@ export const PosRefundInput = z
     refundedMoney: z.number().int().nonnegative().max(2_147_483_647),
     /** Сколько оплаты баллами чека возвращено всего — баллы, те же минорные. */
     refundedPoints: z.number().int().nonnegative().max(2_147_483_647),
-    comment: z.string().trim().min(3).max(300).optional(),
   })
   .strict()
   .refine((value) => value.refundedMoney + value.refundedPoints > 0, {
