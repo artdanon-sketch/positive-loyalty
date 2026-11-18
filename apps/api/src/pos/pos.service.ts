@@ -15,6 +15,9 @@ import type {
   ProgramConfig,
   RedeemRewardInput,
   RedeemRewardResult,
+  RedeemRewardVoidResult,
+  PosCashier,
+  PosCatalog,
   PosRewards,
   PosRefundInput,
   PosRefundResult,
@@ -162,6 +165,12 @@ const loadOfferCandidates = async (
  * не больше начисленного.
  */
 /** Происхождение записи, сделанной кассиром или сервером кассы. */
+/** Нарушение UNIQUE — Prisma или драйвер, как ловит его `StaffService`. */
+const isUniqueViolation = (error: unknown): boolean => {
+  const record = error as { code?: string; cause?: { code?: string } } | null
+  return record?.code === 'P2002' || record?.code === '23505' || record?.cause?.code === '23505'
+}
+
 const staffOrigin = (actorId: string | null) => ({
   source: 'STAFF_MANUAL' as const,
   actorType: 'STAFF' as const,
@@ -614,14 +623,17 @@ export class PosService {
     receiptId: string
     paidBy?: string | undefined
     saleKindId?: string | undefined
+    cashier?: PosCashier | undefined
   }): Promise<CommitResult> {
-    const { tenantId, actorId } = TenantContext.getOrThrow()
+    const { tenantId } = TenantContext.getOrThrow()
 
     const alreadyCommitted = await this.findCommittedReceipt(tenantId, input.receiptId)
 
     if (alreadyCommitted !== null) {
       return alreadyCommitted
     }
+
+    const actorId = await this.actorOf(tenantId, input.cashier)
 
     const preview = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.transactionPreview.findFirst({ where: { id: input.previewId, tenantId } }),
@@ -1238,7 +1250,8 @@ export class PosService {
   }
 
   async redeemReward(input: RedeemRewardInput): Promise<RedeemRewardResult> {
-    const { tenantId, actorId } = TenantContext.getOrThrow()
+    const { tenantId } = TenantContext.getOrThrow()
+    const actorId = await this.actorOf(tenantId, input.cashier)
 
     const item = await this.prisma.forTenant(tenantId, async (tx) =>
       tx.catalogItem.findFirst({
@@ -1283,6 +1296,136 @@ export class PosService {
       }
 
       throw error
+    }
+  }
+
+  /**
+   * Кто сделал запись: сотрудник из токена или кассир POSitive POS из тела.
+   *
+   * Сервер кассы (`POS_LINK`) входит без сотрудника, поэтому человека называет
+   * тело — и лояльность заводит ему сотрудника без входа (`Staff.posStaffRef`).
+   * Имя догоняет: кассира переименовали в кассе — отчёт покажет новое имя.
+   *
+   * От входа по PIN тело не слушаем: там человек уже в токене, а чужое имя в
+   * теле начисляло бы доплату за гостя кому угодно.
+   */
+  private async actorOf(tenantId: string, cashier: PosCashier | undefined): Promise<string | null> {
+    const { actorId, role } = TenantContext.getOrThrow()
+
+    if (role !== 'POS_LINK' || cashier === undefined) {
+      return actorId
+    }
+
+    const where = { tenantId_posStaffRef: { tenantId, posStaffRef: cashier.ref } }
+    const upsert = () =>
+      this.prisma.forTenant(tenantId, async (tx) =>
+        tx.staff.upsert({
+          where,
+          create: {
+            tenantId,
+            role: 'CASHIER',
+            displayName: cashier.name,
+            posStaffRef: cashier.ref,
+          },
+          update: { displayName: cashier.name },
+          select: { id: true },
+        }),
+      )
+
+    try {
+      return (await upsert()).id
+    } catch (error) {
+      // Два первых чека одного кассира разом: второй упирается в уникальность —
+      // строка уже есть, повтор её обновит.
+      if (isUniqueViolation(error)) {
+        return (await upsert()).id
+      }
+
+      throw error
+    }
+  }
+
+  /** Витрина наград без гостя — бэк-офису кассы связать награду с блюдом. */
+  async catalog(): Promise<PosCatalog> {
+    const { tenantId } = TenantContext.getOrThrow()
+
+    const items = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.catalogItem.findMany({
+        where: { tenantId, isActive: true, pointsPrice: { not: null } },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, pointsPrice: true, imageUrl: true },
+      }),
+    )
+
+    return {
+      items: items.flatMap((item) =>
+        item.pointsPrice === null ? [] : [{ ...item, pointsPrice: item.pointsPrice }],
+      ),
+    }
+  }
+
+  /**
+   * Отменить выдачу награды: баллы назад гостю.
+   *
+   * Касса зовёт, когда чек с подарком не записался или его вернули целиком.
+   * Ключ компенсации выводится из ключа выдачи — повтор попадает в него же.
+   * Выдачи не было — `found: false`: касса могла не дождаться ответа на запрос,
+   * который до нас так и не дошёл, и отменять тогда нечего.
+   */
+  async voidReward(redemptionId: string): Promise<RedeemRewardVoidResult> {
+    const { tenantId, actorId } = TenantContext.getOrThrow()
+    const key = rewardKey(tenantId, redemptionId)
+
+    const entry = await this.prisma.forTenant(tenantId, async (tx) =>
+      tx.ledgerEntry.findFirst({
+        where: { tenantId, idempotencyKey: key },
+        select: { id: true, membershipId: true },
+      }),
+    )
+
+    if (entry === null) {
+      return { found: false, pointsReturned: 0, balanceAfter: null, replayed: false }
+    }
+
+    let replayed: boolean
+    let amount: number
+
+    try {
+      const result = await this.ledger.reverse(
+        {
+          entryId: entry.id,
+          idempotencyKey: `pos:void:${key}`,
+          reason: 'RECEIPT_VOIDED',
+          ...staffOrigin(actorId),
+        },
+        { tenantId },
+      )
+      replayed = result.replayed
+      amount = result.entry.amount
+    } catch (error) {
+      if (!(error instanceof AlreadyReversedError)) {
+        throw error
+      }
+
+      // Компенсировали другим путём (из бэк-офиса) — для кассы исход тот же.
+      const existing = await this.prisma.forTenant(tenantId, async (tx) =>
+        tx.ledgerEntry.findFirst({
+          where: { tenantId, reversalOfId: entry.id },
+          select: { amount: true },
+        }),
+      )
+      if (existing === null) {
+        throw error
+      }
+      replayed = true
+      amount = existing.amount
+    }
+
+    return {
+      found: true,
+      pointsReturned: Math.abs(amount),
+      balanceAfter: await this.readBalance(tenantId, entry.membershipId),
+      replayed,
     }
   }
 

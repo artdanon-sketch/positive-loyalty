@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { PosCashier } from './pos-cashier.js'
+
 /**
  * Каталог товаров и услуг. docs/02, раздел 5.17.
  *
@@ -154,6 +156,8 @@ export const RedeemRewardInput = z
     membershipId: z.uuid(),
     itemId: z.uuid(),
     redemptionId: z.uuid(),
+    /** Кто выдал — только от сервера кассы (`POS_LINK`), см. `PosCashier`. */
+    cashier: PosCashier.optional(),
   })
   .strict()
 
@@ -170,3 +174,53 @@ export const RedeemRewardResult = z
   .strict()
 
 export type RedeemRewardResult = z.infer<typeof RedeemRewardResult>
+
+/**
+ * Витрина наград заведения для сервера кассы — без гостя.
+ *
+ * Нужна бэк-офису кассы, чтобы один раз связать награду с блюдом меню: касса
+ * кладёт подарок в чек строкой ฿0 и списывает склад. Гостевой список
+ * (`PosRewards`) для этого не годится — он требует участия гостя.
+ */
+export const PosCatalogItem = z
+  .object({
+    id: z.uuid(),
+    name: z.string(),
+    pointsPrice: z.number().int().positive(),
+    imageUrl: z.url().nullable(),
+  })
+  .strict()
+
+export type PosCatalogItem = z.infer<typeof PosCatalogItem>
+
+export const PosCatalog = z.object({ items: z.array(PosCatalogItem) }).strict()
+
+export type PosCatalog = z.infer<typeof PosCatalog>
+
+/**
+ * Отмена выданной награды: баллы назад гостю.
+ *
+ * Касса зовёт её, когда чек с подарком не записался или вернули весь чек.
+ * Повтор ничего не делает второй раз. Выдачи с таким номером не было (касса
+ * не дождалась ответа, а до нас запрос не дошёл) — `found: false`, а не
+ * ошибка: отменять нечего, и очередь кассы не должна биться в это неделю.
+ */
+export const RedeemRewardVoidInput = z
+  .object({
+    redemptionId: z.uuid(),
+  })
+  .strict()
+
+export type RedeemRewardVoidInput = z.infer<typeof RedeemRewardVoidInput>
+
+export const RedeemRewardVoidResult = z
+  .object({
+    found: z.boolean(),
+    /** Сколько баллов вернулось гостю. 0, если выдачи не было. */
+    pointsReturned: z.number().int().nonnegative(),
+    balanceAfter: z.number().int().nullable(),
+    replayed: z.boolean(),
+  })
+  .strict()
+
+export type RedeemRewardVoidResult = z.infer<typeof RedeemRewardVoidResult>
