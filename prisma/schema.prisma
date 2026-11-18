@@ -395,6 +395,15 @@ model Staff {
   /// До какого момента вход заблокирован после серии неудач.
   pinLockedUntil    DateTime?
 
+  /// Кассир POSitive POS, за которого провёл чек сервер кассы (`POS_LINK`).
+  ///
+  /// Заводится сам при первом чеке кассира — без PIN, почты и устройства: войти
+  /// им нельзя, он нужен, чтобы доплата за нового гостя (`StaffReward`) и отчёты
+  /// «кто привёл» знали человека. Сервер кассы ходит одной связкой на заведение,
+  /// и без этой строки все его чеки были бы ничьими — доплата никому.
+  /// Владелец 19.11.2026: «Автоматически», а не сопоставлять людей руками.
+  posStaffRef String?
+
   isActive   Boolean   @default(true)
   createdAt  DateTime  @default(now())
   lastSeenAt DateTime?
@@ -403,6 +412,7 @@ model Staff {
   devices  StaffDevice[]
   sessions Session[]
 
+  @@unique([tenantId, posStaffRef])
   @@index([tenantId, role])
 }
 

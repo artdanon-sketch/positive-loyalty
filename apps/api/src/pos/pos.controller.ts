@@ -33,6 +33,7 @@ import {
   PosInvite,
   PosMe,
   PosRewardsQuery,
+  RedeemRewardVoidInput,
 } from '@positive/contracts'
 import type {
   CommitResult,
@@ -41,9 +42,11 @@ import type {
   PosRefundResult,
   PosVoidResult,
   PreviewResult,
+  PosCatalog,
   PosRewards,
   RedeemGrantResult,
   RedeemRewardResult,
+  RedeemRewardVoidResult,
   SaleKind,
 } from '@positive/contracts'
 
@@ -168,6 +171,41 @@ export class PosController {
     }
 
     return this.posService.rewards(parsed.data.membershipId)
+  }
+
+  @Get('rewards/catalog')
+  @ApiOperation({
+    summary: 'Витрина наград заведения без гостя',
+    description: 'Бэк-офису кассы — один раз связать награду с блюдом меню.',
+  })
+  @ApiOkResponse({ description: 'Позиции с ценой в баллах в порядке владельца' })
+  async catalog(): Promise<PosCatalog> {
+    return this.posService.catalog()
+  }
+
+  @Post('rewards/void')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Отменить выданную награду',
+    description:
+      'Возвращает гостю баллы выдачи с этим redemptionId. Повтор ничего не делает второй раз; ' +
+      'выдачи не было — found: false.',
+  })
+  @ApiOkResponse({ description: 'Баллы возвращены или выдачи не было' })
+  async voidReward(@Body() body: unknown): Promise<RedeemRewardVoidResult> {
+    const parsed = RedeemRewardVoidInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Укажите номер выдачи',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posService.voidReward(parsed.data.redemptionId)
   }
 
   @Post('rewards/redeem')

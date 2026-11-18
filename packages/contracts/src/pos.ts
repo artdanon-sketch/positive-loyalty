@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { ReversalReason } from './ledger.js'
+import { PosCashier } from './pos-cashier.js'
 import { AppliedOffer, IssuedGrant, SkippedOffer } from './offer-rules.js'
 import { TierBadge } from './tier.js'
 
@@ -207,6 +208,8 @@ export const CommitInput = z
      * Необязателен: список видов ведут не все заведения.
      */
     saleKindId: z.uuid().optional(),
+    /** Кто пробил чек — только от сервера кассы (`POS_LINK`), см. `PosCashier`. */
+    cashier: PosCashier.optional(),
   })
   .strict()
 
