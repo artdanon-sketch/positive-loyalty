@@ -411,6 +411,8 @@ export class AdminService {
             type: 'GRANT',
             refType: 'referral',
             idempotencyKey: { startsWith: REFERRAL_REWARD_KEY_PREFIX },
+            // Отменённая награда — друг так и не купил: не считается.
+            reversedBy: { is: null },
           },
         }),
       ])
