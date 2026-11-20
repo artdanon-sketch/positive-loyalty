@@ -52,6 +52,21 @@ export class OfferSoldOutError extends Error {
   }
 }
 
+/**
+ * Свой код промокода уже занят в этом заведении другим промокодом.
+ *
+ * Бывает только у кодов, пришедших снаружи (`IssueGrantInput.code`): платформа
+ * свои коды генерирует, и коллизия там — загадка, а не отказ.
+ */
+export class GrantCodeTakenError extends Error {
+  readonly code = 'CODE_TAKEN'
+
+  constructor(readonly grantCode: string) {
+    super(`Код ${grantCode} уже выдан в этом заведении`)
+    this.name = 'GrantCodeTakenError'
+  }
+}
+
 /** Отказ в погашении. Код машиночитаемый — по нему касса рисует подсказку. */
 export class GrantRedeemError extends Error {
   constructor(
@@ -74,6 +89,17 @@ export interface IssueGrantInput {
   readonly tenantId: string
   /** Сколько дней живёт код. Партнёрства передают своё значение из Term. */
   readonly validityDays: number
+  /**
+   * Точный срок вместо `validityDays`. Промокод POSitive живёт «до 31.12», а не
+   * «N дней от выдачи» — пересчёт в дни сдвигал бы конец на час выдачи.
+   */
+  readonly expiresAt?: Date
+  /**
+   * Свой код вместо сгенерированного. Только для кодов, которые гостю уже
+   * прислали словами (промокод POSitive): кошелёк обязан показать тот же текст.
+   * Занят в заведении другим промокодом — `GrantCodeTakenError`.
+   */
+  readonly code?: string
   /**
    * Ключ идемпотентности. Повтор с тем же ключом вернёт ПЕРВЫЙ промокод,
    * а не выдаст второй.
@@ -166,7 +192,8 @@ export class OfferGrantService {
         throw new Error(`Акция ${input.offerId} не найдена в этом заведении`)
       }
 
-      const expiresAt = new Date(input.now.getTime() + input.validityDays * 24 * 60 * 60 * 1000)
+      const expiresAt =
+        input.expiresAt ?? new Date(input.now.getTime() + input.validityDays * 24 * 60 * 60 * 1000)
 
       const nonce = input.idempotencyKey ?? randomUUID()
 
@@ -208,7 +235,7 @@ export class OfferGrantService {
             offerId: input.offerId,
             tenantId: input.tenantId,
             guestId: input.guestId,
-            code: randomCode(CODE_LENGTH),
+            code: input.code ?? randomCode(CODE_LENGTH),
             nonce,
             issuedAt: input.now,
             expiresAt,
@@ -223,7 +250,15 @@ export class OfferGrantService {
         // Повтор по ключу — не ошибка, а норма: событие пришло дважды.
         // Возвращаем ПЕРВЫЙ промокод, как это делает журнал баллов с
         // idempotencyKey (docs/02, раздел 0).
-        if (input.idempotencyKey === undefined || !isUniqueViolation(error)) {
+        if (!isUniqueViolation(error)) {
+          throw error
+        }
+
+        if (input.idempotencyKey === undefined) {
+          if (input.code !== undefined) {
+            throw new GrantCodeTakenError(input.code)
+          }
+
           throw error
         }
 
@@ -235,6 +270,11 @@ export class OfferGrantService {
         })
 
         if (existing === null) {
+          // Свой код занят другим промокодом заведения — ответ вызывающему.
+          if (input.code !== undefined) {
+            throw new GrantCodeTakenError(input.code)
+          }
+
           // Нарушен другой UNIQUE — например, код случайно совпал.
           // Проглотить это значило бы выдать вместо промокода загадку.
           throw error
@@ -278,25 +318,26 @@ export class OfferGrantService {
     const code = input.code.trim().toUpperCase()
 
     return this.prisma.forTenant(input.tenantId, async (tx) => {
-      // Ищем БЕЗ фильтра по тенанту, чтобы отличить «нет такого кода» от
-      // «код чужого заведения»: это разные подсказки кассиру. Политика RLS
-      // при этом всё равно не отдаст чужую строку — значит чужой код здесь
-      // выглядит как ненайденный, и различить их можно только по факту
-      // существования, а не по содержимому. См. комментарий ниже.
-      const grant = await tx.offerGrant.findUnique({
-        where: { code },
-        select: {
-          id: true,
-          code: true,
-          offerId: true,
-          guestId: true,
-          tenantId: true,
-          state: true,
-          expiresAt: true,
-          redeemedReceiptId: true,
-          offer: { select: { schedule: true } },
-        },
-      })
+      // Код уникален ВНУТРИ заведения (с 20.11.2026): тот же текст может жить у
+      // соседа — промокод POSitive на две точки. Поэтому сначала свой, и только
+      // не найдя — любой, чтобы отличить «нет такого кода» от «код чужого
+      // заведения»: это разные подсказки кассиру. Политика RLS при этом всё
+      // равно не отдаст чужую строку — значит чужой код здесь выглядит как
+      // ненайденный. См. комментарий ниже.
+      const select = {
+        id: true,
+        code: true,
+        offerId: true,
+        guestId: true,
+        tenantId: true,
+        state: true,
+        expiresAt: true,
+        redeemedReceiptId: true,
+        offer: { select: { schedule: true } },
+      } as const
+      const grant =
+        (await tx.offerGrant.findFirst({ where: { tenantId: input.tenantId, code }, select })) ??
+        (await tx.offerGrant.findFirst({ where: { code }, select }))
 
       if (grant === null) {
         // Под RLS сюда попадает и «кода нет вовсе», и «код чужого заведения»:

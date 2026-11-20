@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -14,6 +15,7 @@ import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -21,6 +23,8 @@ import {
 } from '@nestjs/swagger'
 import {
   CommitInput,
+  IdempotencyKeyHeader,
+  IssuePosGrantInput,
   PosGuestQuery,
   PosTagInput,
   RedeemRewardInput,
@@ -37,6 +41,8 @@ import {
 } from '@positive/contracts'
 import type {
   CommitResult,
+  IssuePosGrantResult,
+  VoidPosGrantResult,
   PosConfig,
   PosGuest,
   PosRefundResult,
@@ -53,6 +59,7 @@ import type {
 import { Roles } from '../common/tenant/roles.decorator'
 
 import { PosAppService } from './pos-app.service'
+import { PosGrantsService } from './pos-grants.service'
 import { PosService } from './pos.service'
 
 /**
@@ -69,6 +76,7 @@ export class PosController {
   constructor(
     private readonly posService: PosService,
     private readonly posApp: PosAppService,
+    private readonly posGrants: PosGrantsService,
   ) {}
 
   @Get('config')
@@ -278,6 +286,70 @@ export class PosController {
     }
 
     return this.posService.commit(parsed.data)
+  }
+
+  /**
+   * Промокод POSitive — гостю в кошелёк. Выдаёт связка кассы (и владелец);
+   * кассиру и менеджеру нельзя: промокод создают в POSitive, а не у стойки.
+   */
+  @Post('grants')
+  @Roles('POS_LINK', 'OWNER')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Выдать гостю промокод POSitive своим кодом',
+    description:
+      'Код и срок задаёт POSitive. Гость ищется по телефону среди участников заведения. ' +
+      'Повтор с тем же Idempotency-Key возвращает первый ответ.',
+  })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Один ключ на одну выдачу' })
+  @ApiNotFoundResponse({ description: 'Гость с этим телефоном не участник заведения' })
+  @ApiConflictResponse({
+    description: 'Код уже выдан в заведении или ключ использован с другим кодом',
+  })
+  async issuePosGrant(
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() body: unknown,
+  ): Promise<IssuePosGrantResult> {
+    const key = IdempotencyKeyHeader.safeParse(idempotencyKey)
+
+    if (!key.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'IDEMPOTENCY_KEY_REQUIRED',
+          message: 'Нужен заголовок Idempotency-Key: без него повтор выдал бы код дважды',
+        },
+      })
+    }
+
+    const parsed = IssuePosGrantInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posGrants.issue(parsed.data, key.data)
+  }
+
+  /** Снять промокод POSitive из кошелька. Погашенный не трогает; повтор безопасен. */
+  @Post('grants/:code/void')
+  @Roles('POS_LINK', 'OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Аннулировать промокод POSitive' })
+  @ApiNotFoundResponse({ description: 'Кода нет в этом заведении' })
+  async voidPosGrant(@Param('code') code: string): Promise<VoidPosGrantResult> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(code)) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_FAILED', message: 'Некорректный код' },
+      })
+    }
+
+    return this.posGrants.void(code)
   }
 
   @Post('grants/redeem')
