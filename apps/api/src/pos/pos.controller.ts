@@ -3,19 +3,18 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
 } from '@nestjs/common'
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
-  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -23,8 +22,8 @@ import {
 } from '@nestjs/swagger'
 import {
   CommitInput,
-  IdempotencyKeyHeader,
-  IssuePosGrantInput,
+  PosGrantCode,
+  PutPosGrantInput,
   PosGuestQuery,
   PosTagInput,
   RedeemRewardInput,
@@ -41,7 +40,7 @@ import {
 } from '@positive/contracts'
 import type {
   CommitResult,
-  IssuePosGrantResult,
+  PutPosGrantResult,
   VoidPosGrantResult,
   PosConfig,
   PosGuest,
@@ -289,39 +288,27 @@ export class PosController {
   }
 
   /**
-   * Промокод POSitive — гостю в кошелёк. Выдаёт связка кассы (и владелец);
-   * кассиру и менеджеру нельзя: промокод создают в POSitive, а не у стойки.
+   * Промокод POSitive — гостю в кошелёк: положить или обновить по коду (срок,
+   * название, гость). Связка кассы и владелец; кассиру и менеджеру нельзя —
+   * промокод создают в POSitive, а не у стойки. PUT идемпотентен сам по себе.
    */
-  @Post('grants')
+  @Put('grants/:code')
   @Roles('POS_LINK', 'OWNER')
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Выдать гостю промокод POSitive своим кодом',
+    summary: 'Положить или обновить промокод POSitive в кошельке гостя',
     description:
       'Код и срок задаёт POSitive. Гость ищется по телефону среди участников заведения. ' +
-      'Повтор с тем же Idempotency-Key возвращает первый ответ.',
+      'Снятый код возвращается в кошелёк, погашенный — нет.',
   })
-  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Один ключ на одну выдачу' })
   @ApiNotFoundResponse({ description: 'Гость с этим телефоном не участник заведения' })
-  @ApiConflictResponse({
-    description: 'Код уже выдан в заведении или ключ использован с другим кодом',
-  })
-  async issuePosGrant(
-    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  @ApiConflictResponse({ description: 'Код занят подарком самого Loyalty или уже погашен' })
+  async putPosGrant(
+    @Param('code') rawCode: string,
     @Body() body: unknown,
-  ): Promise<IssuePosGrantResult> {
-    const key = IdempotencyKeyHeader.safeParse(idempotencyKey)
-
-    if (!key.success) {
-      throw new BadRequestException({
-        error: {
-          code: 'IDEMPOTENCY_KEY_REQUIRED',
-          message: 'Нужен заголовок Idempotency-Key: без него повтор выдал бы код дважды',
-        },
-      })
-    }
-
-    const parsed = IssuePosGrantInput.safeParse(body)
+  ): Promise<PutPosGrantResult> {
+    const code = this.grantCode(rawCode)
+    const parsed = PutPosGrantInput.safeParse(body)
 
     if (!parsed.success) {
       throw new BadRequestException({
@@ -333,7 +320,7 @@ export class PosController {
       })
     }
 
-    return this.posGrants.issue(parsed.data, key.data)
+    return this.posGrants.put(code, parsed.data)
   }
 
   /** Снять промокод POSitive из кошелька. Погашенный не трогает; повтор безопасен. */
@@ -341,15 +328,21 @@ export class PosController {
   @Roles('POS_LINK', 'OWNER')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Аннулировать промокод POSitive' })
-  @ApiNotFoundResponse({ description: 'Кода нет в этом заведении' })
-  async voidPosGrant(@Param('code') code: string): Promise<VoidPosGrantResult> {
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,31}$/.test(code)) {
+  @ApiNotFoundResponse({ description: 'Промокода POSitive с таким кодом в заведении нет' })
+  async voidPosGrant(@Param('code') rawCode: string): Promise<VoidPosGrantResult> {
+    return this.posGrants.void(this.grantCode(rawCode))
+  }
+
+  private grantCode(raw: string): string {
+    const parsed = PosGrantCode.safeParse(raw)
+
+    if (!parsed.success) {
       throw new BadRequestException({
         error: { code: 'VALIDATION_FAILED', message: 'Некорректный код' },
       })
     }
 
-    return this.posGrants.void(code)
+    return parsed.data
   }
 
   @Post('grants/redeem')

@@ -1,27 +1,31 @@
 import { z } from 'zod'
 
 /**
- * Промокод POSitive в кошельке гостя: выдача и аннулирование связкой кассы.
+ * Промокод POSitive в кошельке гостя: зеркало промокода по коду.
  *
  * Источник правды — POSitive: там промокод создан, там он гасится на кассе и на
  * сайте, там считается лимит. Сюда он приходит, чтобы гость увидел его у себя
- * в кошельке тем же кодом, что ему прислали сообщением, — и чтобы касса POSitive
- * погасила его здесь (`POST /v1/pos/grants/redeem`), когда гость его предъявит.
+ * в кошельке тем же кодом, что ему прислали сообщением.
+ *
+ * `PUT /v1/pos/grants/:code` кладёт или обновляет (срок, название, гость),
+ * `POST /v1/pos/grants/:code/void` снимает.
  */
-export const IssuePosGrantInput = z
+
+/**
+ * Код промокода в пути. Правила промокода POSitive: латиница, цифры, `_` и `-`,
+ * 3–24 знака, первый — буква или цифра. К верхнему регистру приводим здесь:
+ * гость набирает как угодно.
+ */
+export const PosGrantCode = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{2,23}$/, 'Код — латиница, цифры, _ и -, 3–24 знака')
+  .transform((value) => value.toUpperCase())
+
+export const PutPosGrantInput = z
   .object({
     /** Телефон гостя-участника этого заведения. Не участник — 404, гостя не заводим. */
     phone: z.string().regex(/^\+[1-9]\d{7,14}$/, 'Телефон в формате E.164, например +66812345678'),
-    /**
-     * Код, который гостю уже прислали. Правила промокода POSitive: латиница, цифры,
-     * `_` и `-`, 3–24 знака, первый — буква или цифра. К верхнему регистру
-     * приводим здесь: гость набирает как угодно.
-     */
-    code: z
-      .string()
-      .trim()
-      .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{2,23}$/, 'Код — латиница, цифры, _ и -, 3–24 знака')
-      .transform((value) => value.toUpperCase()),
     /** Что гость получает — строка, которую он увидит в кошельке. */
     title: z.string().trim().min(1).max(120),
     /** Условия одной-двумя строками: «от ฿500», «Кефир и ThaiNuki». */
@@ -31,19 +35,19 @@ export const IssuePosGrantInput = z
   })
   .strict()
 
-export type IssuePosGrantInput = z.infer<typeof IssuePosGrantInput>
+export type PutPosGrantInput = z.infer<typeof PutPosGrantInput>
 
-export const IssuePosGrantResult = z
+export const PutPosGrantResult = z
   .object({
     grantId: z.uuid(),
     code: z.string(),
     expiresAt: z.iso.datetime(),
-    /** Тот же Idempotency-Key пришёл повторно — возвращён первый ответ. */
-    replayed: z.boolean(),
+    /** true — строка появилась этим запросом; false — обновлена или уже была. */
+    created: z.boolean(),
   })
   .strict()
 
-export type IssuePosGrantResult = z.infer<typeof IssuePosGrantResult>
+export type PutPosGrantResult = z.infer<typeof PutPosGrantResult>
 
 export const VoidPosGrantResult = z
   .object({

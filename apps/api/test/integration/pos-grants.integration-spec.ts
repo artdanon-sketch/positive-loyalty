@@ -13,18 +13,18 @@ import { PrismaService } from '../../src/core/prisma.service'
 import { createMembershipFixture, createTenant } from './ledger-test-context'
 
 /**
- * Промокод POSitive в кошельке гостя: POST /v1/pos/grants и /grants/:code/void.
+ * Промокод POSitive в кошельке гостя: PUT /v1/pos/grants/:code и /grants/:code/void.
  *
  * Главное, что здесь закреплено: один и тот же код живёт в двух заведениях
- * (промокод аккаунта POSitive на Кефир и ThaiNuki), и погашение в одном не
- * трогает строку другого.
+ * (промокод аккаунта POSitive на Кефир и ThaiNuki), погашение в одном не трогает
+ * строку другого, а строка-зеркало переживает правки промокода в POSitive.
  */
 
-interface IssueBody {
+interface PutBody {
   grantId: string
   code: string
   expiresAt: string
-  replayed: boolean
+  created: boolean
 }
 
 interface ErrorBody {
@@ -68,19 +68,21 @@ const venue = async () => {
 const uniqueCode = (): string =>
   `IRA${String(Date.now()).slice(-6)}${String(Math.random()).slice(2, 5)}`
 
-const body = (phone: string, code: string, extra: object = {}) => ({
+const later = (days: number): string => new Date(Date.now() + days * DAY_MS).toISOString()
+
+const body = (phone: string, extra: object = {}) => ({
   phone,
-  code,
   title: '−20% на заказ',
   howTo: ['Кефир и ThaiNuki', 'от ฿500'],
-  expiresAt: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+  expiresAt: later(30),
   ...extra,
 })
 
-const issue = (token: string, payload: object, key: string | null = randomUUID()) => {
-  const call = request(server()).post('/v1/pos/grants').set('Authorization', `Bearer ${token}`)
-  return (key === null ? call : call.set('Idempotency-Key', key)).send(payload)
-}
+const put = (token: string, code: string, payload: object) =>
+  request(server())
+    .put(`/v1/pos/grants/${code}`)
+    .set('Authorization', `Bearer ${token}`)
+    .send(payload)
 
 const redeem = (token: string, code: string, receiptId = `r-${randomUUID()}`) =>
   request(server())
@@ -94,7 +96,18 @@ const voidGrant = (token: string, code: string) =>
     .set('Authorization', `Bearer ${token}`)
     .send({})
 
-describe('Промокод POSitive: выдача в кошелёк', () => {
+const grantOf = (tenantId: string, code: string) =>
+  prisma.offerGrant.findFirstOrThrow({
+    where: { tenantId, code },
+    select: {
+      guestId: true,
+      state: true,
+      expiresAt: true,
+      offer: { select: { type: true, status: true, i18n: true } },
+    },
+  })
+
+describe('Промокод POSitive: положить в кошелёк', () => {
   it('кладёт гостю код, который ему прислали, с точным сроком и названием', async () => {
     const { tenantId, link } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
@@ -102,29 +115,22 @@ describe('Промокод POSitive: выдача в кошелёк', () => {
     const expiresAt = new Date(Date.now() + 10 * DAY_MS)
     expiresAt.setMilliseconds(0)
 
-    const res = await issue(
+    const res = await put(
       link,
-      body(guest.guestPhone, code.toLowerCase(), { expiresAt: expiresAt.toISOString() }),
-    ).expect(201)
+      code.toLowerCase(),
+      body(guest.guestPhone, { expiresAt: expiresAt.toISOString() }),
+    ).expect(200)
 
-    expect(res.body).toMatchObject({ code, replayed: false })
-    expect((res.body as IssueBody).expiresAt).toBe(expiresAt.toISOString())
+    expect(res.body).toMatchObject({ code, created: true, expiresAt: expiresAt.toISOString() })
 
-    const row = await prisma.offerGrant.findFirstOrThrow({
-      where: { tenantId, code },
-      select: { guestId: true, state: true, offer: { select: { type: true, i18n: true } } },
-    })
+    const row = await grantOf(tenantId, code)
     expect(row.guestId).toBe(guest.guestId)
     expect(row.state).toBe('ISSUED')
     expect(row.offer.type).toBe('GOODWILL')
     expect(row.offer.i18n).toMatchObject({ title: { ru: '−20% на заказ' } })
 
     const audit = await prisma.auditLog.count({
-      where: {
-        tenantId,
-        action: 'GIFT_ISSUED',
-        entityId: (res.body as { grantId: string }).grantId,
-      },
+      where: { tenantId, action: 'GIFT_ISSUED', entityId: (res.body as PutBody).grantId },
     })
     expect(audit).toBe(1)
   })
@@ -132,112 +138,144 @@ describe('Промокод POSitive: выдача в кошелёк', () => {
   it('один код — в двух заведениях; погашение в одном не трогает другое', async () => {
     const kefir = await venue()
     const thai = await venue()
-    const guestK = await createMembershipFixture(prisma, { tenantId: kefir.tenantId })
+    const guest = await createMembershipFixture(prisma, { tenantId: kefir.tenantId })
     const code = uniqueCode()
 
     // Тот же гость — участник обоих заведений.
-    await prisma.membership.create({
-      data: { tenantId: thai.tenantId, guestId: guestK.guestId },
-    })
+    await prisma.membership.create({ data: { tenantId: thai.tenantId, guestId: guest.guestId } })
 
-    await issue(kefir.link, body(guestK.guestPhone, code)).expect(201)
-    await issue(thai.link, body(guestK.guestPhone, code)).expect(201)
+    await put(kefir.link, code, body(guest.guestPhone)).expect(200)
+    await put(thai.link, code, body(guest.guestPhone)).expect(200)
 
     await redeem(kefir.link, code).expect(200)
 
-    const states = await prisma.offerGrant.findMany({
-      where: { code },
-      select: { tenantId: true, state: true },
-    })
-    expect(states).toHaveLength(2)
-    expect(states.find((s) => s.tenantId === kefir.tenantId)?.state).toBe('REDEEMED')
-    expect(states.find((s) => s.tenantId === thai.tenantId)?.state).toBe('ISSUED')
+    expect((await grantOf(kefir.tenantId, code)).state).toBe('REDEEMED')
+    expect((await grantOf(thai.tenantId, code)).state).toBe('ISSUED')
 
     await redeem(thai.link, code).expect(200)
   })
 
-  it('повтор с тем же ключом — первый ответ, вторая строка не появляется', async () => {
+  it('повторный PUT обновляет срок и название, вторая строка не появляется', async () => {
     const { tenantId, link } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
     const code = uniqueCode()
-    const key = randomUUID()
 
-    const first = await issue(link, body(guest.guestPhone, code), key).expect(201)
-    const again = await issue(link, body(guest.guestPhone, code), key).expect(201)
+    const first = await put(link, code, body(guest.guestPhone)).expect(200)
+    const again = await put(
+      link,
+      code,
+      body(guest.guestPhone, { title: '−25% на заказ', expiresAt: later(60) }),
+    ).expect(200)
 
-    expect(again.body).toMatchObject({ grantId: (first.body as IssueBody).grantId, replayed: true })
+    expect(again.body).toMatchObject({ grantId: (first.body as PutBody).grantId, created: false })
     expect(await prisma.offerGrant.count({ where: { tenantId, code } })).toBe(1)
+
+    const row = await grantOf(tenantId, code)
+    expect(row.offer.i18n).toMatchObject({ title: { ru: '−25% на заказ' } })
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now() + 50 * DAY_MS)
   })
 
-  it('тот же ключ с другим кодом — 409, а не тихая подмена', async () => {
+  it('снятый код возвращается в кошелёк — уже другому гостю, если сменили получателя', async () => {
     const { tenantId, link } = await venue()
-    const guest = await createMembershipFixture(prisma, { tenantId })
-    const key = randomUUID()
+    const ira = await createMembershipFixture(prisma, { tenantId })
+    const masha = await createMembershipFixture(prisma, { tenantId })
+    const code = uniqueCode()
 
-    await issue(link, body(guest.guestPhone, uniqueCode()), key).expect(201)
-    const res = await issue(link, body(guest.guestPhone, uniqueCode()), key).expect(409)
+    await put(link, code, body(ira.guestPhone)).expect(200)
+    await voidGrant(link, code).expect(200)
+    await put(link, code, body(masha.guestPhone)).expect(200)
 
-    expect(errorCode(res)).toBe('IDEMPOTENCY_KEY_REUSED')
+    const row = await grantOf(tenantId, code)
+    expect(row.state).toBe('ISSUED')
+    expect(row.guestId).toBe(masha.guestId)
+    expect(row.offer.status).toBe('LIVE')
   })
 
-  it('код уже занят в заведении — 409 CODE_TAKEN, пустая акция закрыта', async () => {
+  it('погашенный код не воскрешает — 409', async () => {
     const { tenantId, link } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
     const code = uniqueCode()
 
-    await issue(link, body(guest.guestPhone, code)).expect(201)
-    const res = await issue(link, body(guest.guestPhone, code)).expect(409)
+    await put(link, code, body(guest.guestPhone)).expect(200)
+    await redeem(link, code).expect(200)
+    const res = await put(link, code, body(guest.guestPhone, { expiresAt: later(90) })).expect(409)
 
+    expect(errorCode(res)).toBe('GRANT_ALREADY_USED')
+    expect((await grantOf(tenantId, code)).state).toBe('REDEEMED')
+  })
+
+  it('код подарка самого Loyalty не перезаписывает и не снимает', async () => {
+    const { tenantId, link } = await venue()
+    const guest = await createMembershipFixture(prisma, { tenantId })
+    const offer = await prisma.offer.create({
+      data: {
+        tenantId,
+        type: 'GOODWILL',
+        status: 'LIVE',
+        visibility: 'VENUE_ONLY',
+        audience: {},
+        schedule: {},
+        limits: {},
+        reward: { kind: 'FREE_ITEM', itemName: 'Десерт', minCheck: 0 },
+        i18n: { title: { ru: 'Десерт' } },
+      },
+    })
+    const native = await prisma.offerGrant.create({
+      data: {
+        offerId: offer.id,
+        tenantId,
+        guestId: guest.guestId,
+        code: uniqueCode(),
+        nonce: `gift:${tenantId}:${randomUUID()}`,
+        expiresAt: new Date(later(7)),
+      },
+    })
+
+    const res = await put(link, native.code, body(guest.guestPhone)).expect(409)
     expect(errorCode(res)).toBe('CODE_TAKEN')
-    expect(
-      await prisma.offer.count({ where: { tenantId, type: 'GOODWILL', status: 'LIVE' } }),
-    ).toBe(1)
+    await voidGrant(link, native.code).expect(404)
+    expect((await grantOf(tenantId, native.code)).state).toBe('ISSUED')
   })
 
   it('телефон не участника — 404, гостя не заводим', async () => {
     const { tenantId, link } = await venue()
     const stranger = await createMembershipFixture(prisma)
 
-    const res = await issue(link, body(stranger.guestPhone, uniqueCode())).expect(404)
+    const res = await put(link, uniqueCode(), body(stranger.guestPhone)).expect(404)
 
     expect(errorCode(res)).toBe('GUEST_NOT_FOUND')
     expect(await prisma.membership.count({ where: { tenantId } })).toBe(0)
     expect(await prisma.offer.count({ where: { tenantId } })).toBe(0)
   })
 
-  it('без ключа, с прошедшим сроком, с кривым кодом — 400', async () => {
+  it('прошедший срок, кривой код, лишнее поле — 400', async () => {
     const { tenantId, link } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
 
-    await issue(link, body(guest.guestPhone, uniqueCode()), null).expect(400)
-    await issue(
-      link,
-      body(guest.guestPhone, uniqueCode(), {
-        expiresAt: new Date(Date.now() - DAY_MS).toISOString(),
-      }),
-    ).expect(400)
-    await issue(link, body(guest.guestPhone, 'ИРА-20')).expect(400)
-    await issue(link, { ...body(guest.guestPhone, uniqueCode()), extra: 1 }).expect(400)
+    await put(link, uniqueCode(), body(guest.guestPhone, { expiresAt: later(-1) })).expect(400)
+    await put(link, encodeURIComponent('ИРА20'), body(guest.guestPhone)).expect(400)
+    await put(link, uniqueCode(), { ...body(guest.guestPhone), extra: 1 }).expect(400)
   })
 
-  it('кассиру и менеджеру выдавать нельзя — 403', async () => {
+  it('кассиру и менеджеру нельзя — 403', async () => {
     const { tenantId } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
 
     for (const role of ['CASHIER', 'MANAGER']) {
       const token = signAccessToken({ tenantId, actorId: null, role }, SECRET, 3600)
-      await issue(token, body(guest.guestPhone, uniqueCode())).expect(403)
+      await put(token, uniqueCode(), body(guest.guestPhone)).expect(403)
+      await voidGrant(token, uniqueCode()).expect(403)
     }
   })
 })
 
-describe('Промокод POSitive: аннулирование', () => {
+describe('Промокод POSitive: снять из кошелька', () => {
   it('снимает невостребованный код, повтор безопасен, погасить после нельзя', async () => {
     const { tenantId, link } = await venue()
     const guest = await createMembershipFixture(prisma, { tenantId })
     const code = uniqueCode()
 
-    await issue(link, body(guest.guestPhone, code)).expect(201)
+    await put(link, code, body(guest.guestPhone)).expect(200)
 
     const first = await voidGrant(link, code.toLowerCase()).expect(200)
     expect(first.body).toEqual({ code, voided: true, state: 'VOID' })
@@ -254,7 +292,7 @@ describe('Промокод POSitive: аннулирование', () => {
     const guest = await createMembershipFixture(prisma, { tenantId })
     const code = uniqueCode()
 
-    await issue(link, body(guest.guestPhone, code)).expect(201)
+    await put(link, code, body(guest.guestPhone)).expect(200)
     await redeem(link, code).expect(200)
 
     const res = await voidGrant(link, code).expect(200)
@@ -267,13 +305,9 @@ describe('Промокод POSitive: аннулирование', () => {
     const guest = await createMembershipFixture(prisma, { tenantId: own.tenantId })
     const code = uniqueCode()
 
-    await issue(own.link, body(guest.guestPhone, code)).expect(201)
+    await put(own.link, code, body(guest.guestPhone)).expect(200)
     await voidGrant(foreign.link, code).expect(404)
 
-    const row = await prisma.offerGrant.findFirstOrThrow({
-      where: { tenantId: own.tenantId, code },
-      select: { state: true },
-    })
-    expect(row.state).toBe('ISSUED')
+    expect((await grantOf(own.tenantId, code)).state).toBe('ISSUED')
   })
 })
