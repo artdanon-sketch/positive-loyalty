@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
 } from '@nestjs/common'
 import {
@@ -21,6 +22,8 @@ import {
 } from '@nestjs/swagger'
 import {
   CommitInput,
+  PosGrantCode,
+  PutPosGrantInput,
   PosGuestQuery,
   PosTagInput,
   RedeemRewardInput,
@@ -37,6 +40,8 @@ import {
 } from '@positive/contracts'
 import type {
   CommitResult,
+  PutPosGrantResult,
+  VoidPosGrantResult,
   PosConfig,
   PosGuest,
   PosRefundResult,
@@ -53,6 +58,7 @@ import type {
 import { Roles } from '../common/tenant/roles.decorator'
 
 import { PosAppService } from './pos-app.service'
+import { PosGrantsService } from './pos-grants.service'
 import { PosService } from './pos.service'
 
 /**
@@ -69,6 +75,7 @@ export class PosController {
   constructor(
     private readonly posService: PosService,
     private readonly posApp: PosAppService,
+    private readonly posGrants: PosGrantsService,
   ) {}
 
   @Get('config')
@@ -278,6 +285,64 @@ export class PosController {
     }
 
     return this.posService.commit(parsed.data)
+  }
+
+  /**
+   * Промокод POSitive — гостю в кошелёк: положить или обновить по коду (срок,
+   * название, гость). Связка кассы и владелец; кассиру и менеджеру нельзя —
+   * промокод создают в POSitive, а не у стойки. PUT идемпотентен сам по себе.
+   */
+  @Put('grants/:code')
+  @Roles('POS_LINK', 'OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Положить или обновить промокод POSitive в кошельке гостя',
+    description:
+      'Код и срок задаёт POSitive. Гость ищется по телефону среди участников заведения. ' +
+      'Снятый код возвращается в кошелёк, погашенный — нет.',
+  })
+  @ApiNotFoundResponse({ description: 'Гость с этим телефоном не участник заведения' })
+  @ApiConflictResponse({ description: 'Код занят подарком самого Loyalty или уже погашен' })
+  async putPosGrant(
+    @Param('code') rawCode: string,
+    @Body() body: unknown,
+  ): Promise<PutPosGrantResult> {
+    const code = this.grantCode(rawCode)
+    const parsed = PutPosGrantInput.safeParse(body)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: parsed.error.issues[0]?.message ?? 'Некорректный запрос',
+          details: { fields: parsed.error.issues.map((issue) => issue.path.join('.')) },
+        },
+      })
+    }
+
+    return this.posGrants.put(code, parsed.data)
+  }
+
+  /** Снять промокод POSitive из кошелька. Погашенный не трогает; повтор безопасен. */
+  @Post('grants/:code/void')
+  @Roles('POS_LINK', 'OWNER')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Аннулировать промокод POSitive' })
+  @ApiNotFoundResponse({ description: 'Промокода POSitive с таким кодом в заведении нет' })
+  async voidPosGrant(@Param('code') rawCode: string): Promise<VoidPosGrantResult> {
+    return this.posGrants.void(this.grantCode(rawCode))
+  }
+
+  private grantCode(raw: string): string {
+    const parsed = PosGrantCode.safeParse(raw)
+
+    if (!parsed.success) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_FAILED', message: 'Некорректный код' },
+      })
+    }
+
+    return parsed.data
   }
 
   @Post('grants/redeem')

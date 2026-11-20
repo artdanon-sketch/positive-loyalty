@@ -115,6 +115,8 @@ export class GuestGiftsService {
             tenantId,
             issuedAt: { gte: new Date(now.getTime() - DAY_MS) },
             offer: { type: { in: ['GOODWILL', 'GIFT_CARD'] } },
+            // Промокоды POSitive выдаёт связка кассы, а не менеджер: лимит у стойки их не считает.
+            NOT: { nonce: { startsWith: 'posgrant:' } },
           },
         })
 
