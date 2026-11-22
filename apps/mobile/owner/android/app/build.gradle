@@ -16,6 +16,20 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Постоянный ключ (22.11.2026): CI кладёт файл и пишет путь в POSITIVE_KEYSTORE —
+    // см. шаг «Permanent signing key» в .github/workflows/android.yml и apps/mobile/README.md.
+    // Без переменной (локальная сборка) — обычный отладочный ключ машины.
+    signingConfigs {
+        debug {
+            def ks = System.getenv('POSITIVE_KEYSTORE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
