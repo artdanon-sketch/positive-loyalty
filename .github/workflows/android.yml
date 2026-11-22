@@ -116,6 +116,28 @@ jobs:
       - name: Capacitor sync
         run: pnpm --filter @positive/mobile-${{ matrix.app }} exec cap sync android
 
+      - name: Permanent signing key
+        # Без этого шага Gradle на каждом раннере создаёт СВОЙ отладочный ключ,
+        # и Android отказывается ставить новую сборку поверх старой:
+        # «Приложение не установлено, так как оно конфликтует с другим пакетом».
+        # Владелец 22.11.2026 удалял приложение перед каждой установкой и попросил
+        # «сделай постоянный ключ подписи, чтобы обновлялось без удаления».
+        #
+        # Ключ лежит в секрете ANDROID_DEBUG_KEYSTORE_B64 (base64 файла
+        # debug.keystore, алиас androiddebugkey, пароли android — стандарт
+        # отладочного ключа, Gradle берёт его сам из ~/.android). Секрет пуст
+        # (форк, чужой PR) — сборка идёт со случайным ключом, как раньше.
+        # ⚠ Потерять или заменить ключ = снова удалять приложения на всех телефонах.
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "::warning::ANDROID_DEBUG_KEYSTORE_B64 не задан — APK подписан случайным ключом и не встанет поверх прежнего"
+          fi
+
       - name: Assemble debug APK
         working-directory: apps/mobile/${{ matrix.app }}/android
         run: ./gradlew --no-daemon assembleDebug
