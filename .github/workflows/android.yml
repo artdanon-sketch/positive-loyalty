@@ -124,16 +124,18 @@ jobs:
         # «сделай постоянный ключ подписи, чтобы обновлялось без удаления».
         #
         # Ключ лежит в секрете ANDROID_DEBUG_KEYSTORE_B64 (base64 файла
-        # debug.keystore, алиас androiddebugkey, пароли android — стандарт
-        # отладочного ключа, Gradle берёт его сам из ~/.android). Секрет пуст
+        # debug.keystore, алиас androiddebugkey, пароли android). Путь
+        # отдаётся Gradle переменной POSITIVE_KEYSTORE — app/build.gradle трёх
+        # оболочек. Положить файл в ~/.android НЕ работает: 22.11 Gradle
+        # проигнорировал его и подписал свежим ключом. Секрет пуст
         # (форк, чужой PR) — сборка идёт со случайным ключом, как раньше.
         # ⚠ Потерять или заменить ключ = снова удалять приложения на всех телефонах.
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            mkdir -p ~/.android
-            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/positive.keystore"
+            echo "POSITIVE_KEYSTORE=$RUNNER_TEMP/positive.keystore" >> "$GITHUB_ENV"
           else
             echo "::warning::ANDROID_DEBUG_KEYSTORE_B64 не задан — APK подписан случайным ключом и не встанет поверх прежнего"
           fi
