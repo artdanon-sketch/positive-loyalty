@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent, ReactElement } from 'react'
 import { Navigate } from 'react-router-dom'
 
@@ -6,7 +6,7 @@ import { ApiError } from '../../shared/api/api-client'
 import { ServerSetting } from '../../shared/config/server-setting'
 import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
-import { ThemeToggle } from '../../shared/theme/theme-toggle'
+import { LookControls } from '../../shared/theme/theme-toggle'
 
 import { SocialSection } from './SocialSection'
 
@@ -31,6 +31,8 @@ export function Page(): ReactElement {
   const [devCode, setDevCode] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [serverOpen, setServerOpen] = useState(false)
+  const pressTimer = useRef<number | null>(null)
 
   if (session.session !== null) {
     return <Navigate to="/" replace />
@@ -83,14 +85,52 @@ export function Page(): ReactElement {
     })
   }
 
+  // «Адрес сервера» — только после долгого нажатия на карту (22.11.2026):
+  // гостю поле не нужно, а нам на ноутбуке и стенде — да. См. ServerSetting.
+  const startPress = (): void => {
+    pressTimer.current = window.setTimeout(() => {
+      setServerOpen(true)
+    }, 1500)
+  }
+  const endPress = (): void => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current)
+      pressTimer.current = null
+    }
+  }
+
   return (
     <div className="signin">
-      <div className="signin__theme">
-        <ThemeToggle />
+      <div className="signin__top">
+        <LookControls />
+      </div>
+
+      {/*
+        Карта, какой она станет после входа (вариант A, 22.11.2026): гость видит,
+        ради чего вводит телефон. Баллов не выдумываем — на месте числа прочерк.
+      */}
+      <div
+        className="signin__preview"
+        aria-hidden="true"
+        onPointerDown={startPress}
+        onPointerUp={endPress}
+        onPointerLeave={endPress}
+        onContextMenu={(event) => {
+          event.preventDefault()
+        }}
+      >
+        <span className="signin__previewLabel">{t('signin.cardLabel')}</span>
+        <span className="signin__previewPoints">
+          <small>{t('signin.cardPoints')}</small>฿ —
+        </span>
+        <span className="signin__previewCode">
+          {Array.from({ length: 16 }, (_, index) => (
+            <i key={index} />
+          ))}
+        </span>
       </div>
 
       <form className="signin__card" onSubmit={requestId === null ? onRequest : onVerify}>
-        <span className="signin__mark" aria-hidden="true" />
         <h1 className="signin__title">{t('signin.title')}</h1>
 
         {requestId === null ? (
@@ -162,7 +202,7 @@ export function Page(): ReactElement {
           </p>
         ) : null}
 
-        <ServerSetting />
+        {serverOpen ? <ServerSetting initiallyOpen /> : null}
 
         <button className="signin__submit" type="submit" disabled={pending}>
           {pending

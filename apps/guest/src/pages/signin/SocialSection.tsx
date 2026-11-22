@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { env } from '../../shared/config/env'
 import { fetchServerLogins } from '../../shared/api/server-logins'
 import type { ServerLogins } from '../../shared/api/server-logins'
+import { isNativeApp } from '../../shared/config/platform'
 import { useT } from '../../shared/i18n/i18n-context'
 
 import { GoogleButton } from './GoogleButton'
@@ -56,7 +57,11 @@ export function SocialSection({ onGoogleToken, disabled }: Props): ReactElement 
     return null
   }
 
-  const google = logins.google && (env.VITE_GOOGLE_CLIENT_ID ?? '') !== ''
+  // В приложении на телефоне веб-кнопки Google нет (22.11.2026): страница там
+  // живёт на https://localhost, Google отвечает «origin_mismatch», а окно входа
+  // уходит в Chrome и вернуть токен в приложение не может. Нужен родной вход
+  // Google (Credential Manager) — до него гость входит телефоном или Telegram.
+  const google = logins.google && (env.VITE_GOOGLE_CLIENT_ID ?? '') !== '' && !isNativeApp()
   const telegram = logins.telegram
 
   if (!google && !telegram) {
