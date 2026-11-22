@@ -1136,8 +1136,16 @@ model OfferGrant {
 
   guestId String
 
-  /// Не меньше восьми символов, криптостойкий (docs/01, раздел 4.5).
-  code String @unique
+  /// Не меньше восьми символов, криптостойкий (docs/01, раздел 4.5) — у кодов,
+  /// которые рождает сама платформа.
+  ///
+  /// Уникален ВНУТРИ заведения (`@@unique([tenantId, code])`), а не на всю базу —
+  /// с 20.11.2026. Промокод аккаунта POSitive («IRA20» для Кефира и ThaiNuki) кладётся
+  /// гостю в кошельки двух заведений одним и тем же кодом: гость видит то, что ему
+  /// прислали в сообщении. Погашение всегда идёт в контексте заведения, поэтому
+  /// чужой код с тем же текстом не найдётся. Такие коды короче восьми знаков — их
+  /// придумал человек, чтобы продиктовать; гасит их касса POSitive по своим правилам.
+  code String
 
   state GrantState @default(ISSUED)
 
@@ -1166,6 +1174,7 @@ model OfferGrant {
   guest  Guest  @relation(fields: [guestId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
+  @@unique([tenantId, code])
   @@index([guestId, state])
   @@index([offerId, state])
   @@index([tenantId, state])
