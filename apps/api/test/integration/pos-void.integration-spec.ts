@@ -315,3 +315,67 @@ describe('Отмена чека', () => {
       .expect(404)
   })
 })
+
+describe('Чужой чек', () => {
+  const tokenOf = async (displayName: string): Promise<string> => {
+    const staff = await prisma.staff.create({
+      data: { tenantId, role: 'CASHIER', displayName },
+      select: { id: true },
+    })
+    return signAccessToken({ tenantId, actorId: staff.id, role: 'CASHIER' }, SECRET, 3600)
+  }
+
+  const ringUpAs = async (token: string, membershipId: string): Promise<CommitBody> => {
+    const preview = await request(server())
+      .post('/v1/pos/transactions/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ membershipId, amount: 100_000 })
+      .expect(200)
+    const commit = await request(server())
+      .post('/v1/pos/transactions/commit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        previewId: (preview.body as PreviewBody).previewId,
+        receiptId: `void-own-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`,
+      })
+      .expect(200)
+    return commit.body as CommitBody
+  }
+
+  it('КАССИР НЕ ОТМЕНЯЕТ ЧЕК КОЛЛЕГИ — 403, БАЛЛЫ ОСТАЮТСЯ У ГОСТЯ', async () => {
+    const anya = await tokenOf('Кассир Аня')
+    const boris = await tokenOf('Кассир Борис')
+    const fixture = await createMembershipFixture(prisma, { tenantId })
+    const committed = await ringUpAs(anya, fixture.membershipId)
+
+    const response = await request(server())
+      .post(`/v1/pos/transactions/${committed.transactionId}/void`)
+      .set('Authorization', `Bearer ${boris}`)
+      .send({ reason: 'WRONG_AMOUNT' })
+      .expect(403)
+    expect(JSON.stringify(response.body)).toMatch(/VOID_NOT_OWN_RECEIPT/)
+
+    const after = await prisma.membership.findFirstOrThrow({ where: { id: fixture.membershipId } })
+    expect(after.pointsBalance).toBe(10_000)
+  })
+
+  it('СВОЙ ЧЕК КАССИР ОТМЕНЯЕТ, ЧУЖОЙ — МЕНЕДЖЕР С КОММЕНТАРИЕМ', async () => {
+    const anya = await tokenOf('Кассир Аня')
+    const first = await createMembershipFixture(prisma, { tenantId })
+    const second = await createMembershipFixture(prisma, { tenantId })
+    const own = await ringUpAs(anya, first.membershipId)
+    const other = await ringUpAs(anya, second.membershipId)
+
+    await request(server())
+      .post(`/v1/pos/transactions/${own.transactionId}/void`)
+      .set('Authorization', `Bearer ${anya}`)
+      .send({ reason: 'WRONG_AMOUNT' })
+      .expect(200)
+
+    await request(server())
+      .post(`/v1/pos/transactions/${other.transactionId}/void`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ reason: 'WRONG_AMOUNT', comment: 'Аня ушла со смены, гость вернул товар' })
+      .expect(200)
+  })
+})
