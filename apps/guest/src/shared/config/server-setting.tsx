@@ -15,10 +15,15 @@ import { isNativeApp } from './platform'
  *
  * Свёрнут по умолчанию: обычная смена начинается со входа, а не с настройки
  * сети. Разворачивается одним нажатием, когда вход не удался.
+ *
+ * ⚠ В приложении гостя с 22.11.2026 блок спрятан: появляется только после
+ * долгого нажатия на карту на экране входа (`initiallyOpen`). Владелец
+ * спросил «зачем там адрес сервиса» — боевой адрес зашит в сборку, гостю поле
+ * не нужно никогда, а случайно сохранённый чужой адрес ломает ему вход.
  */
-export function ServerSetting(): ReactElement | null {
+export function ServerSetting({ initiallyOpen = false }: { initiallyOpen?: boolean } = {}): ReactElement | null {
   const t = useT()
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(initiallyOpen)
   const [value, setValue] = useState(getApiUrl)
   const [error, setError] = useState(false)
   const [saved, setSaved] = useState(false)

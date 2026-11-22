@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="dark" data-skin="violet">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -35,6 +35,13 @@
           stored === 'light' || stored === 'dark' ? stored : prefersLight ? 'light' : 'dark'
       } catch (error) {
         document.documentElement.dataset.theme = 'dark'
+      }
+      // Скин карты (src/shared/theme/skin.ts, ключ SKIN_STORAGE_KEY) — тоже до отрисовки.
+      try {
+        var skin = localStorage.getItem('positive:guest-skin')
+        document.documentElement.dataset.skin = skin === 'orange' ? 'orange' : 'violet'
+      } catch (error) {
+        document.documentElement.dataset.skin = 'violet'
       }
     </script>
   </head>

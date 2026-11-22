@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { formatBaht } from '../../shared/format/baht'
 import { useT } from '../../shared/i18n/i18n-context'
 import { useSession } from '../../shared/session/session-context'
-import { ThemeToggle } from '../../shared/theme/theme-toggle'
+import { LookControls } from '../../shared/theme/theme-toggle'
 import { BirthdayPrompt } from './components/birthday-prompt'
 import { CardEmpty } from './components/card-empty'
 import { CardError } from './components/card-error'
@@ -51,7 +51,7 @@ export function Page(): ReactElement {
           <span className="card__brandName">{t('card.brand')}</span>
         </div>
         <div className="card__headSide">
-          <ThemeToggle />
+          <LookControls />
           <button className="card__signout" type="button" onClick={session.signOut}>
             {t('card.signOut')}
           </button>
