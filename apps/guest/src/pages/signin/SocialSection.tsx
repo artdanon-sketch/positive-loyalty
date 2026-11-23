@@ -6,8 +6,10 @@ import { fetchServerLogins } from '../../shared/api/server-logins'
 import type { ServerLogins } from '../../shared/api/server-logins'
 import { isNativeApp } from '../../shared/config/platform'
 import { useT } from '../../shared/i18n/i18n-context'
+import { isNativeGoogleAvailable } from '../../shared/native/google-sign-in'
 
 import { GoogleButton } from './GoogleButton'
+import { NativeGoogleButton } from './NativeGoogleButton'
 import { TelegramButton } from './TelegramButton'
 
 /**
@@ -57,11 +59,14 @@ export function SocialSection({ onGoogleToken, disabled }: Props): ReactElement 
     return null
   }
 
-  // В приложении на телефоне веб-кнопки Google нет (22.11.2026): страница там
-  // живёт на https://localhost, Google отвечает «origin_mismatch», а окно входа
-  // уходит в Chrome и вернуть токен в приложение не может. Нужен родной вход
-  // Google (Credential Manager) — до него гость входит телефоном или Telegram.
-  const google = logins.google && (env.VITE_GOOGLE_CLIENT_ID ?? '') !== '' && !isNativeApp()
+  // В приложении на телефоне веб-кнопка Google не работает (22.11.2026):
+  // страница там живёт на https://localhost, Google отвечает «origin_mismatch»,
+  // а окно входа уходит в Chrome и вернуть токен не может. Там — родной вход
+  // (Credential Manager, NativeGoogleButton), если он есть в этой сборке APK;
+  // в старом APK модуля нет, и кнопки нет вовсе.
+  const clientId = env.VITE_GOOGLE_CLIENT_ID ?? ''
+  const native = isNativeApp()
+  const google = logins.google && clientId !== '' && (!native || isNativeGoogleAvailable())
   const telegram = logins.telegram
 
   if (!google && !telegram) {
@@ -74,7 +79,10 @@ export function SocialSection({ onGoogleToken, disabled }: Props): ReactElement 
         <span>{t('signin.or')}</span>
       </div>
 
-      {google ? <GoogleButton onToken={onGoogleToken} disabled={disabled} /> : null}
+      {google && native ? (
+        <NativeGoogleButton clientId={clientId} onToken={onGoogleToken} disabled={disabled} />
+      ) : null}
+      {google && !native ? <GoogleButton onToken={onGoogleToken} disabled={disabled} /> : null}
       {telegram ? <TelegramButton disabled={disabled} /> : null}
     </>
   )
