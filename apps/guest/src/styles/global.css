@@ -881,6 +881,43 @@ output {
   cursor: default;
 }
 
+/* Родная кнопка Google в приложении (NativeGoogleButton): белая плашка с
+ * цветной «G» — так Google велит оформлять свои кнопки, и в обеих темах она
+ * одна и та же. Форма и высота — как у Telegram. */
+.signin__googleNative {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  margin-bottom: 10px;
+  padding: 0 22px;
+  border: 1px solid #dadce0;
+  border-radius: 16px;
+  background: #fff;
+  color: #1f1f1f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--dur-press, 0.3s) var(--spring, ease);
+}
+
+.signin__googleNative svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.signin__googleNative:active {
+  transform: scale(0.97);
+}
+
+.signin__googleNative:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Ожидание подтверждения: ссылка, пояснение и отмена одной колонкой. */
 .signin__telegramWait {
   display: flex;

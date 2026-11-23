@@ -62,3 +62,20 @@ cd apps/mobile/cashier/android && ./gradlew assembleDebug
 С 22.11.2026 все сборки CI подписаны одним ключом из секрета `ANDROID_DEBUG_KEYSTORE_B64` (шаг «Permanent signing key» в `.github/workflows/android.yml`). До того каждый раннер создавал свой отладочный ключ, и новая сборка не вставала поверх старой — «конфликтует с другим пакетом», владелец удалял приложение перед каждым обновлением.
 
 Ключ — отладочный по форме (алиас `androiddebugkey`, пароли `android`), путь к нему CI отдаёт переменной `POSITIVE_KEYSTORE`, которую читает `signingConfigs.debug` в `app/build.gradle` каждой оболочки. Первая попытка — положить файл в `~/.android/debug.keystore` — не сработала: Gradle на раннере подписал свежим ключом. Для магазина ключ не годится. Отпечаток SHA-256 `7C:74:0C:88:CB:F9:1F:C4:…:F1:CE:B2:31`. Копия файла у владельца вне репозитория. Сборки до 22.11 подписаны случайными ключами: их один раз удаляют, дальше обновления ставятся поверх.
+
+## Вход через Google в «Карте гостя»
+
+Веб-кнопка Google в приложении не работает: страница живёт на `https://localhost`,
+Google отвечает `origin_mismatch`. Поэтому в APK — родной вход Android
+(Credential Manager): `guest/android/app/src/main/java/app/positive/loyalty/guest/GoogleSignInPlugin.java`,
+веб-половина — `apps/guest/src/shared/native/google-sign-in.ts` и `NativeGoogleButton.tsx`.
+
+Токен выписывается на **веб-клиент** (`VITE_GOOGLE_CLIENT_ID` в `android.yml`), поэтому
+сервер проверяет его без изменений. Чтобы Google пустил само приложение, в том же
+проекте Google Cloud нужен клиент OAuth типа **Android**:
+
+- пакет `app.positive.loyalty.guest`;
+- SHA-1 постоянного ключа: `08:2C:72:13:2E:0A:54:68:77:91:68:94:8E:68:A5:79:D1:13:63:B6`.
+
+Без него окно Google отвечает ошибкой, и приложение пишет «Не получилось войти
+через Google». Сменили ключ подписи — новый SHA-1 в тот же клиент.
